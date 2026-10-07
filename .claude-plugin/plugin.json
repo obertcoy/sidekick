@@ -1,0 +1,7 @@
+{
+  "name": "project-pane",
+  "version": "0.1.0",
+  "description": "A pane showing the current project's summary and ticket progress",
+  "author": { "name": "obertcoy" },
+  "types": "./types/index.d.ts"
+}

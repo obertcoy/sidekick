@@ -1,0 +1,478 @@
+import { atom, read, update } from 'claude-code'
+import type { EngineInterface, Register, Timer } from 'claude-code'
+
+import type { Summary, View } from '../types'
+import { SPRITE, cellsOf, frameCount } from './sprite'
+import type { Mode } from './sprite'
+import {
+  globReach,
+  globToRegExp,
+  groupSets,
+  normalize,
+  parseChecklist,
+  parseRecipe,
+  parseSummary,
+  parseTicketFile,
+  pickSet,
+  progressOf,
+  setIdOf,
+  shortTitle,
+  toRelative,
+  windowOf,
+} from './tickets'
+import type { FileInfo, Recipe, Ticket } from './tickets'
+
+const PANE = 'project-pane'
+const BUDDY = 'buddy'
+const REFRESH_MS = 20_000
+const SKIPPED = new Set([
+  'node_modules', '.git', 'dist', 'build', 'out', 'target', 'vendor', '.next',
+  '.venv', 'venv', '__pycache__', '.idea', '.vscode', 'coverage', '.claude-plugin',
+])
+const LISTED = /(\.(md|mdx|markdown|txt|org|ya?ml|json|toml)|^[^.]+)$/i
+const LIKELY = /issue|ticket|task|todo|backlog|plan|roadmap|scratch|stor(y|ies)|spec|kanban|board/i
+const GLYPH = { done: '✓', active: '◐', open: '○' } as const
+const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+
+const SEARCH_RULES = `You find where a software project keeps its tickets (units of planned work) as local files.
+You get a file listing and the start of some files. Answer with one JSON object and nothing else.
+
+- Tickets are one file each: {"kind":"files","glob":"<path pattern>","statusLabel":"<label>" or null,"doneValues":[...],"activeValues":[...]}
+  glob is relative to the project root with forward slashes; * matches within one folder name, ** across folders.
+  Example: ".scratch/*/issues/*.md". Match only ticket files, not specs, maps or readmes.
+  statusLabel is the word before the colon on the line that holds a ticket's status ("Status" for "**Status:** done"); null when tickets have no such line.
+  doneValues are the status values that mean finished; activeValues the ones that mean being worked on.
+- Tickets are lines of a checklist ("- [ ] thing"): {"kind":"checklist","glob":"<path pattern of the checklist file or files>"}
+- No tickets, or a layout that fits neither: {"kind":"none"}
+
+Documentation, changelogs and notes are not tickets.`
+
+const SUMMARY_RULES = `You keep a three-line status of a software project for its developer.
+You get the current status and what happened in the latest turn of their coding session.
+Change the status only when the turn decided something, finished or started a piece of work, or changed what the developer must do next. A question answered, a file read, or small talk changes nothing.
+Answer with one JSON object and nothing else:
+{"change":false}
+or {"change":true,"happened":"<what was done or decided, one short sentence>","next":"<the next step, one short sentence>","needsYou":"<what the developer must do or decide, or empty>"}`
+
+const view = atom({ plugin: 'project-pane', key: 'view' } as const, {
+  project: '',
+  isSearching: false,
+  summary: null,
+  progress: null,
+} satisfies View as View)
+
+let isSearching = false
+const parsed = new Map<string, { mtimeMs: number; tickets: Ticket[] }>()
+
+type Dollar = EngineInterface
+
+// The character in the pane's corner: it writes while a turn runs and zaps when a ticket is done.
+let mode: Mode = 'idle'
+let resting: Mode = 'idle'
+let frame = 0
+let ticker: Timer | undefined
+
+const paint = ($: Dollar): void => {
+  void $.ui
+    .blit({ requestId: PANE, key: BUDDY, cells: cellsOf(mode, frame) })
+    .catch(() => undefined)
+}
+
+const animate = ($: Dollar, next: Mode): void => {
+  if (next !== 'zap') resting = next
+  // A zap plays to its end; what was asked meanwhile is where it rests after.
+  if (mode === 'zap' && next !== 'zap' && ticker !== undefined) return
+  ticker?.cancel()
+  ticker = undefined
+  mode = next
+  frame = 0
+  paint($)
+  if (mode === 'idle') return
+  ticker = $.clock.every(mode === 'zap' ? 110 : 220, () => {
+    frame += 1
+    if (mode === 'zap' && frame >= frameCount('zap')) {
+      ticker?.cancel()
+      ticker = undefined
+      animate($, resting)
+
+      return
+    }
+    paint($)
+  })
+}
+
+const rootOf = async ($: Dollar): Promise<string> => normalize(await $.session.root())
+
+const recipeOf = async ($: Dollar, root: string): Promise<Recipe | undefined> =>
+  parseRecipe(JSON.stringify((await $.store.get(`recipe:${root}`)) ?? null))
+
+const walk = async (
+  $: Dollar,
+  root: string,
+  dir: string,
+  depth: number,
+  cap: number,
+  found: FileInfo[] = [],
+): Promise<FileInfo[]> => {
+  if (found.length >= cap) return found
+  const entries = await $.fs.list(dir === '' ? root : `${root}/${dir}`).catch(() => [])
+  for (const entry of entries) {
+    if (found.length >= cap) break
+    const path = dir === '' ? entry.name : `${dir}/${entry.name}`
+    if (entry.kind === 'file') found.push({ path, mtimeMs: entry.mtimeMs })
+    if (entry.kind === 'dir' && depth > 1 && !SKIPPED.has(entry.name)) {
+      await walk($, root, path, depth - 1, cap, found)
+    }
+  }
+
+  return found
+}
+
+const filesOf = async ($: Dollar, root: string, recipe: Recipe): Promise<FileInfo[]> => {
+  if (recipe.kind === 'none') return []
+  const { dir, depth } = globReach(recipe.glob)
+  const matches = globToRegExp(recipe.glob)
+
+  return (await walk($, root, dir, depth, 3000)).filter(file => matches.test(file.path))
+}
+
+const ticketsOf = async ($: Dollar, root: string, recipe: Recipe, file: FileInfo): Promise<Ticket[]> => {
+  const key = `${root}/${file.path}`
+  const held = parsed.get(key)
+  if (held !== undefined && held.mtimeMs === file.mtimeMs) return held.tickets
+  const text = await $.fs.read(key).catch(() => '')
+  const name = file.path.slice(file.path.lastIndexOf('/') + 1)
+  const tickets =
+    recipe.kind === 'files' ? [parseTicketFile(name, text, recipe)] : parseChecklist(text)
+  parsed.set(key, { mtimeMs: file.mtimeMs, tickets })
+
+  return tickets
+}
+
+const head = (text: string, lines: number, chars: number): string =>
+  text.split(/\r?\n/).slice(0, lines).join('\n').slice(0, chars)
+
+/** The one-time look at a project that produces its recipe. */
+const search = async ($: Dollar, root: string, hint: string): Promise<Recipe> => {
+  const listing = (await walk($, root, '', 5, 2000)).filter(file =>
+    LISTED.test(file.path.slice(file.path.lastIndexOf('/') + 1)),
+  )
+  if (listing.length === 0) {
+    await $.store.set(`recipe:${root}`, { kind: 'none' })
+
+    return { kind: 'none' }
+  }
+  const samples = listing
+    .filter(file => LIKELY.test(file.path) || hint !== '')
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .slice(0, 8)
+  const shown = await Promise.all(
+    samples.map(async file => {
+      const text = await $.fs.read(`${root}/${file.path}`).catch(() => '')
+
+      return `--- ${file.path}\n${head(text, 30, 1200)}`
+    }),
+  )
+  const prompt = [
+    hint === '' ? '' : `The developer says: ${hint}`,
+    `Files:\n${listing.slice(0, 600).map(file => file.path).join('\n')}`,
+    shown.length === 0 ? '' : `Starts of some files:\n${shown.join('\n\n')}`,
+  ]
+    .filter(part => part !== '')
+    .join('\n\n')
+  const reply = await $.model.complete({
+    model: 'haiku',
+    system: SEARCH_RULES,
+    prompt,
+    maxTokens: 400,
+    timeoutMs: 60_000,
+  })
+  const recipe = (reply.isAnswered ? parseRecipe(reply.text) : undefined) ?? { kind: 'none' }
+  const isFound = (await filesOf($, root, recipe)).length > 0
+  // A failed call is not an answer: leave the project unsearched so the next session asks again.
+  if (reply.isAnswered) await $.store.set(`recipe:${root}`, isFound ? recipe : { kind: 'none' })
+
+  return isFound ? recipe : { kind: 'none' }
+}
+
+const show = async ($: Dollar, next: View): Promise<void> => {
+  const held = await read($, view)
+  if (JSON.stringify(held) === JSON.stringify(next)) return
+  await update($, view, () => next)
+  // The first load and a search's result are not news; a ticket finished or a new ask is.
+  if (held.project !== next.project || held.isSearching) return
+  const was = held.progress
+  const now = next.progress
+  if (was !== null && now !== null && was.source === now.source && now.done > was.done) {
+    animate($, 'zap')
+    $.ui.toast(
+      now.next === null
+        ? `✓ All ${now.total} tickets done`
+        : `✓ ${now.done}/${now.total} done · next: ${shortTitle(now.next)}`,
+    )
+  }
+  const needsYou = next.summary?.needsYou ?? ''
+  if (needsYou !== '' && needsYou !== (held.summary?.needsYou ?? '')) {
+    $.ui.toast(`Needs you: ${needsYou}`, { timeoutMs: 8000 })
+  }
+}
+
+const refresh = async ($: Dollar, hint?: string): Promise<View> => {
+  if (isSearching) return read($, view)
+  const root = await rootOf($)
+  const project = root.slice(root.lastIndexOf('/') + 1)
+  const summary = ((await $.store.get(`summary:${root}`)) ?? null) as Summary | null
+  let recipe = hint === undefined ? await recipeOf($, root) : undefined
+  let files = recipe === undefined ? [] : await filesOf($, root, recipe)
+  const isStale = recipe !== undefined && recipe.kind !== 'none' && files.length === 0
+  if (recipe === undefined || isStale) {
+    isSearching = true
+    await show($, { project, isSearching: true, summary, progress: null })
+    try {
+      recipe = await search($, root, hint ?? '')
+      files = await filesOf($, root, recipe)
+    } finally {
+      isSearching = false
+    }
+  }
+  const touched = (await $.store.get(`touched:${root}`)) as string | undefined
+  const set = recipe === undefined ? undefined : pickSet(groupSets(recipe, files), touched)
+  const tickets =
+    set === undefined || recipe === undefined
+      ? []
+      : (await Promise.all(set.files.map(file => ticketsOf($, root, recipe, file)))).flat()
+  const next: View = {
+    project,
+    isSearching: false,
+    summary,
+    progress: set === undefined || tickets.length === 0 ? null : progressOf(tickets, set.id),
+  }
+  await show($, next)
+
+  return next
+}
+
+/** Asks the small model whether the turn moved anything, and keeps the old summary when it didn't. */
+const summarize = async ($: Dollar, answer: string): Promise<void> => {
+  const messages = await $.session.messages()
+  if (!Array.isArray(messages)) return
+  const start = messages.findLastIndex(
+    one => one.role === 'user' && one.text.trim() !== '' && (one.toolResults ?? []).length === 0,
+  )
+  const turn = messages.slice(Math.max(0, start))
+  const tools = turn
+    .flatMap(one => one.toolUses)
+    .map(use => {
+      const target = use.input.file_path ?? use.input.command ?? use.input.pattern ?? ''
+
+      return `${use.tool} ${String(target).slice(0, 100)}`
+    })
+  if (answer.trim() === '' && tools.length === 0) return
+  const root = await rootOf($)
+  const held = ((await $.store.get(`summary:${root}`)) ?? null) as Summary | null
+  const reply = await $.model.complete({
+    model: 'haiku',
+    system: SUMMARY_RULES,
+    prompt: [
+      `Current status: ${held === null ? 'none yet' : JSON.stringify(held)}`,
+      `The developer asked:\n${(turn[0]?.text ?? '').slice(0, 2000)}`,
+      tools.length === 0 ? '' : `Tools used:\n${tools.slice(-40).join('\n')}`,
+      `The assistant's final answer:\n${answer.slice(0, 4000)}`,
+    ]
+      .filter(part => part !== '')
+      .join('\n\n'),
+    maxTokens: 300,
+    timeoutMs: 60_000,
+  })
+  const summary = reply.isAnswered ? parseSummary(reply.text) : undefined
+  if (summary !== undefined) await $.store.set(`summary:${root}`, summary)
+}
+
+const quietly = (work: Promise<unknown>, $: Dollar): void => {
+  void work.catch(error => $.ui.log(`project-pane: ${String(error)}`, { to: 'debug' }))
+}
+
+export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'project',
+      description: 'Show this project\'s summary and ticket progress in a pane',
+      argumentHint: '[close]',
+    })
+    await $.command.register({
+      name: 'project-rescan',
+      description: 'Look again for where this project keeps its tickets',
+      argumentHint: '[hint, e.g. tickets are in docs/tasks]',
+    })
+    void $.ui.open({ id: PANE, title: 'Project' })
+    quietly(refresh($), $)
+    $.clock.every(REFRESH_MS, () => quietly(refresh($), $))
+
+    return next(e)
+  })
+
+  on('command.run', { command: 'project' }, async ($, e) => {
+    if (e.args.trim() === 'close') {
+      await $.ui.close({ id: PANE })
+
+      return { text: 'Project pane closed.' }
+    }
+    await $.ui.open({ id: PANE, title: 'Project' })
+    quietly(refresh($), $)
+
+    return { text: 'Project pane opened.' }
+  })
+
+  on('command.run', { command: 'project-rescan' }, async ($, e) => {
+    if (isSearching) return { text: 'A search is already running.' }
+    const { progress } = await refresh($, e.args.trim())
+
+    return {
+      text:
+        progress === null
+          ? 'No tickets found. Try a hint: /project-rescan tickets are in docs/tasks'
+          : `Reading tickets from ${progress.source}: ${progress.done}/${progress.total} done.`,
+    }
+  })
+
+  on('tool.call', async ($, e, next) => {
+    const ran = await next(e)
+    const path = (e as unknown as { file_path?: unknown }).file_path
+    if (!FILE_TOOLS.has(String(e.tool)) || typeof path !== 'string') return ran
+    quietly(
+      (async () => {
+        const root = await rootOf($)
+        const relative = toRelative(root, path)
+        const recipe = await recipeOf($, root)
+        const id = relative === undefined || recipe === undefined ? undefined : setIdOf(recipe, relative)
+        if (id === undefined) return
+        await $.store.set(`touched:${root}`, id)
+        await refresh($)
+      })(),
+      $,
+    )
+
+    return ran
+  })
+
+  on('turn.start', ($, e, next) => {
+    animate($, 'write')
+
+    return next(e)
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    const ended = await next(e)
+    if (e.agentId === undefined) animate($, 'idle')
+    if (e.agentId === undefined && e.reason === 'answer') {
+      quietly(summarize($, e.answer).then(() => refresh($)), $)
+    }
+
+    return ended
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const { Box, Text } = $.ui.resolve(e)
+    const { project, isSearching: isLooking, summary, progress } = await read($, view)
+    const columns = Math.max(12, e.props.bodyColumns)
+    const rows = progress?.rows ?? []
+    const focus = rows.findIndex(row => row.state !== 'done' && row.title === progress?.next)
+    const { start, end } = windowOf(rows.length, Math.max(0, focus), Math.max(3, e.props.scroll.bodyRows - 13))
+    const isComplete = progress !== null && progress.done === progress.total
+    const accent = isComplete ? 'success' : 'claude'
+    const filled = progress === null ? 0 : Math.round((progress.done / progress.total) * columns)
+    const needsYou = summary?.needsYou ?? ''
+    // Only the terminal has a cell grid to draw the character on.
+    const buddy =
+      e.surface === 'terminal'
+        ? (() => {
+            const { Raster } = $.ui.resolve(e)
+
+            return <Raster key={BUDDY} columns={SPRITE.columns} rows={SPRITE.rows} cells={cellsOf(mode, frame)} />
+          })()
+        : null
+
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="row" gap={1}>
+          {buddy}
+          <Box flexDirection="column" flexGrow={1} justifyContent="flex-end">
+            <Text bold wrap="truncate-end">
+              {project}
+            </Text>
+            {progress !== null && (
+              <Text bold color={accent}>
+                {isComplete ? '✓ ' : ''}
+                {progress.done}/{progress.total} done
+              </Text>
+            )}
+          </Box>
+        </Box>
+        {progress !== null && (
+          <Text>
+            <Text color={accent}>{'━'.repeat(filled)}</Text>
+            <Text dimColor>{'─'.repeat(columns - filled)}</Text>
+          </Text>
+        )}
+        {isLooking && <Text color="suggestion">◌ Looking for tickets…</Text>}
+        {!isLooking && progress === null && (
+          <Text dimColor>○ No tickets here. /project-rescan looks again.</Text>
+        )}
+        {progress !== null && (
+          <Box flexDirection="column" marginTop={1}>
+            {start > 0 && <Text dimColor>↑ {start} earlier</Text>}
+            {rows.slice(start, end).map((row, index) => {
+              const isNext = start + index === focus
+
+              return (
+                <Text
+                  wrap="truncate-end"
+                  dimColor={row.state === 'done'}
+                  strikethrough={row.state === 'done'}
+                  bold={isNext}
+                >
+                  <Text color={row.state === 'done' ? 'success' : isNext ? 'claude' : 'text'}>
+                    {GLYPH[row.state]}{' '}
+                  </Text>
+                  {shortTitle(row.title)}
+                </Text>
+              )
+            })}
+            {end < rows.length && <Text dimColor>↓ {rows.length - end} more</Text>}
+          </Box>
+        )}
+        <Box flexDirection="column" marginTop={1}>
+          {summary === null && (
+            <Text dimColor>The summary appears after a turn that moves something.</Text>
+          )}
+          {summary !== null && <Text>{summary.happened}</Text>}
+          {summary !== null && summary.next !== '' && (
+            <Text>
+              <Text bold color="suggestion">
+                →{' '}
+              </Text>
+              {summary.next}
+            </Text>
+          )}
+        </Box>
+        {needsYou !== '' && (
+          <Box marginTop={1}>
+            <Text>
+              <Text bold color="inverseText" backgroundColor="warning">
+                {' NEEDS YOU '}
+              </Text>{' '}
+              {needsYou}
+            </Text>
+          </Box>
+        )}
+        {progress !== null && (
+          <Box marginTop={1}>
+            <Text dimColor wrap="truncate-start">
+              {progress.source}
+            </Text>
+          </Box>
+        )}
+      </Box>
+    )
+  })
+}
