@@ -1,4 +1,4 @@
-# project-pane
+# sidekick
 
 A Claude Code mod that shows where the current project stands in a pane beside the conversation, so you don't have to ask the chat for a recap.
 
@@ -14,7 +14,7 @@ Hosted trackers (GitHub, GitLab, Linear, Jira) are not read. The mod shows one p
 At the prompt of a Claude Code terminal session:
 
 ```
-/plugin install project-pane --marketplace obertcoy/project-pane
+/plugin install sidekick --marketplace obertcoy/sidekick
 ```
 
 Answer `y` to add the marketplace, then pick a scope.
@@ -23,17 +23,17 @@ Answer `y` to add the marketplace, then pick a scope.
 
 | Command | What it does |
 | --- | --- |
-| `/project` | Opens the pane. `/project close` closes it. |
-| `/project-rescan [hint]` | Looks again for the project's tickets. The hint is plain words, such as `tickets are in docs/tasks`. |
+| `/sidekick` | Opens the pane. `/sidekick close` closes it. |
+| `/sidekick-rescan [hint]` | Looks again for the project's tickets. The hint is plain words, such as `tickets are in docs/tasks`. |
 
-The pane opens by itself in a wide terminal (144 columns or more). In a narrower one, use `/project`.
+The pane opens by itself in a wide terminal (144 columns or more). In a narrower one, use `/sidekick`.
 
 ## Develop
 
 Load the mod from a local folder for one session:
 
 ```
-claude --plugin-dir path/to/project-pane
+claude --plugin-dir path/to/sidekick
 ```
 
 Then, from the mod's folder:
@@ -51,4 +51,4 @@ The mod API is early access and may change between Claude Code releases.
 
 - Nothing is written to your project. Recipes and summaries live in the mod's own store on your machine.
 - The search and the summary each use a small model through your Claude Code session.
-- `GLOSSARY.md` defines the terms used in the code; `.scratch/project-pane/` holds the spec and open tickets.
+- `GLOSSARY.md` defines the terms used in the code; `.scratch/sidekick/` holds the spec and open tickets.

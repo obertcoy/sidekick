@@ -1,5 +1,5 @@
 {
-  "name": "project-pane",
+  "name": "sidekick",
   "owner": { "name": "obertcoy" },
-  "plugins": [{ "name": "project-pane", "source": "./" }]
+  "plugins": [{ "name": "sidekick", "source": "./" }]
 }

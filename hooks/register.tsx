@@ -22,7 +22,7 @@ import {
 } from './tickets'
 import type { FileInfo, Recipe, Ticket } from './tickets'
 
-const PANE = 'project-pane'
+const PANE = 'sidekick'
 const BUDDY = 'buddy'
 const REFRESH_MS = 20_000
 const SKIPPED = new Set([
@@ -54,7 +54,7 @@ Answer with one JSON object and nothing else:
 {"change":false}
 or {"change":true,"happened":"<what was done or decided, one short sentence>","next":"<the next step, one short sentence>","needsYou":"<what the developer must do or decide, or empty>"}`
 
-const view = atom({ plugin: 'project-pane', key: 'view' } as const, {
+const view = atom({ plugin: 'sidekick', key: 'view' } as const, {
   project: '',
   isSearching: false,
   summary: null,
@@ -289,48 +289,48 @@ const summarize = async ($: Dollar, answer: string): Promise<void> => {
 }
 
 const quietly = (work: Promise<unknown>, $: Dollar): void => {
-  void work.catch(error => $.ui.log(`project-pane: ${String(error)}`, { to: 'debug' }))
+  void work.catch(error => $.ui.log(`sidekick: ${String(error)}`, { to: 'debug' }))
 }
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
-      name: 'project',
+      name: 'sidekick',
       description: 'Show this project\'s summary and ticket progress in a pane',
       argumentHint: '[close]',
     })
     await $.command.register({
-      name: 'project-rescan',
+      name: 'sidekick-rescan',
       description: 'Look again for where this project keeps its tickets',
       argumentHint: '[hint, e.g. tickets are in docs/tasks]',
     })
-    void $.ui.open({ id: PANE, title: 'Project' })
+    void $.ui.open({ id: PANE, title: 'Sidekick' })
     quietly(refresh($), $)
     $.clock.every(REFRESH_MS, () => quietly(refresh($), $))
 
     return next(e)
   })
 
-  on('command.run', { command: 'project' }, async ($, e) => {
+  on('command.run', { command: 'sidekick' }, async ($, e) => {
     if (e.args.trim() === 'close') {
       await $.ui.close({ id: PANE })
 
-      return { text: 'Project pane closed.' }
+      return { text: 'Sidekick closed.' }
     }
-    await $.ui.open({ id: PANE, title: 'Project' })
+    await $.ui.open({ id: PANE, title: 'Sidekick' })
     quietly(refresh($), $)
 
-    return { text: 'Project pane opened.' }
+    return { text: 'Sidekick opened.' }
   })
 
-  on('command.run', { command: 'project-rescan' }, async ($, e) => {
+  on('command.run', { command: 'sidekick-rescan' }, async ($, e) => {
     if (isSearching) return { text: 'A search is already running.' }
     const { progress } = await refresh($, e.args.trim())
 
     return {
       text:
         progress === null
-          ? 'No tickets found. Try a hint: /project-rescan tickets are in docs/tasks'
+          ? 'No tickets found. Try a hint: /sidekick-rescan tickets are in docs/tasks'
           : `Reading tickets from ${progress.source}: ${progress.done}/${progress.total} done.`,
     }
   })
@@ -416,7 +416,7 @@ export const register: Register = on => {
         )}
         {isLooking && <Text color="suggestion">◌ Looking for tickets…</Text>}
         {!isLooking && progress === null && (
-          <Text dimColor>○ No tickets here. /project-rescan looks again.</Text>
+          <Text dimColor>○ No tickets here. /sidekick-rescan looks again.</Text>
         )}
         {progress !== null && (
           <Box flexDirection="column" marginTop={1}>

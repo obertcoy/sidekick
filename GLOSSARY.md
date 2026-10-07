@@ -1,4 +1,4 @@
-# Project Pane
+# Sidekick
 
 A Claude Code mod that shows the state of the current project in a pane, so it can be read without asking the chat for a recap.
 

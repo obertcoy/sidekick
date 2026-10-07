@@ -22,11 +22,11 @@ const TREE: Record<string, { name: string; kind: 'file' | 'dir' }[]> = {
 // The engine hands a hook the path as this machine spells it (D:\work\shop on Windows).
 const posix = (path: string): string => path.replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
 const PANE = {
-  plugin: 'project-pane',
+  plugin: 'sidekick',
   component: 'Pane',
-  requestId: 'project-pane',
+  requestId: 'sidekick',
   props: {
-    title: 'Project',
+    title: 'Sidekick',
     isFocused: false,
     bodyColumns: 40,
     placement: 'dock',
@@ -70,7 +70,7 @@ test('a rescan finds the tickets once, and the pane then shows progress and the 
   }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
 
-  const ran = await $.command.run({ command: 'project-rescan', args: '', ...RUN })
+  const ran = await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
   expect(ran.text).toBe('Reading tickets from .scratch/checkout/issues: 1/3 done.')
   expect(asked.length).toBe(1)
   expect(asked[0]).toContain('.scratch/checkout/issues/01-cart.md')

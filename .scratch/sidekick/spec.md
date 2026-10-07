@@ -1,4 +1,4 @@
-# Project Pane
+# Sidekick
 
 Status: ready-for-agent
 
