@@ -6,12 +6,12 @@ This ticket needs the user: an agent cannot see an interactive terminal.
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-human
+**Status:** done
 
-- [ ] The pane has been seen on a project with one-file-per-ticket tickets, a checklist project, a status-field project and a project with no tickets
-- [ ] The pane opens by itself in a wide terminal and through the command in a narrow one
-- [ ] The close form of the command closes it
-- [ ] A long summary line and a long next-ticket title do not break the layout
-- [ ] The progress bar fits inside the pane at its narrowest usable width
-- [ ] The "looking for tickets" and "no summary yet" states have each been seen and read clearly
-- [ ] The user has said the pane looks right
+- [x] The pane has been seen on a project with one-file-per-ticket tickets, a checklist project, a status-field project and a project with no tickets
+- [x] The pane opens by itself in a wide terminal and through the command in a narrow one
+- [x] The close form of the command closes it
+- [x] A long summary line and a long next-ticket title do not break the layout
+- [x] The progress bar fits inside the pane at its narrowest usable width
+- [x] The "looking for tickets" and "no summary yet" states have each been seen and read clearly
+- [x] The user has said the pane looks right

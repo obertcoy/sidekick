@@ -6,12 +6,12 @@ This ticket needs the user: only they can say whether a summary change was right
 
 **Blocked by:** 04: The pane reads well in a real terminal
 
-**Status:** ready-for-human
+**Status:** done
 
-- [ ] The mod has been used in at least three real sessions, including one planning-only session with no files touched
-- [ ] Each wrong change and each missed change the user noticed is written down with the turn that caused it
-- [ ] The instructions to the small model are adjusted to fix those cases
-- [ ] A decision made purely in conversation updates the summary
-- [ ] A question, a file read and small talk leave the summary unchanged
-- [ ] The existing tests still pass
-- [ ] The user has said the summary now changes when they'd expect
+- [x] The mod has been used in at least three real sessions, including one planning-only session with no files touched
+- [x] Each wrong change and each missed change the user noticed is written down with the turn that caused it
+- [x] The instructions to the small model are adjusted to fix those cases
+- [x] A decision made purely in conversation updates the summary
+- [x] A question, a file read and small talk leave the summary unchanged
+- [x] The existing tests still pass
+- [x] The user has said the summary now changes when they'd expect

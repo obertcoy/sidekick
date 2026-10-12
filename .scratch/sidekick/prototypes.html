@@ -1,0 +1,1071 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sidekick Prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body, h1, h2, h3, p, ul, ol, figure { margin: 0; }
+button { font: inherit; }
+
+:root {
+  --bg: #f3f4f6; --panel: #ffffff; --ink: #15171c; --muted: #5b6270; --rule: #d8dce2; --soft: #eceef2;
+  --focus: #0a64d6; --mark: #a86400; --ok: #1d7a3a; --todo: #8a5a00;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --cw: 8px; --ch: 18px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e1014; --panel: #161920; --ink: #e8eaef; --muted: #9aa1ad; --rule: #2a2f39; --soft: #1d2129;
+  --focus: #6fa8ff; --mark: #f0b34a; --ok: #5fcf7f; --todo: #f0b34a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0e1014; --panel: #161920; --ink: #e8eaef; --muted: #9aa1ad; --rule: #2a2f39; --soft: #1d2129;
+  --focus: #6fa8ff; --mark: #f0b34a; --ok: #5fcf7f; --todo: #f0b34a; color-scheme: dark }
+
+/* Simulated terminal palettes: separate from the page theme, switched by their own toggle. */
+.tp-dark  { --t-bg: #17161d; --t-text: #ebebeb; --t-success: #4eba65; --t-warning: #ffc107; --t-suggestion: #b1b9f9;
+            --t-claude: #d77757; --t-inverseText: #000000; --t-accent: #6ec3ff; --t-frame: #34333d; }
+.tp-light { --t-bg: #fbfaf7; --t-text: #1c1c1e; --t-success: #2c7a39; --t-warning: #966c1e; --t-suggestion: #5769f7;
+            --t-claude: #d77757; --t-inverseText: #ffffff; --t-accent: #0f6fb8; --t-frame: #d4d2cb; }
+
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); min-height: 100vh; }
+.wrap { max-width: 1320px; margin: 0 auto; padding: 20px max(16px, env(safe-area-inset-left)) 56px; }
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+h1 { font: 600 1.25rem/1.2 var(--mono); letter-spacing: -.01em; }
+.sub { color: var(--muted); font-size: .9rem; }
+
+nav.tabs { display: flex; gap: 2px; margin-top: 14px; border-bottom: 1px solid var(--rule); overflow-x: auto; scrollbar-width: none; }
+nav.tabs a { font: 500 .9rem var(--mono); color: var(--muted); text-decoration: none; padding: 8px 12px; border-bottom: 2px solid transparent; white-space: nowrap; }
+nav.tabs a:hover { color: var(--ink); }
+nav.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--ink); }
+
+.bar { position: sticky; top: 0; z-index: 3; background: var(--bg); display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid var(--rule); margin-bottom: 18px; }
+.group { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.group > .lbl { font: .72rem var(--mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-right: 4px; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 5px; overflow: hidden; }
+.seg button { border: 0; border-right: 1px solid var(--rule); border-radius: 0; }
+.seg button:last-child { border-right: 0; }
+button { font: 500 .82rem var(--mono); color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 5px; padding: 5px 10px; cursor: pointer; min-height: 32px; }
+button:hover { background: var(--soft); }
+button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+button.primary { border-color: var(--ink); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.seg button:focus-visible { outline-offset: -3px; }
+
+section[hidden] { display: none; }
+h2 { font: 600 1rem/1.3 var(--sans); margin: 0 0 4px; }
+.lede { color: var(--muted); max-width: 72ch; font-size: .92rem; margin-bottom: 16px; }
+.lede code, li code, p code { font: .85em var(--mono); background: var(--soft); padding: 1px 4px; border-radius: 3px; }
+
+/* Panes side by side; each terminal scrolls on its own when wider than the screen. */
+.pair { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+figure.pane { min-width: 0; max-width: 100%; display: flex; flex-direction: column; gap: 6px; }
+figcaption { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: .85rem; }
+figcaption b { font: 600 .82rem var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+figcaption span { color: var(--muted); }
+.scroller { max-width: 100%; overflow-x: auto; border-radius: 6px; }
+.term { background: var(--t-bg); color: var(--t-text); border: 1px solid var(--t-frame); border-radius: 6px; width: max-content; }
+.term .ttl { font: 11px/1 var(--mono); color: var(--t-text); opacity: .55; padding: 7px 10px 6px; border-bottom: 1px solid var(--t-frame); display: flex; justify-content: space-between; gap: 12px; }
+.term .body { position: relative; padding: 6px 0 8px; }
+.grid { font: 13.333px/var(--ch) var(--mono); font-variant-ligatures: none; white-space: pre; }
+.ln { height: var(--ch); display: block; }
+.ln > i { display: inline-block; width: var(--cw); height: var(--ch); font-style: normal; text-align: center; vertical-align: top; overflow: visible; }
+.ln > i.b { font-weight: 700; }
+.ln > i.d { opacity: .5; }
+.ln > i.s { text-decoration: line-through; text-decoration-thickness: 1px; }
+.term canvas { position: absolute; image-rendering: pixelated; display: block; }
+
+.toast { font: 12.5px/1.4 var(--mono); color: var(--muted); min-height: 1.4em; }
+.toast b { color: var(--ink); font-weight: 600; }
+
+body { overflow-wrap: anywhere; }
+.notes { margin-top: 18px; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+.box { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; }
+.box h3 { font: 600 .78rem var(--mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 6px; }
+.box ul { padding-left: 18px; font-size: .9rem; }
+.box li + li { margin-top: 3px; }
+.decide { border-left: 3px solid var(--mark); }
+
+/* Critter lineup */
+.cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 480px), 1fr)); }
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.card.chosen { border: 2px solid var(--ok); padding: 11px; }
+.card .head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.card .id { font: 700 .95rem var(--mono); }
+.card .name { font-weight: 600; }
+.badge { font: 600 .68rem var(--mono); text-transform: uppercase; letter-spacing: .07em; padding: 2px 6px; border-radius: 3px; border: 1px solid var(--rule); color: var(--muted); }
+.badge.yes { background: var(--ok); border-color: var(--ok); color: var(--panel); }
+.card .size { font: .72rem var(--mono); color: var(--muted); margin-left: auto; }
+.card .note { color: var(--muted); font-size: .88rem; }
+.stages { display: flex; flex-wrap: wrap; gap: 8px; }
+.stage { display: flex; flex-direction: column; gap: 3px; min-width: 0; max-width: 100%; }
+.stage .cap { font: .68rem var(--mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-variant-numeric: tabular-nums; }
+.screen { background: var(--t-bg); border: 1px solid var(--t-frame); border-radius: 4px; padding: 6px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.screen canvas { image-rendering: pixelated; display: block; }
+.swatches { display: flex; flex-wrap: wrap; gap: 4px; }
+.sw { display: inline-flex; align-items: center; gap: 4px; font: .68rem var(--mono); color: var(--muted); border: 1px solid var(--rule); border-radius: 3px; padding: 1px 5px 1px 1px; }
+.sw i { width: 12px; height: 12px; border-radius: 2px; display: block; }
+.tick { font: .78rem var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Strike */
+.scen { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.ctl { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+.strike-layout { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+.readout { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.phase { font: 700 1.3rem/1 var(--mono); letter-spacing: -.01em; }
+.phase small { font: 400 .8rem var(--mono); color: var(--muted); margin-left: 8px; letter-spacing: 0; }
+.steps { display: grid; grid-template-columns: repeat(13, minmax(0, 1fr)); gap: 2px; }
+.steps div { font: 10px/1 var(--mono); text-align: center; padding: 6px 0 5px; border-radius: 2px; background: var(--soft); color: var(--muted); font-variant-numeric: tabular-nums; }
+.steps div.on { background: var(--ink); color: var(--bg); font-weight: 700; }
+.steps div.past { color: var(--ink); }
+.legend { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: .85rem; }
+.legend dt { font: 600 .78rem var(--mono); }
+.legend dd { margin: 0; color: var(--muted); }
+.legend dt.on, .legend dt.on + dd { color: var(--ink); }
+
+/* Status */
+.status { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.status .box h3 { display: flex; gap: 8px; align-items: center; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.status li small { display: block; color: var(--muted); font-size: .8rem; }
+
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>sidekick / prototypes</h1>
+    <p class="sub">Every pane, critter and animation prototype in one place. Terminal cells are 8 × 18 px; the critter is a Raster of half blocks, one cell per two stacked pixels.</p>
+  </header>
+
+  <nav class="tabs" aria-label="Sections">
+    <a href="#pane" data-tab="pane">Pane</a>
+    <a href="#critter" data-tab="critter">Critter</a>
+    <a href="#strike" data-tab="strike">Ticket strike</a>
+    <a href="#status" data-tab="status">Status</a>
+  </nav>
+
+  <div class="bar" role="toolbar" aria-label="Terminal settings">
+    <div class="group" data-for="pane critter strike"><span class="lbl" id="l-tp">Terminal</span>
+      <div class="seg" role="group" aria-labelledby="l-tp">
+        <button data-set="tp" data-val="dark">Dark</button><button data-set="tp" data-val="light">Light</button>
+      </div>
+    </div>
+    <div class="group" data-for="pane strike"><span class="lbl" id="l-w">Width (cols)</span>
+      <div class="seg" role="group" aria-labelledby="l-w">
+        <button data-set="width" data-val="40">40</button><button data-set="width" data-val="72">72</button>
+      </div>
+    </div>
+    <div class="group" data-for="pane strike"><span class="lbl" id="l-lab">Summary</span>
+      <div class="seg" role="group" aria-labelledby="l-lab">
+        <button data-set="labels" data-val="labels">Done/Next labels</button><button data-set="labels" data-val="arrow">→ arrow</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1. Pane -->
+  <section id="sec-pane" aria-labelledby="h-pane">
+    <h2 id="h-pane">Pane: before and after the restyle</h2>
+    <p class="lede">Left is <code>HEAD</code> (<code>hooks/register.tsx</code>, 16×6 critter). Right is the working tree: one column of padding each side, a dim rule above the summary, bold “Done”/“Next” labels in a 6-column gutter with wrapped lines aligned, and the 18×8 Foxkit critter. Sample project “shop”.</p>
+    <div class="ctl">
+      <span class="lbl tick" id="l-pose">Critter pose</span>
+      <div class="seg" role="group" aria-labelledby="l-pose">
+        <button data-set="pose" data-val="idle">Idle</button><button data-set="pose" data-val="write">Write</button><button data-set="pose" data-val="zap">Zap</button>
+      </div>
+    </div>
+    <div class="pair">
+      <figure class="pane"><figcaption><b>Before</b><span>HEAD · no padding · “→” next line</span></figcaption>
+        <div class="scroller"><div class="term" id="t-before"></div></div></figure>
+      <figure class="pane"><figcaption><b>After</b><span id="after-cap">working tree · paddingX 1 · labels</span></figcaption>
+        <div class="scroller"><div class="term" id="t-after"></div></div></figure>
+    </div>
+    <div class="notes">
+      <div class="box decide"><h3>Open decision: summary label style</h3>
+        <ul>
+          <li><b>Done/Next labels</b> (in the working tree): a bold blue word in a 6-column gutter; wrapped lines line up under the text, not the label.</li>
+          <li><b>→ arrow</b> (the old style): “What happened” as a plain line, then <code>→ next step</code>; wrapped lines start at column 0.</li>
+          <li>Flip the “Summary labels” toggle above; it changes the After pane and the strike pane. Try 40 cols, where the summary wraps.</li>
+        </ul>
+      </div>
+      <div class="box"><h3>What the restyle changed</h3>
+        <ul>
+          <li><code>paddingX={1}</code>; the bar and rules span <code>bodyColumns − 2</code>.</li>
+          <li>A dim <code>─</code> rule above the summary.</li>
+          <li>Summary rows: label box <code>width={6}</code>, text box grows and wraps.</li>
+          <li>Ticket window room <code>bodyRows − 16</code> (was − 13): the header is two rows taller.</li>
+          <li>Critter: V0 16×6 → V3 Foxkit 18×8.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Critter -->
+  <section id="sec-critter" aria-labelledby="h-critter" hidden>
+    <h2 id="h-critter">Critter: V0–V8</h2>
+    <p class="lede">The lineup from the sprite gallery. Idle, write (220 ms a frame) and zap (110 ms a frame, then a rest) play as the mod plays them. Each stage shows an enlarged view and the terminal-size Raster. V3 Foxkit is in <code>hooks/sprite.ts</code>; V0 is what <code>HEAD</code> ships.</p>
+    <div class="ctl">
+      <button id="c-play" aria-pressed="true">Pause</button>
+      <button id="c-step">Step one tick</button>
+      <span class="tick" id="c-tick">tick 0</span>
+    </div>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <!-- 3. Strike -->
+  <section id="sec-strike" aria-labelledby="h-strike" hidden>
+    <h2 id="h-strike">Ticket strike (prototype, not in the repo)</h2>
+    <p class="lede">From <code>scratchpad/mod/hooks/register.tsx</code>: when a ticket finishes, the critter zaps and a bolt <code>↯</code> runs down to the row, which flashes, has its strike-through burn left to right, then settles as done. One step every 110 ms, 13 steps (1.43 s), in step with the critter’s 12-frame zap. Each run starts with 5 ticks of the steady pane so the “before” state reads.</p>
+    <div class="scen" role="group" aria-label="Scenarios">
+      <button data-scen="single" class="primary">Finish Payment</button>
+      <button data-scen="two">Finish two at once</button>
+      <button data-scen="queued">Finish while striking</button>
+      <button data-scen="hidden">Out of view</button>
+    </div>
+    <div class="ctl">
+      <button id="s-replay">Replay</button>
+      <button id="s-play" aria-pressed="false">Play</button>
+      <button id="s-step">Step 110 ms</button>
+      <button id="s-slow" aria-pressed="false">Slow motion ×4</button>
+      <span class="tick" id="s-tick">t 0 ms</span>
+    </div>
+    <div class="strike-layout">
+      <figure class="pane"><figcaption><b>After + strike</b><span id="s-cap"></span></figcaption>
+        <div class="scroller"><div class="term" id="t-strike"></div></div>
+        <div class="toast" id="s-toast" aria-live="polite"></div></figure>
+      <div class="readout">
+        <div class="phase" id="s-phase" aria-live="polite">steady</div>
+        <div class="steps" id="s-steps" aria-label="Strike steps"></div>
+        <dl class="legend" id="s-legend">
+          <dt data-p="charge">0–1 charge</dt><dd>Critter charges; the row still shows what it was (◐ or ○).</dd>
+          <dt data-p="bolt">2 bolt</dt><dd><code>↯</code> leaves the critter: it takes the first cell of the bar.</dd>
+          <dt data-p="land">3 bolt</dt><dd>It lands: the blank line above the list carries <code>↯</code>, and <code>↯</code> replaces the row glyph.</dd>
+          <dt data-p="hit">4 hit</dt><dd>Row flashes as <code>✓ Title</code>, bold, inverse text on warning.</dd>
+          <dt data-p="burn">5–10 burn</dt><dd>Strike-through burns left to right over 6 steps, bold warning cell at the front.</dd>
+          <dt data-p="settle">11–12 settle</dt><dd>Plain done row (dim, struck, ✓). A queued batch starts after step 12.</dd>
+        </dl>
+        <p class="tick" id="s-queue"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Status -->
+  <section id="sec-status" aria-labelledby="h-status" hidden>
+    <h2 id="h-status">Status</h2>
+    <p class="lede">What is in the repo’s working tree and what lives only in the scratchpad.</p>
+    <div class="status">
+      <div class="box"><h3><i class="dot" style="background:var(--ok)"></i>Applied in working tree (not committed)</h3>
+        <ul>
+          <li>Pane restyle<small>hooks/register.tsx: padding, dim rule, Done/Next gutter</small></li>
+          <li>V3 Foxkit critter<small>hooks/sprite.ts, 18×8 cells</small></li>
+          <li>Search bug fix<small>a model call that throws no longer stores “none”, so the next session searches again</small></li>
+          <li>21 new tests<small>tests/search, active-set, summary, plus tests/world.ts</small></li>
+        </ul>
+      </div>
+      <div class="box"><h3><i class="dot" style="background:var(--mark)"></i>Prototype only</h3>
+        <ul>
+          <li>Ticket strike<small>scratchpad/mod + strike.patch + tests/strike.test.ts; waits for your approval before it goes into the repo</small></li>
+        </ul>
+      </div>
+      <div class="box decide"><h3><i class="dot" style="background:var(--mark)"></i>Open decision</h3>
+        <ul>
+          <li>Summary label style<small>“Done/Next” labels (current) or “→” arrow (old). See the Pane tab.</small></li>
+        </ul>
+      </div>
+      <div class="box"><h3><i class="dot" style="background:var(--muted)"></i>Next tickets</h3>
+        <ul>
+          <li>04 · The pane reads well in a real terminal<small>visual check, needs you</small></li>
+          <li>06 · The mod loads in every session<small>blocked by 04</small></li>
+          <li>05 · The summary’s judgement matches yours<small>tune after real sessions</small></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+// Ported from scratchpad/variations.js (sprite.ts source generator removed).
+// Sprite variations for sidekick. Each builds to the sprite.ts shape:
+// { columns, rows, palette, body: string[], frames: { idle, write, zap }: Dot[][] }
+// where a Dot is [x, y, colorKey] laid over BODY ('.' erases to transparent).
+;(function (root) {
+  const pad = (rows, w, h) => {
+    const out = rows.map(r => (r + '.'.repeat(w)).slice(0, w))
+    while (out.length < h) out.push('.'.repeat(w))
+    rows.forEach((r, i) => { if (r.length > w) throw new Error('row ' + i + ' too long: ' + r) })
+    return out
+  }
+  const toGrid = body => body.map(r => [...r])
+  const put = (g, x, y, c) => { if (g[y] && x >= 0 && x < g[y].length) g[y][x] = c }
+  const stamp = (g, x, y, rows, color) =>
+    rows.forEach((r, dy) => [...r].forEach((ch, dx) => { if (ch !== '.') put(g, x + dx, y + dy, ch === '#' ? color : ch) }))
+  const shift = (g, x0, x1, y0, y1) => {
+    // Move a block down one pixel; the row it leaves is cleared.
+    for (let y = y1; y >= y0; y--) for (let x = x0; x <= x1; x++) put(g, x, y + 1, g[y][x])
+    for (let x = x0; x <= x1; x++) put(g, x, y0, '.')
+  }
+  const diff = (body, g) => {
+    const dots = []
+    g.forEach((row, y) => row.forEach((c, x) => { if (c !== body[y][x]) dots.push([x, y, c]) }))
+    return dots
+  }
+
+  const BOLT = ['..#', '.##', '.#.', '###', '.#.', '##.', '#..']
+  const CHECK = ['....#', '...#.', '#.#..', '.#...']
+
+  // The shared choreography. Each variation supplies where things sit.
+  function build(v) {
+    const W = v.columns, H = v.rows * 2
+    const body = pad(v.body, W, H)
+    const at = fn => { const g = toGrid(body); fn(g); return diff(body, g) }
+    const p = v.paper
+    const cap = p.w - 2
+    const write = [0, 1, 2, 3, 4, 5].map(step => at(g => {
+      if (v.bob && step % 2 === 1) shift(g, ...v.bob)
+      if (v.writeExtra) v.writeExtra(g, step, put)
+      for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) put(g, x, y, 'p')
+      const ink = step + 1
+      for (let i = 0; i < Math.min(cap, ink); i++) put(g, p.x + 1 + i, p.y + 1, 'i')
+      for (let i = 0; i < Math.max(0, ink - cap); i++) put(g, p.x + 1 + i, p.y + 3, 'i')
+      for (const [x, y, c] of v.paw[step % 2]) put(g, x, y + (v.bob && step % 2 === 1 && v.pawBobs ? 1 : 0), c)
+    }))
+    const z = v.zap
+    const cheeks = c => g => z.cheeks.forEach(([x, y]) => put(g, x, y, c))
+    const zap = [
+      at(g => { cheeks('z')(g); z.charge.slice(0, 2).forEach(([x, y]) => put(g, x, y, 'z')); z.extra?.(g, 0, put) }),
+      at(g => { cheeks('w')(g); z.charge.forEach(([x, y], i) => put(g, x, y, i % 2 ? 'w' : 'z')); z.extra?.(g, 1, put) }),
+      at(g => { cheeks('w')(g); z.cheer?.(g, put); stamp(g, z.bolt[0], z.bolt[1], BOLT, 'w'); z.extra?.(g, 2, put) }),
+      at(g => { cheeks('z')(g); z.cheer?.(g, put); stamp(g, z.bolt[0], z.bolt[1], BOLT, 'z'); z.burst.forEach(([x, y], i) => put(g, x, y, i % 2 ? 'w' : 'z')); z.extra?.(g, 3, put) }),
+      at(g => { z.cheer?.(g, put); z.burst.forEach(([x, y], i) => put(g, x + (i % 2 ? 1 : -1), y + (i % 3) - 1, 'z')); z.extra?.(g, 4, put) }),
+      at(g => { z.burst.filter((_, i) => i % 3 === 0).forEach(([x, y]) => put(g, x, y + 1, 'z')); z.extra?.(g, 5, put) }),
+      ...Array.from({ length: 6 }, () => at(g => { stamp(g, z.check[0], z.check[1], CHECK, 'g'); z.extra?.(g, 6, put) })),
+    ]
+    return { id: v.id, name: v.name, note: v.note, columns: W, rows: v.rows, palette: v.palette, body, frames: { idle: [[]], write, zap } }
+  }
+
+  // Shared prop colours, kept the same across variations.
+  const PROPS = { p: 0xf1f3f5, i: 0x4a5160, g: 0x40c057, w: 0xffffff }
+
+  const V0 = (() => {
+    // The current sprite, ported as-is from hooks/sprite.ts.
+    const line = (x, y, dx, dy, n, c) => Array.from({ length: n }, (_, s) => [x + dx * s, y + dy * s, c])
+    const PAPER = [7, 8, 9, 10].flatMap(y => line(11, y, 1, 0, 5, 'p'))
+    const CHECKD = [[10, 6, 'g'], [11, 7, 'g'], [12, 6, 'g'], [13, 5, 'g'], [14, 4, 'g']]
+    const bolt = c => [...line(14, 0, -1, 1, 3, c), ...line(12, 3, 1, 0, 3, c), ...line(14, 4, -1, 1, 4, c)]
+    const CHARGE = [[2, 6, 'w'], [9, 6, 'w'], [10, 5, 'y'], [11, 4, 'w'], [1, 5, 'y']]
+    const write = [0, 1, 2, 3, 4, 5].map(s => [...PAPER, ...line(12, 8, 1, 0, Math.min(3, s + 1), 'i'), ...line(12, 9, 1, 0, Math.max(0, s - 2), 'i'), [9, 8, 'y'], [10, 8, 'y'], [11, 8 + (s % 2), 'r']])
+    const zap = [CHARGE, CHARGE, [...CHARGE, ...bolt('w')], [...bolt('y'), [10, 9, 'y'], [13, 9, 'y'], [12, 10, 'w'], [14, 8, 'y']], [[11, 10, 'y'], [14, 6, 'y'], [13, 2, 'y']], ...Array.from({ length: 8 }, () => CHECKD)]
+    return {
+      id: 'V0', name: 'Current', note: 'What ships today: 16×12, flat yellow, no outline or shading.',
+      columns: 16, rows: 6,
+      palette: { y: 0xffd43b, k: 0x2b2b3a, e: 0x1a1a24, r: 0xe5484d, n: 0x8b5a2b, w: 0xfffbe6, g: 0x40c057, p: 0xf1f3f5, i: 0x495057 },
+      body: ['..k......k......', '..yy....yy......', '...yy..yy.......', '...yyyyyy.......', '..yyyyyyyy......', '..yyeyyeyy......', 'yyryyyyyyr......', '.y.yyyyyy.......', 'yy.yyyyyy.......', '.nnyyyyyy.......', '...yyyyyy.......', '...yy..yy.......'],
+      frames: { idle: [[]], write, zap },
+    }
+  })()
+
+  const SPECS = [
+    {
+      id: 'V1', name: 'Plugtail', columns: 18, rows: 8,
+      note: 'Round coral-lined ears, a stray cowlick, and a tail that ends in a two-prong plug that sparks on a zap.',
+      palette: { o: 0x2a1f33, y: 0xffd23f, s: 0xe8962e, h: 0xfff3a3, c: 0xff7a6b, e: 0x1a1426, b: 0xfff0c2, k: 0x4b5263, x: 0xc3cad6, z: 0x5ce1ff, ...PROPS },
+      body: [
+        '...oo...h.oo',
+        '..oyco.y.ocyo',
+        '..oyyoooooyyo',
+        '..oyhyyyyyyso',
+        '..ohyyyyyyyso',
+        '..oyyeyyyeyso',
+        '..oyyeyyyeyso',
+        '..occyyoyycco',
+        'x.xoyyyyyyso',
+        'kkkoybbbbyso',
+        '.k.oybbbbbso',
+        '.o.oybbbbbso',
+        '.o.oyybbbsso',
+        '.oooyyyyysso',
+        '...oyyoyyso',
+        '...ooo.ooo',
+      ],
+      paper: { x: 13, y: 9, w: 5, h: 5 },
+      paw: [[[12, 10, 'y'], [13, 10, 'o']], [[12, 11, 'y'], [13, 11, 'o']]],
+      bob: [2, 12, 0, 8],
+      zap: {
+        cheeks: [[3, 7], [4, 7], [10, 7], [11, 7]],
+        charge: [[0, 7], [2, 7], [1, 4], [13, 3]],
+        cheer: (g, put) => { put(g, 12, 8, 'o'); put(g, 13, 7, 'y'); put(g, 13, 6, 'o') },
+        bolt: [15, 0], burst: [[14, 8], [16, 9], [15, 11], [17, 12], [1, 6], [16, 7]], check: [13, 9],
+      },
+    },
+    {
+      id: 'V2', name: 'Bulb', columns: 16, rows: 6,
+      note: 'Same size as today. An earless bean with a bulb on a stalk, teal cheek dots, warm brown selective outline.',
+      palette: { o: 0x8a4a12, y: 0xffd23f, s: 0xf0a030, h: 0xfff6b0, t: 0x2ec4b6, e: 0x2a1a2e, b: 0xfff0c2, l: 0xfff7c2, z: 0x5ce1ff, ...PROPS },
+      body: [
+        '....l',
+        '....o',
+        '..oooooo',
+        '.ohhyyyyo',
+        'ohyeyyeyso',
+        'oyyeyyeyso',
+        'oytyooytso',
+        'oyybbbbyso',
+        'oyybbbbyso',
+        '.oyybbyso',
+        '.oyyyysso',
+        '..oo..oo',
+      ],
+      paper: { x: 11, y: 6, w: 5, h: 5 },
+      paw: [[[10, 7, 'y'], [11, 7, 'o']], [[10, 8, 'y'], [11, 8, 'o']]],
+      bob: [0, 9, 0, 5],
+      zap: {
+        cheeks: [[2, 6], [7, 6]],
+        charge: [[3, 0], [5, 0], [4, 0], [10, 3]],
+        extra: (g, f, put) => { if (f <= 3) put(g, 4, 0, f % 2 ? 'w' : 'z') },
+        cheer: (g, put) => { put(g, 10, 5, 'y'); put(g, 10, 4, 'o') },
+        bolt: [12, 0], burst: [[11, 6], [14, 7], [13, 9], [15, 10], [2, 0], [6, 1]], check: [11, 6],
+      },
+    },
+    {
+      id: 'V3', name: 'Foxkit', columns: 18, rows: 8,
+      note: 'Ears that stick straight out sideways, a forked flame-tip tail, coral cheek points, dark outline.',
+      palette: { o: 0x2b1d2a, y: 0xffcf33, s: 0xe58a2b, h: 0xfff1a0, c: 0xff6f5e, e: 0x1a1420, b: 0xfff3cf, z: 0x7cf0ff, ...PROPS },
+      body: [
+        '',
+        '....ooooooo',
+        '.oooyhyyyyyooo',
+        'osyyhyyyyyyyyso',
+        '.oooyeyyyeyooo',
+        '...oyeyyyeyo',
+        'o.ocyyoyyco',
+        'hoh.oyyyyyo',
+        'oyyooybbbyo',
+        'osyoyybbbyso',
+        'oso.oybbbyso',
+        '.oo.oybbbyso',
+        '...oyyyyysso',
+        '...oyyooyyso',
+        '...ooo..ooo',
+      ],
+      paper: { x: 13, y: 9, w: 5, h: 5 },
+      paw: [[[12, 10, 'y'], [13, 10, 'o']], [[12, 11, 'y'], [13, 11, 'o']]],
+      bob: [3, 14, 1, 7],
+      zap: {
+        cheeks: [[4, 6], [10, 6]],
+        charge: [[0, 6], [2, 6], [15, 3], [0, 3]],
+        cheer: (g, put) => { put(g, 12, 8, 'o'); put(g, 13, 7, 'y'); put(g, 13, 6, 'o') },
+        bolt: [15, 0], burst: [[14, 8], [16, 9], [15, 11], [17, 12], [1, 5], [16, 6]], check: [13, 9],
+      },
+    },
+    {
+      id: 'V4', name: 'Charger', columns: 16, rows: 6,
+      note: 'Today’s size. A round critter with a battery cap on its head and a charge gauge on its belly that fills on a zap.',
+      palette: { o: 0x23233a, y: 0xffd43b, s: 0xec9a2c, h: 0xfff4ad, c: 0xff8fa3, e: 0x16162a, x: 0xaab3c2, n: 0x5a4a3a, t: 0x3ddc97, z: 0x5ce1ff, ...PROPS },
+      body: [
+        '....xx',
+        '..oooooo',
+        '.ohhyyyyo',
+        'ohyeyyeyso',
+        'oyyeyyeyso',
+        'oycyooycso',
+        'oyyyyyyyso',
+        'oyttnnyyso',
+        'oyyyyyyyso',
+        '.oyyyyyso',
+        '.oyyyysso',
+        '..oo..oo',
+      ],
+      paper: { x: 11, y: 5, w: 5, h: 5 },
+      paw: [[[9, 6, 'y'], [10, 6, 'y'], [11, 6, 'o']], [[9, 7, 'y'], [10, 7, 'y'], [11, 7, 'o']]],
+      bob: [0, 9, 0, 5],
+      zap: {
+        cheeks: [[2, 5], [7, 5]],
+        charge: [[3, 0], [6, 0], [10, 2], [12, 1]],
+        extra: (g, f, put) => {
+          const full = [4, 5, 6, 6, 6, 6, 6][f]
+          for (let x = 2; x <= full; x++) put(g, x, 7, f >= 2 && f <= 3 ? 'w' : 't')
+        },
+        cheer: (g, put) => { put(g, 9, 4, 'y'); put(g, 10, 3, 'o') },
+        bolt: [12, 0], burst: [[11, 6], [14, 7], [13, 9], [15, 10], [4, 0], [5, 0]], check: [11, 6],
+      },
+    },
+    {
+      id: 'V5', name: 'Lopear', columns: 20, rows: 8,
+      note: 'Wider canvas. Long ears that hang down the sides with a zigzag stripe, a round cotton tail, pink cheeks.',
+      palette: { o: 0x2d2036, y: 0xffd23f, s: 0xe39531, h: 0xfff3a3, c: 0xff8ba0, e: 0x1b1424, b: 0xfff1c8, z: 0x6ee7ff, ...PROPS },
+      body: [
+        '....ooooooo',
+        '.oooyhyyyyyooo',
+        'oysohyyyyyyosyo',
+        'osyoyyyyyyyoyso',
+        'oysoyeyyyeyosyo',
+        'osyoyeyyyeyoyso',
+        'oysocyyoyycosyo',
+        '.oooyyyyyyyooo',
+        '....oyyyyyo',
+        '...oybbbbbso',
+        '.ooobbbbbbso',
+        'ohhobbbbbbso',
+        '.ooyybbbbsso',
+        '...oyyyyysso',
+        '...oyyo.oyso',
+        '...oooo.oooo',
+      ],
+      paper: { x: 15, y: 9, w: 5, h: 5 },
+      paw: [[[12, 10, 'y'], [13, 10, 'y'], [14, 10, 'o']], [[12, 11, 'y'], [13, 11, 'y'], [14, 11, 'o']]],
+      bob: [0, 14, 0, 8],
+      zap: {
+        cheeks: [[4, 6], [10, 6]],
+        charge: [[1, 8], [13, 8], [0, 1], [14, 1]],
+        cheer: (g, put) => { put(g, 12, 8, 'o'); put(g, 13, 7, 'y'); put(g, 14, 6, 'o') },
+        bolt: [16, 0], burst: [[16, 8], [18, 9], [17, 11], [19, 12], [15, 3], [2, 9]], check: [15, 9],
+      },
+    },
+    {
+      id: 'V6', name: 'Sparkhog', columns: 18, rows: 8,
+      note: 'Side view facing the page: a crest of three back-swept spikes, a pointed snout, a coiled spring tail.',
+      palette: { o: 0x5a2e0e, y: 0xffd23f, s: 0xe58f2a, h: 0xfff3a3, c: 0xff7a6b, e: 0x1d1420, b: 0xfff0c2, x: 0xb8c0cc, z: 0x5ce1ff, ...PROPS },
+      body: [
+        '..s..s..s',
+        '..sosyosyo',
+        '..ssyyssyyo',
+        '..syhyyyyyyo',
+        '.osyyyyyyeyo',
+        '.osyyyyyyeyyo',
+        '.osyyyyyyycyyo',
+        '..osyyyyyyoooo',
+        '..osybbbbyo',
+        '..osybbbbbyo',
+        'x.osybbbbbyo',
+        '.xosybbbbyo',
+        'x.osyybbyso',
+        '.xxosyyysso',
+        '...osyoyso',
+        '...ooo.ooo',
+      ],
+      paper: { x: 13, y: 9, w: 5, h: 5 },
+      paw: [[[11, 10, 'y'], [12, 10, 'y'], [13, 10, 'o']], [[11, 11, 'y'], [12, 11, 'y'], [13, 11, 'o']]],
+      bob: [1, 13, 0, 7],
+      zap: {
+        cheeks: [[10, 6]],
+        charge: [[2, 0], [5, 0], [8, 0], [0, 10]],
+        extra: (g, f, put) => { if (f <= 3) ['..o..o..o'].forEach(r => [...r].forEach((ch, x) => ch === 'o' && put(g, x, 0, f % 2 ? 'w' : 'z'))) },
+        cheer: (g, put) => { put(g, 11, 8, 'y'); put(g, 12, 7, 'y'); put(g, 12, 6, 'o') },
+        bolt: [15, 0], burst: [[14, 8], [16, 9], [15, 11], [17, 12], [1, 2], [16, 6]], check: [13, 9],
+      },
+    },
+    {
+      id: 'V7', name: 'Gumdrop', columns: 16, rows: 6,
+      note: 'Today’s size, no outline at all: a flat two-tone gumdrop with big glinting eyes and a cyan zigzag tail.',
+      palette: { y: 0xffd23f, s: 0xe0902a, h: 0xfff6b8, t: 0x3fd4e8, e: 0x221a30, z: 0x5ce1ff, ...PROPS },
+      body: [
+        '..s.....s',
+        '..ys...ys',
+        '..yyyyyyyy',
+        '.yhhyyyyyys',
+        '.yheeyyeeys',
+        '.yhewyyewys',
+        '.ytyyeeytys',
+        '.yyyyyyyyss',
+        'tyyyyyyyyss',
+        '.tyyyyyyss',
+        't.yys.yss',
+        '..ss...ss',
+      ],
+      paper: { x: 11, y: 6, w: 5, h: 5 },
+      paw: [[[11, 7, 'y']], [[11, 8, 'y']]],
+      bob: [0, 10, 0, 5],
+      zap: {
+        cheeks: [[2, 6], [9, 6]],
+        charge: [[0, 8], [0, 10], [1, 9], [12, 3]],
+        extra: (g, f, put) => { if (f <= 3) [[0, 8], [1, 9], [0, 10]].forEach(([x, y]) => put(g, x, y, f % 2 ? 'w' : 'z')) },
+        cheer: (g, put) => { put(g, 11, 5, 'y'); put(g, 11, 4, 'y') },
+        bolt: [12, 0], burst: [[11, 6], [14, 7], [13, 9], [15, 10], [1, 2], [10, 1]], check: [11, 6],
+      },
+    },
+    {
+      id: 'V8', name: 'Mothlet', columns: 20, rows: 8,
+      note: 'Wider canvas. A fuzzy moth-like critter: two curled antennae with spark tips, stubby striped wings, big eyes.',
+      palette: { o: 0x2a2238, y: 0xffd43b, s: 0xe2922c, h: 0xfff4a8, c: 0xff8a7a, e: 0x1a1428, l: 0xfff7c2, b: 0xfff1c8, z: 0x6ee7ff, ...PROPS },
+      body: [
+        '..ls.......sl',
+        '...s.......s',
+        '....s.....s',
+        '....ooooooo',
+        '...ohyyyyyso',
+        '..ohyeyyyeyso',
+        '..oyyewyyewyo',
+        'oo.ocyyooycyo.oo',
+        'osooyyyyyyyosoyso',
+        'oysoybbbbbysoyso',
+        'osyoybbbbbysosyo',
+        '.oosybbbbbysooo',
+        '...osyyyyyyso',
+        '....oyyoyyo',
+        '....ooo.ooo',
+      ],
+      paper: { x: 15, y: 9, w: 5, h: 5 },
+      paw: [[[13, 11, 'y'], [14, 11, 'o']], [[13, 12, 'y'], [14, 12, 'o']]],
+      bob: [2, 12, 2, 7],
+      zap: {
+        cheeks: [[4, 7], [10, 7]],
+        charge: [[2, 0], [12, 0], [1, 1], [13, 1]],
+        extra: (g, f, put) => { if (f <= 3) { put(g, 2, 0, f % 2 ? 'w' : 'z'); put(g, 12, 0, f % 2 ? 'w' : 'z') } },
+        cheer: (g, put) => { put(g, 0, 7, 'z'); put(g, 16, 7, 'z') },
+        bolt: [16, 0], burst: [[16, 8], [18, 9], [17, 11], [19, 12], [0, 3], [14, 2]], check: [15, 9],
+      },
+    },
+  ]
+
+  const VARIANTS = [V0, ...SPECS.map(build)]
+
+  // Pixels for one frame, exactly as cellsOf lays them out (null = terminal background).
+  function pixelsOf(v, mode, frame) {
+    const list = v.frames[mode]
+    const g = v.body.map(r => [...r])
+    for (const [x, y, c] of list[frame % list.length] ?? []) if (g[y] && x >= 0 && x < v.columns) g[y][x] = c
+    return g.map(r => r.map(c => (v.palette[c] === undefined ? null : v.palette[c])))
+  }
+
+  root.SIDEKICK_SPRITES = { VARIANTS, pixelsOf }
+})(typeof globalThis !== 'undefined' ? globalThis : this)
+
+</script>
+<script>
+(function () {
+  'use strict'
+  const { VARIANTS, pixelsOf } = window.SIDEKICK_SPRITES
+  const V = Object.fromEntries(VARIANTS.map(v => [v.id, v]))
+  const CW = 8, CH = 18, TICK = 110
+  const reduced = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches } catch (e) { return false } })()
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('sidekick-proto:' + k); return v === null ? d : v } catch (e) { return d } },
+    set(k, v) { try { localStorage.setItem('sidekick-proto:' + k, v) } catch (e) {} },
+  }
+  const $ = id => document.getElementById(id)
+  const hex = n => '#' + n.toString(16).padStart(6, '0')
+
+  const prefs = {
+    tp: store.get('tp', 'dark') === 'light' ? 'light' : 'dark',
+    width: store.get('width', '40') === '72' ? 72 : 40,
+    labels: store.get('labels', 'labels') === 'arrow' ? 'arrow' : 'labels',
+    pose: ['idle', 'write', 'zap'].includes(store.get('pose', 'idle')) ? store.get('pose', 'idle') : 'idle',
+  }
+
+  // ---------- ticket helpers, ported from hooks/tickets.ts ----------
+  const GLYPH = { done: '✓', active: '◐', open: '○' }
+  const shortTitle = t => t.replace(/^#?\d+\s*[:.)-]\s+/, '') || t
+  const windowOf = (length, focus, room) => {
+    if (length <= room) return { start: 0, end: length }
+    const start = Math.max(0, Math.min(focus - 1, length - room))
+    return { start, end: start + room }
+  }
+  const progressOf = (tickets, source) => {
+    const open = tickets.filter(t => t.state !== 'done')
+    const next = (open.find(t => t.state === 'active') || open[0])
+    return { done: tickets.length - open.length, total: tickets.length, next: next ? next.title : null, source,
+      rows: tickets.map(t => ({ title: t.title, state: t.state })) }
+  }
+
+  // ---------- cell model ----------
+  // A cell: { ch, fg, bg, b, d, s } with fg/bg as theme role names.
+  const seg = (text, st) => [...text].map(ch => Object.assign({ ch }, st || {}))
+  const blank = n => seg(' '.repeat(Math.max(0, n)))
+  const truncEnd = (cells, w) => cells.length <= w ? cells : [...cells.slice(0, w - 1), Object.assign({}, cells[w - 1], { ch: '…' })]
+  const truncStart = (cells, w) => cells.length <= w ? cells : [Object.assign({}, cells[cells.length - w + 1], { ch: '…' }), ...cells.slice(cells.length - (w - 1))]
+  // Word wrap as the terminal renderer does it: break at spaces, hard-break words longer than the width.
+  const wrap = (cells, w) => {
+    const toks = []; let sp = [], word = []
+    for (const c of cells) {
+      if (c.ch === ' ') { if (word.length) { toks.push({ sp, word }); sp = []; word = [] } sp.push(c) } else word.push(c)
+    }
+    if (word.length || sp.length) toks.push({ sp, word })
+    const lines = []; let line = []
+    for (const { sp, word } of toks) {
+      const lead = line.length || !lines.length ? sp : []
+      if (line.length + lead.length + word.length <= w) { line.push(...lead, ...word); continue }
+      if (line.length) lines.push(line)
+      line = []
+      let rest = word
+      while (rest.length > w) { lines.push(rest.slice(0, w)); rest = rest.slice(w) }
+      line = rest.slice()
+    }
+    if (line.length || !lines.length) lines.push(line)
+    return lines
+  }
+
+  // ---------- strike constants, ported from the prototype ----------
+  const BOLT = '↯', LEAVES = 2, LANDS = 3, HITS = 4, BURNS = 5, BURN_STEPS = 6, STRIKE_STEPS = 13
+
+  const struckRow = (title, was, at, width) => {
+    const text = shortTitle(title)
+    if (at < LANDS) return truncEnd([...seg(GLYPH[was] + ' ', { fg: 'text' }), ...seg(text)], width)
+    if (at === LANDS) return truncEnd([...seg(BOLT + ' ', { b: 1, fg: 'warning' }), ...seg(text)], width)
+    if (at === HITS) return truncEnd(seg(GLYPH.done + ' ' + text, { b: 1, fg: 'inverseText', bg: 'warning' }), width)
+    const chars = [...text]
+    const shown = Math.min(chars.length, Math.max(1, width - 2))
+    const cut = Math.min(shown, Math.ceil((shown * (at - BURNS + 1)) / BURN_STEPS))
+    return truncEnd([
+      ...seg(GLYPH.done + ' ', { fg: 'success' }),
+      ...seg(chars.slice(0, cut).join(''), { d: 1, s: 1 }),
+      ...(cut < shown ? seg(chars[cut], { b: 1, fg: 'warning' }) : []),
+      ...seg(chars.slice(cut < shown ? cut + 1 : cut).join('')),
+    ], width)
+  }
+
+  // The Pane render hook as cells. after=false is HEAD, after=true the working tree (+ strike when given).
+  function paneModel(o) {
+    const px = o.after ? 1 : 0
+    const columns = Math.max(12, o.width - 2 * px)
+    const SC = o.sprite.columns, R = o.sprite.rows
+    const { project, summary, progress } = o
+    const rows = progress ? progress.rows : []
+    const focus = rows.findIndex(r => r.state !== 'done' && progress && r.title === progress.next)
+    const room = Math.max(3, o.bodyRows - (o.after ? 16 : 13))
+    const steady = windowOf(rows.length, Math.max(0, focus), room)
+    const strike = o.strike
+    const struck = strike ? rows.findIndex(r => r.state === 'done' && strike.rows.has(r.title)) : -1
+    const isHidden = struck !== -1 && (struck < steady.start || struck >= steady.end)
+    const { start, end } = isHidden ? windowOf(rows.length, struck, room) : steady
+    const step = struck === -1 ? -1 : strike.step
+    const trailOn = n => step === n
+    const isComplete = progress !== null && progress.done === progress.total
+    const accent = isComplete ? 'success' : 'claude'
+    const filled = progress === null ? 0 : Math.round((progress.done / progress.total) * columns)
+    const needsYou = summary ? summary.needsYou : ''
+    const L = []
+
+    const tw = Math.max(1, columns - SC - 1)
+    const head = [truncEnd(seg(project, { b: 1 }), tw)]
+    if (progress) head.push(truncEnd(seg((isComplete ? '✓ ' : '') + progress.done + '/' + progress.total + ' done', { b: 1, fg: accent }), tw))
+    for (let r = 0; r < R; r++) { const k = r - (R - head.length); L.push(k >= 0 ? [...blank(SC + 1), ...head[k]] : []) }
+
+    if (progress) {
+      const lead = trailOn(LEAVES)
+      L.push([
+        ...(lead ? seg(BOLT, { b: 1, fg: 'warning' }) : []),
+        ...seg('━'.repeat(lead ? Math.max(0, filled - 1) : filled), { fg: accent }),
+        ...seg('─'.repeat(columns - Math.max(filled, lead ? 1 : 0)), { d: 1 }),
+      ])
+      // The bolt's second segment takes the blank line above the list, so nothing moves.
+      L.push(trailOn(LANDS) ? seg(BOLT, { b: 1, fg: 'warning' }) : [])
+      if (start > 0) L.push(seg('↑ ' + start + ' earlier', { d: 1 }))
+      rows.slice(start, end).forEach((row, i) => {
+        const isNext = start + i === focus
+        const was = step === -1 ? undefined : strike.rows.get(row.title)
+        if (row.state === 'done' && was !== undefined && step < STRIKE_STEPS - 2) { L.push(struckRow(row.title, was, step, columns)); return }
+        const done = row.state === 'done'
+        const base = { d: done ? 1 : 0, s: done ? 1 : 0, b: isNext ? 1 : 0 }
+        L.push(truncEnd([
+          ...seg(GLYPH[row.state] + ' ', Object.assign({}, base, { fg: done ? 'success' : isNext ? 'claude' : 'text' })),
+          ...seg(shortTitle(row.title), base),
+        ], columns))
+      })
+      if (end < rows.length) L.push(seg('↓ ' + (rows.length - end) + ' more', { d: 1 }))
+    } else {
+      L.push(seg('○ No tickets here. /sidekick-rescan looks again.', { d: 1 }))
+    }
+
+    L.push([])
+    if (o.after) L.push(seg('─'.repeat(columns), { d: 1 }))
+    if (summary) {
+      if (o.after && o.labels === 'labels') {
+        const gutter = (label, text) => wrap(seg(text), columns - 6).forEach((ln, i) =>
+          L.push([...(i === 0 ? [...seg(label, { b: 1, fg: 'suggestion' }), ...blank(6 - label.length)] : blank(6)), ...ln]))
+        gutter('Done', summary.happened)
+        if (summary.next !== '') gutter('Next', summary.next)
+      } else {
+        wrap(seg(summary.happened), columns).forEach(ln => L.push(ln))
+        if (summary.next !== '') wrap([...seg('→ ', { b: 1, fg: 'suggestion' }), ...seg(summary.next)], columns).forEach(ln => L.push(ln))
+      }
+    }
+    if (needsYou !== '') {
+      L.push([])
+      wrap([...seg(' NEEDS YOU ', { b: 1, fg: 'inverseText', bg: 'warning' }), ...seg(' ' + needsYou)], columns).forEach(ln => L.push(ln))
+    }
+    if (progress) { L.push([]); L.push(truncStart(seg(progress.source, { d: 1 }), columns)) }
+
+    return { width: o.width, lines: L.map(l => [...blank(px), ...l]), raster: { x: px, y: 0, columns: SC, rows: R } }
+  }
+
+  // ---------- terminal renderer ----------
+  const esc = ch => ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch
+  function mountTerm(host, title) {
+    host.classList.add('tp-' + prefs.tp)
+    host.innerHTML = '<div class="ttl"><span>' + title + '</span><span class="dims"></span></div><div class="body"><div class="grid" role="img"></div><canvas aria-hidden="true"></canvas></div>'
+    return { host, grid: host.querySelector('.grid'), canvas: host.querySelector('canvas'), dims: host.querySelector('.dims'), key: '' }
+  }
+  function drawGrid(t, model) {
+    let html = '', text = []
+    for (const line of model.lines) {
+      html += '<span class="ln">'
+      let plain = ''
+      for (let x = 0; x < model.width; x++) {
+        const c = line[x]
+        if (!c) { html += '<i> </i>'; plain += ' '; continue }
+        plain += c.ch
+        const cls = (c.b ? 'b ' : '') + (c.d ? 'd ' : '') + (c.s ? 's' : '')
+        const st = (c.fg ? 'color:var(--t-' + c.fg + ');' : '') + (c.bg ? 'background:var(--t-' + c.bg + ');' : '')
+        html += '<i' + (cls ? ' class="' + cls.trim() + '"' : '') + (st ? ' style="' + st + '"' : '') + '>' + esc(c.ch) + '</i>'
+      }
+      html += '</span>'
+      text.push(plain.replace(/\s+$/, ''))
+    }
+    if (html !== t.key) { t.grid.innerHTML = html; t.key = html; t.grid.setAttribute('aria-label', text.join('\n')) }
+    t.dims.textContent = model.width + ' × ' + model.lines.length
+  }
+  function drawCritter(canvas, v, mode, frame, x, y, pw, ph) {
+    const w = v.columns * pw, h = v.rows * 2 * ph
+    const r = Math.max(1, Math.round(window.devicePixelRatio || 1))
+    if (canvas.width !== Math.round(w * r) || canvas.height !== Math.round(h * r)) {
+      canvas.width = Math.round(w * r); canvas.height = Math.round(h * r)
+      canvas.style.width = w + 'px'; canvas.style.height = h + 'px'
+    }
+    if (x !== undefined) { canvas.style.left = x + 'px'; canvas.style.top = y + 'px' }
+    const ctx = canvas.getContext('2d')
+    ctx.setTransform(r, 0, 0, r, 0, 0)
+    ctx.clearRect(0, 0, w, h)
+    const px = pixelsOf(v, mode, frame)
+    for (let yy = 0; yy < v.rows * 2; yy++) for (let xx = 0; xx < v.columns; xx++) {
+      const c = px[yy][xx]
+      if (c === null) continue
+      ctx.fillStyle = hex(c)
+      const y0 = Math.round(yy * ph), y1 = Math.round((yy + 1) * ph)
+      ctx.fillRect(xx * pw, y0, pw, y1 - y0)
+    }
+  }
+  const BODY_PAD_TOP = 6
+  function renderTerm(t, model, v, mode, frame) {
+    drawGrid(t, model)
+    drawCritter(t.canvas, v, mode, frame, model.raster.x * CW, BODY_PAD_TOP + model.raster.y * CH, CW, CH / 2)
+  }
+
+  // ---------- sample data (from the brief and tests/strike.test.ts) ----------
+  const SOURCE = '.scratch/checkout/issues'
+  const SUMMARY = { happened: 'Built the cart and wired the totals into checkout.', next: 'Add payment.', needsYou: 'Pick a payment provider.' }
+  const BASE = [{ title: '01: Cart', state: 'done' }, { title: '02: Payment', state: 'active' }, { title: '03: Shipping', state: 'open' }]
+
+  // Same rule as the gallery: zap plays its frames, then rests in idle before the next.
+  const ZAP_REST = 12
+  const frameAt = (v, mode, t) => {
+    if (mode === 'idle') return { mode: 'idle', f: 0 }
+    if (mode === 'write') return { mode: 'write', f: Math.floor(t / 2) % v.frames.write.length }
+    const n = v.frames.zap.length, i = t % (n + ZAP_REST)
+    return i < n ? { mode: 'zap', f: i } : { mode: 'idle', f: 0 }
+  }
+
+  // ---------- 1. Pane ----------
+  const tBefore = mountTerm($('t-before'), 'Sidekick · HEAD')
+  const tAfter = mountTerm($('t-after'), 'Sidekick · working tree')
+  let paneTick = 0
+  function renderPane() {
+    const common = { width: prefs.width, bodyRows: 30, project: 'shop', summary: SUMMARY, progress: progressOf(BASE, SOURCE), labels: prefs.labels }
+    const fb = frameAt(V.V0, prefs.pose, paneTick), fa = frameAt(V.V3, prefs.pose, paneTick)
+    renderTerm(tBefore, paneModel(Object.assign({}, common, { after: false, sprite: V.V0 })), V.V0, fb.mode, fb.f)
+    renderTerm(tAfter, paneModel(Object.assign({}, common, { after: true, sprite: V.V3 })), V.V3, fa.mode, fa.f)
+    $('after-cap').textContent = 'working tree · paddingX 1 · ' + (prefs.labels === 'labels' ? 'Done/Next labels' : '→ arrow')
+  }
+
+  // ---------- 2. Critter ----------
+  const BIG = 12
+  const stages = []
+  let cTick = 0, cPlaying = !reduced
+  ;(function buildCards() {
+    const host = $('cards')
+    for (const v of VARIANTS) {
+      const chosen = v.id === 'V3'
+      const card = document.createElement('article')
+      card.className = 'card' + (chosen ? ' chosen' : '')
+      card.setAttribute('aria-label', v.id + ' ' + v.name + (chosen ? ', chosen' : ', alternative'))
+      const note = v.id === 'V0' ? 'Shipped at HEAD: 16×12, flat yellow, no outline or shading.' : v.note
+      card.innerHTML = '<div class="head"><span class="id">' + v.id + '</span><span class="name"></span><span class="badge' + (chosen ? ' yes' : '') + '">' +
+        (chosen ? 'chosen' : v.id === 'V0' ? 'alternative · was HEAD' : 'alternative') + '</span><span class="size">' + v.columns + '×' + v.rows + ' cells · ' +
+        v.columns + '×' + v.rows * 2 + ' px</span></div><p class="note"></p><div class="stages"></div><div class="swatches"></div>'
+      card.querySelector('.name').textContent = v.name
+      card.querySelector('.note').textContent = note
+      const st = card.querySelector('.stages')
+      for (const mode of ['idle', 'write', 'zap']) {
+        const wrapEl = document.createElement('div'); wrapEl.className = 'stage'
+        const cap = document.createElement('span'); cap.className = 'cap'
+        const screen = document.createElement('div'); screen.className = 'screen tp-' + prefs.tp
+        const big = document.createElement('canvas'), real = document.createElement('canvas')
+        big.setAttribute('role', 'img'); big.setAttribute('aria-label', v.name + ', ' + mode + ', enlarged')
+        real.setAttribute('role', 'img'); real.setAttribute('aria-label', v.name + ', ' + mode + ', terminal size')
+        screen.append(big, real); wrapEl.append(cap, screen); st.append(wrapEl)
+        stages.push({ v, mode, big, real, cap, screen })
+      }
+      const sw = card.querySelector('.swatches')
+      for (const k of Object.keys(v.palette)) {
+        const s = document.createElement('span'); s.className = 'sw'; s.title = hex(v.palette[k])
+        s.innerHTML = '<i style="background:' + hex(v.palette[k]) + '"></i>' + k
+        sw.append(s)
+      }
+      host.append(card)
+    }
+  })()
+  function renderCritters() {
+    for (const s of stages) {
+      const { mode, f } = frameAt(s.v, s.mode, cTick)
+      drawCritter(s.big, s.v, mode, f, undefined, undefined, BIG, BIG)
+      drawCritter(s.real, s.v, mode, f, undefined, undefined, CW, CH / 2)
+      s.cap.textContent = s.mode + (s.mode === 'idle' ? '' : mode === 'idle' ? ' · resting' : ' · ' + (f + 1) + '/' + s.v.frames[s.mode].length)
+    }
+    $('c-tick').textContent = 'tick ' + cTick + ' · ' + cTick * TICK + ' ms' + (reduced && !cPlaying ? ' · reduced motion: press Step' : '')
+  }
+  const setCPlaying = p => { cPlaying = p; $('c-play').textContent = p ? 'Pause' : 'Play'; $('c-play').setAttribute('aria-pressed', String(p)) }
+  $('c-play').addEventListener('click', () => setCPlaying(!cPlaying))
+  $('c-step').addEventListener('click', () => { setCPlaying(false); cTick += 1; renderCritters() })
+
+  // ---------- 3. Strike: port of play() / strikeRows() / the zap ticker ----------
+  const PRE = 5
+  const OUT_OF_VIEW = ['Cart', 'Payment', 'Shipping', 'Mail', 'Refunds', 'Reports', 'Exports', 'Search']
+  const SCENARIOS = {
+    single: { label: 'Payment finishes', bodyRows: 30, tickets: () => BASE.map(t => Object.assign({}, t)), events: [[0, ['02: Payment']]] },
+    two: { label: 'Payment and Shipping finish together', bodyRows: 30, tickets: () => BASE.map(t => Object.assign({}, t)), events: [[0, ['02: Payment', '03: Shipping']]] },
+    queued: { label: 'Shipping finishes at step 4 of Payment’s strike', bodyRows: 30, tickets: () => BASE.map(t => Object.assign({}, t)), events: [[0, ['02: Payment']], [4, ['03: Shipping']]] },
+    hidden: { label: 'pane 19 rows tall: room for 3 tickets; Search (08) finishes', bodyRows: 19,
+      tickets: () => OUT_OF_VIEW.map((n, i) => ({ title: '0' + (i + 1) + ': ' + n, state: i === 0 ? 'done' : 'open' })), events: [[0, ['08: Search']]] },
+  }
+  const tStrike = mountTerm($('t-strike'), 'Sidekick · strike prototype')
+  let S = null
+  let sPlaying = false, slow = false, timer = 0, scenKey = store.get('scen', 'single')
+  if (!SCENARIOS[scenKey]) scenKey = 'single'
+
+  function reset(key) {
+    const sc = SCENARIOS[key]
+    S = { key, sc, tickets: sc.tickets(), strike: null, waiting: [], mode: 'idle', resting: 'idle', frame: 0, ticker: false, t: 0, toast: '' }
+  }
+  const view = () => progressOf(S.tickets, SOURCE)
+  function animate(next) {
+    if (next !== 'zap') S.resting = next
+    if (S.mode === 'zap' && next !== 'zap' && S.ticker) return
+    S.ticker = false; S.mode = next; S.frame = 0
+    if (next !== 'idle') S.ticker = true
+  }
+  function play(rows) { S.strike = { rows, step: 0 }; animate('zap') }
+  function strikeRows(rows) {
+    if (!S.strike) { play(rows); return }
+    const last = S.waiting[S.waiting.length - 1]
+    if (!last) S.waiting.push(rows)
+    else for (const [k, w] of rows) last.set(k, w)
+  }
+  function finish(titles) {
+    const was = view()
+    const finished = new Map()
+    for (const t of S.tickets) if (titles.includes(t.title) && t.state !== 'done') { finished.set(t.title, t.state); t.state = 'done' }
+    const now = view()
+    if (now.done > was.done) {
+      if (finished.size > 0) strikeRows(finished); else animate('zap')
+      S.toast = now.next === null ? '✓ All ' + now.total + ' tickets done' : '✓ ' + now.done + '/' + now.total + ' done · next: ' + shortTitle(now.next)
+    }
+  }
+  function runEvents() { for (const [at, titles] of S.sc.events) if (at + PRE === S.t) finish(titles) }
+  // One 110 ms tick: the critter's ticker fires first (it was started first), then the striker.
+  function tick() {
+    S.t += 1
+    if (S.mode === 'zap' && S.ticker) {
+      S.frame += 1
+      if (S.frame >= V.V3.frames.zap.length) { S.ticker = false; animate(S.resting) }
+    }
+    if (S.strike) {
+      S.strike.step += 1
+      if (S.strike.step >= STRIKE_STEPS) {
+        S.strike = null
+        const q = S.waiting.shift()
+        if (q) play(q)
+      }
+    }
+    runEvents()
+  }
+  const isOver = () => S.t >= PRE + Math.max(...S.sc.events.map(e => e[0])) && !S.strike && !S.waiting.length && S.mode === 'idle'
+
+  const PHASES = ['charge', 'charge', 'bolt', 'land', 'hit', 'burn', 'burn', 'burn', 'burn', 'burn', 'burn', 'settle', 'settle']
+  const PHASE_NAME = { charge: 'charge', bolt: 'bolt', land: 'bolt', hit: 'hit', burn: 'burn', settle: 'settle' }
+  ;(function () { let h = ''; for (let i = 0; i < STRIKE_STEPS; i++) h += '<div data-i="' + i + '">' + i + '</div>'; $('s-steps').innerHTML = h })()
+
+  function renderStrike() {
+    const model = paneModel({ after: true, width: prefs.width, bodyRows: S.sc.bodyRows, project: 'shop', summary: SUMMARY, progress: view(),
+      labels: prefs.labels, sprite: V.V3, strike: S.strike })
+    renderTerm(tStrike, model, V.V3, S.mode, S.frame)
+    const step = S.strike ? S.strike.step : -1
+    const ph = step >= 0 ? PHASES[step] : null
+    $('s-phase').innerHTML = (ph ? PHASE_NAME[ph] : S.t < PRE ? 'before' : 'steady') +
+      '<small>' + (step >= 0 ? 'step ' + step + '/12 · ' : '') + 'critter ' + S.mode + (S.mode === 'zap' ? ' ' + (S.frame + 1) + '/12' : '') + '</small>'
+    for (const d of $('s-steps').children) { const i = +d.dataset.i; d.className = i === step ? 'on' : step > i ? 'past' : '' }
+    for (const dt of $('s-legend').querySelectorAll('dt')) dt.classList.toggle('on', dt.dataset.p === ph)
+    $('s-tick').textContent = 't ' + S.t * TICK + ' ms · tick ' + S.t + (slow ? ' · ×4 slower' : '')
+    $('s-cap').textContent = S.sc.label
+    $('s-toast').innerHTML = S.toast ? 'toast: <b></b>' : ''
+    if (S.toast) $('s-toast').querySelector('b').textContent = S.toast
+    $('s-queue').textContent = S.waiting.length ? 'queued: ' + [...S.waiting[0].keys()].map(shortTitle).join(', ') + ' (strikes after this one)' : ''
+    for (const b of document.querySelectorAll('[data-scen]')) b.setAttribute('aria-pressed', String(b.dataset.scen === S.key))
+  }
+  function schedule() {
+    clearTimeout(timer)
+    if (!sPlaying) return
+    timer = setTimeout(() => { tick(); renderStrike(); if (isOver()) setSPlaying(false); else schedule() }, slow ? TICK * 4 : TICK)
+  }
+  function setSPlaying(p) { sPlaying = p; $('s-play').textContent = p ? 'Pause' : 'Play'; $('s-play').setAttribute('aria-pressed', String(p)); schedule() }
+  function start(key) { scenKey = key; store.set('scen', key); reset(key); runEvents(); renderStrike(); setSPlaying(!reduced) }
+  for (const b of document.querySelectorAll('[data-scen]')) b.addEventListener('click', () => start(b.dataset.scen))
+  $('s-replay').addEventListener('click', () => start(scenKey))
+  $('s-play').addEventListener('click', () => { if (!sPlaying && isOver()) { start(scenKey); return } setSPlaying(!sPlaying) })
+  $('s-step').addEventListener('click', () => { setSPlaying(false); tick(); renderStrike() })
+  $('s-slow').addEventListener('click', () => { slow = !slow; $('s-slow').setAttribute('aria-pressed', String(slow)); store.set('slow', slow ? '1' : '0'); renderStrike(); schedule() })
+  slow = store.get('slow', '0') === '1'; $('s-slow').setAttribute('aria-pressed', String(slow))
+  reset(scenKey); runEvents()
+
+  // ---------- settings toolbar ----------
+  function syncButtons() {
+    for (const b of document.querySelectorAll('[data-set]')) b.setAttribute('aria-pressed', String(String(prefs[b.dataset.set]) === b.dataset.val))
+    for (const el of document.querySelectorAll('.tp-dark, .tp-light')) { el.classList.remove('tp-dark', 'tp-light'); el.classList.add('tp-' + prefs.tp) }
+  }
+  for (const b of document.querySelectorAll('[data-set]')) b.addEventListener('click', () => {
+    const k = b.dataset.set
+    prefs[k] = k === 'width' ? Number(b.dataset.val) : b.dataset.val
+    store.set(k, b.dataset.val)
+    if (k === 'pose') paneTick = 0
+    syncButtons(); renderAll()
+  })
+
+  // ---------- tabs (bare #anchors) ----------
+  const TABS = ['pane', 'critter', 'strike', 'status']
+  let tab = 'pane'
+  function showTab(name, fromHash) {
+    tab = TABS.includes(name) ? name : 'pane'
+    for (const id of TABS) $('sec-' + id).hidden = id !== tab
+    for (const a of document.querySelectorAll('nav.tabs a')) { if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current') }
+    for (const g of document.querySelectorAll('.bar .group')) g.hidden = !g.dataset.for.split(' ').includes(tab)
+    store.set('tab', tab)
+    if (fromHash) window.scrollTo(0, 0)
+    renderAll()
+  }
+  window.addEventListener('hashchange', () => showTab(location.hash.slice(1), true))
+
+  function renderAll() {
+    if (tab === 'pane') renderPane()
+    if (tab === 'critter') renderCritters()
+    if (tab === 'strike') renderStrike()
+  }
+  setInterval(() => {
+    if (tab === 'critter' && cPlaying) { cTick += 1; renderCritters() }
+    if (tab === 'pane' && prefs.pose !== 'idle' && !reduced) { paneTick += 1; renderPane() }
+  }, TICK)
+
+  setCPlaying(cPlaying)
+  syncButtons()
+  showTab(location.hash ? location.hash.slice(1) : store.get('tab', 'pane'), false)
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(renderAll, () => {})
+  window.__sidekick = { paneModel, progressOf, BASE, SUMMARY, SOURCE, V, start, tick: () => { tick(); renderStrike() }, state: () => S }
+})()
+</script>
+</body>
+</html>

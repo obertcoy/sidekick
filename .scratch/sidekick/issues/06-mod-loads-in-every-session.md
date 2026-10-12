@@ -4,10 +4,10 @@
 
 **Blocked by:** 04: The pane reads well in a real terminal
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A session started with plain `claude` in a project has the open and rescan commands available
-- [ ] The same holds in a second, different project
-- [ ] The setting lives in the user's own settings, and no project folder is changed
-- [ ] The user is asked before their settings file is edited
-- [ ] How to turn the mod off again is noted in the mod's folder
+- [x] A session started with plain `claude` in a project has the open and rescan commands available
+- [x] The same holds in a second, different project
+- [x] The setting lives in the user's own settings, and no project folder is changed
+- [x] The user is asked before their settings file is edited
+- [x] How to turn the mod off again is noted in the mod's folder
