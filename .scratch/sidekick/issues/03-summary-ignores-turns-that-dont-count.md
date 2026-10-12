@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A test shows a subagent's turn makes no model call and leaves the pane's summary unchanged
-- [ ] A test shows an interrupted turn, an errored turn and a refused turn each make no model call
-- [ ] A test shows a turn with an empty answer and no tool use makes no model call
-- [ ] A test shows a reply that is not valid for a summary keeps the stored summary
-- [ ] A test shows a failed model call keeps the stored summary
-- [ ] A test shows the turn's own result reaches the engine unchanged and is not delayed by summarising
-- [ ] The validator, the type-check and the full test run pass
+- [x] A test shows a subagent's turn makes no model call and leaves the pane's summary unchanged
+- [x] A test shows an interrupted turn, an errored turn and a refused turn each make no model call
+- [x] A test shows a turn with an empty answer and no tool use makes no model call
+- [x] A test shows a reply that is not valid for a summary keeps the stored summary
+- [x] A test shows a failed model call keeps the stored summary
+- [x] A test shows the turn's own result reaches the engine unchanged and is not delayed by summarising
+- [x] The validator, the type-check and the full test run pass

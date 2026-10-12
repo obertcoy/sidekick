@@ -101,6 +101,59 @@ const animate = ($: Dollar, next: Mode): void => {
   })
 }
 
+// The strike: when tickets finish, the critter zaps and a bolt lands on their rows, which flash and
+// have the strike-through burn across them before they settle as done. One step per zap frame.
+type Was = 'active' | 'open'
+type Strike = { rows: Map<string, Was>; step: number }
+const STRIKE_MS = 110
+const BOLT = '↯'
+// Steps: 0-1 the critter charges (the row still shows what it was), 2 the bolt leaves the critter,
+// 3 it lands on the row's glyph, 4 the row flashes as done, 5-10 the strike-through burns, 11-12 rest.
+const LEAVES = 2
+const LANDS = 3
+const HITS = 4
+const BURNS = 5
+const BURN_STEPS = 6
+const STRIKE_STEPS = 13
+let strike: Strike | undefined
+let striker: Timer | undefined
+const waiting: Map<string, Was>[] = []
+
+const play = ($: Dollar, rows: Map<string, Was>): void => {
+  striker?.cancel()
+  strike = { rows, step: 0 }
+  animate($, 'zap')
+  $.ui.invalidate('ui.render')
+  striker = $.clock.every(STRIKE_MS, () => {
+    if (strike === undefined) return
+    strike.step += 1
+    if (strike.step < STRIKE_STEPS) {
+      $.ui.invalidate('ui.render')
+
+      return
+    }
+    striker?.cancel()
+    striker = undefined
+    strike = undefined
+    const queued = waiting.shift()
+    if (queued === undefined) $.ui.invalidate('ui.render')
+    else play($, queued)
+  })
+}
+
+/** Strikes the rows that just finished, after any strike already under way. */
+const strikeRows = ($: Dollar, rows: Map<string, Was>): void => {
+  if (strike === undefined) {
+    play($, rows)
+
+    return
+  }
+  // A burst of finishes waits as one batch behind the strike on show, never as a long queue.
+  const last = waiting.at(-1)
+  if (last === undefined) waiting.push(rows)
+  else for (const [title, was] of rows) last.set(title, was)
+}
+
 const rootOf = async ($: Dollar): Promise<string> => normalize(await $.session.root())
 
 const recipeOf = async ($: Dollar, root: string): Promise<Recipe | undefined> =>
@@ -180,13 +233,10 @@ const search = async ($: Dollar, root: string, hint: string): Promise<Recipe> =>
   ]
     .filter(part => part !== '')
     .join('\n\n')
-  const reply = await $.model.complete({
-    model: 'haiku',
-    system: SEARCH_RULES,
-    prompt,
-    maxTokens: 400,
-    timeoutMs: 60_000,
-  })
+  // A call that threw failed as surely as one answered with an error: neither is an answer.
+  const reply = await $.model
+    .complete({ model: 'haiku', system: SEARCH_RULES, prompt, maxTokens: 400, timeoutMs: 60_000 })
+    .catch(() => ({ isAnswered: false }) as const)
   const recipe = (reply.isAnswered ? parseRecipe(reply.text) : undefined) ?? { kind: 'none' }
   const isFound = (await filesOf($, root, recipe)).length > 0
   // A failed call is not an answer: leave the project unsearched so the next session asks again.
@@ -204,7 +254,14 @@ const show = async ($: Dollar, next: View): Promise<void> => {
   const was = held.progress
   const now = next.progress
   if (was !== null && now !== null && was.source === now.source && now.done > was.done) {
-    animate($, 'zap')
+    const finished = new Map<string, Was>()
+    for (const row of now.rows) {
+      const before = was.rows.find(one => one.title === row.title)
+      if (row.state === 'done' && before !== undefined && before.state !== 'done') finished.set(row.title, before.state)
+    }
+    // The critter zaps either way; the rows it can name are struck in step with it.
+    if (finished.size > 0) strikeRows($, finished)
+    else animate($, 'zap')
     $.ui.toast(
       now.next === null
         ? `✓ All ${now.total} tickets done`
@@ -374,10 +431,67 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
     const { project, isSearching: isLooking, summary, progress } = await read($, view)
-    const columns = Math.max(12, e.props.bodyColumns)
+    // One column of padding on each side; the bar and rules span what is left.
+    const columns = Math.max(12, e.props.bodyColumns - 2)
     const rows = progress?.rows ?? []
     const focus = rows.findIndex(row => row.state !== 'done' && row.title === progress?.next)
-    const { start, end } = windowOf(rows.length, Math.max(0, focus), Math.max(3, e.props.scroll.bodyRows - 13))
+    const room = Math.max(3, e.props.scroll.bodyRows - 17)
+    const steady = windowOf(rows.length, Math.max(0, focus), room)
+    // A row being struck is brought into view for the strike, then the list goes back to the next ticket.
+    const struck = strike === undefined ? -1 : rows.findIndex(row => row.state === 'done' && strike?.rows.has(row.title))
+    const isHidden = struck !== -1 && (struck < steady.start || struck >= steady.end)
+    const { start, end } = isHidden ? windowOf(rows.length, struck, room) : steady
+    const step = struck === -1 ? -1 : (strike?.step ?? -1)
+    // The bolt runs down the gutter from the critter to the list; only the terminal draws the critter.
+    const isTrail = e.surface === 'terminal'
+    const trailOn = (line: number): boolean => isTrail && step === line
+    // One frame of a struck row; every frame keeps a glyph, so the state never rests on colour alone.
+    const struckRow = (title: string, was: Was, at: number, width: number) => {
+      const text = shortTitle(title)
+      if (at < LANDS) {
+        return (
+          <Text wrap="truncate-end">
+            <Text color="text">{GLYPH[was]} </Text>
+            {text}
+          </Text>
+        )
+      }
+      if (at === LANDS) {
+        return (
+          <Text wrap="truncate-end">
+            <Text bold color="warning">
+              {BOLT}{' '}
+            </Text>
+            {text}
+          </Text>
+        )
+      }
+      if (at === HITS) {
+        return (
+          <Text wrap="truncate-end" bold color="inverseText" backgroundColor="warning">
+            {GLYPH.done} {text}
+          </Text>
+        )
+      }
+      const chars = [...text]
+      const shown = Math.min(chars.length, Math.max(1, width - 2))
+      const cut = Math.min(shown, Math.ceil((shown * (at - BURNS + 1)) / BURN_STEPS))
+
+      return (
+        <Text wrap="truncate-end">
+          <Text color="success">{GLYPH.done} </Text>
+          <Text dimColor strikethrough>
+            {chars.slice(0, cut).join('')}
+          </Text>
+          {cut < shown && (
+            <Text bold color="warning">
+              {chars[cut]}
+            </Text>
+          )}
+          {chars.slice(cut < shown ? cut + 1 : cut).join('')}
+        </Text>
+      )
+    }
     const isComplete = progress !== null && progress.done === progress.total
     const accent = isComplete ? 'success' : 'claude'
     const filled = progress === null ? 0 : Math.round((progress.done / progress.total) * columns)
@@ -393,7 +507,7 @@ export const register: Register = on => {
         : null
 
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" paddingX={1}>
         <Box flexDirection="row" gap={1}>
           {buddy}
           <Box flexDirection="column" flexGrow={1} justifyContent="flex-end">
@@ -410,8 +524,13 @@ export const register: Register = on => {
         </Box>
         {progress !== null && (
           <Text>
-            <Text color={accent}>{'━'.repeat(filled)}</Text>
-            <Text dimColor>{'─'.repeat(columns - filled)}</Text>
+            {trailOn(LEAVES) && (
+              <Text bold color="warning">
+                {BOLT}
+              </Text>
+            )}
+            <Text color={accent}>{'━'.repeat(trailOn(LEAVES) ? Math.max(0, filled - 1) : filled)}</Text>
+            <Text dimColor>{'─'.repeat(columns - Math.max(filled, trailOn(LEAVES) ? 1 : 0))}</Text>
           </Text>
         )}
         {isLooking && <Text color="suggestion">◌ Looking for tickets…</Text>}
@@ -419,10 +538,20 @@ export const register: Register = on => {
           <Text dimColor>○ No tickets here. /sidekick-rescan looks again.</Text>
         )}
         {progress !== null && (
-          <Box flexDirection="column" marginTop={1}>
+          <Box flexDirection="column" marginTop={trailOn(LANDS) ? 0 : 1}>
+            {/* The bolt's second segment takes the blank line above the list, so nothing moves. */}
+            {trailOn(LANDS) && (
+              <Text bold color="warning">
+                {BOLT}
+              </Text>
+            )}
             {start > 0 && <Text dimColor>↑ {start} earlier</Text>}
             {rows.slice(start, end).map((row, index) => {
               const isNext = start + index === focus
+              const was = step === -1 ? undefined : strike?.rows.get(row.title)
+              if (row.state === 'done' && was !== undefined && step < STRIKE_STEPS - 2) {
+                return struckRow(row.title, was, step, columns)
+              }
 
               return (
                 <Text
@@ -442,17 +571,33 @@ export const register: Register = on => {
           </Box>
         )}
         <Box flexDirection="column" marginTop={1}>
+          <Text dimColor>{'─'.repeat(columns)}</Text>
           {summary === null && (
             <Text dimColor>The summary appears after a turn that moves something.</Text>
           )}
-          {summary !== null && <Text>{summary.happened}</Text>}
+          {summary !== null && (
+            <Box flexDirection="row">
+              <Box width={6} flexShrink={0}>
+                <Text bold color="suggestion">
+                  Done
+                </Text>
+              </Box>
+              <Box flexGrow={1} flexShrink={1}>
+                <Text>{summary.happened}</Text>
+              </Box>
+            </Box>
+          )}
           {summary !== null && summary.next !== '' && (
-            <Text>
-              <Text bold color="suggestion">
-                →{' '}
-              </Text>
-              {summary.next}
-            </Text>
+            <Box flexDirection="row" marginTop={1}>
+              <Box width={6} flexShrink={0}>
+                <Text bold color="suggestion">
+                  Next
+                </Text>
+              </Box>
+              <Box flexGrow={1} flexShrink={1}>
+                <Text>{summary.next}</Text>
+              </Box>
+            </Box>
           )}
         </Box>
         {needsYou !== '' && (

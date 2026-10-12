@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A test shows that after a failed model call no recipe is stored and the next refresh searches again
-- [ ] A test shows that a stored recipe matching no files leads to exactly one new search, and that the result replaces the old recipe
-- [ ] A test shows that an empty project is recorded as having no tickets with no model call made
-- [ ] A test shows that a rescan during a running search answers that a search is already running and starts no second one
-- [ ] A test shows that a recipe pointing outside the project is refused and the project is treated as having no tickets
-- [ ] All tests drive the mod through the engine's test kit and assert on command output and pane text, not on stored keys
-- [ ] The validator, the type-check and the full test run pass
+- [x] A test shows that after a failed model call no recipe is stored and the next refresh searches again
+- [x] A test shows that a stored recipe matching no files leads to exactly one new search, and that the result replaces the old recipe
+- [x] A test shows that an empty project is recorded as having no tickets with no model call made
+- [x] A test shows that a rescan during a running search answers that a search is already running and starts no second one
+- [x] A test shows that a recipe pointing outside the project is refused and the project is treated as having no tickets
+- [x] All tests drive the mod through the engine's test kit and assert on command output and pane text, not on stored keys
+- [x] The validator, the type-check and the full test run pass
