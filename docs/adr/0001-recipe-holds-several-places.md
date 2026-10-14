@@ -1,0 +1,3 @@
+# A recipe holds several places and never forgets one
+
+A recipe used to be one glob, so a ticket written somewhere that glob could not reach (`docs/tasks/rollout.md` next to `.scratch/*/issues/*.md`) forced a swap that dropped every ticket set the project already had. We decided a recipe names several places: a search, a rescan with or without a hint, or a session writing a ticket in a new folder only ever adds a place, and a place drops out only once it holds no tickets. A plain rescan that rebuilds the recipe from scratch was rejected because the user does not want sets they rely on to vanish when a search misses them.

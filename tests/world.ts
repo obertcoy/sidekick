@@ -29,6 +29,8 @@ export const ticket = (title: string, status: string): string =>
 export type World = {
   /** The project root the session reports; a test can move it to stand in another project. */
   root: string
+  /** The session id the engine reports; a test sets another to stand in a /clear or a new session. */
+  sessionId: string
   /** How the engine answers the end of a turn. */
   endTurn: (e: TurnCompleteInput) => TurnCompleteResult
   /** Set to make every ask for the project root fail. */
@@ -57,6 +59,7 @@ export type World = {
 export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}): World => {
   const w: World = {
     root,
+    sessionId: 's1',
     isRootGone: false,
     endTurn: e => ({ text: e.answer }),
     tree,
@@ -77,6 +80,7 @@ export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}):
 
     return { value: w.root }
   })
+  on('session.id', () => ({ value: w.sessionId }))
   on('command.register', (_, e) => {
     w.registered.push(e.name)
 

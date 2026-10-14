@@ -8,36 +8,39 @@ import {
   labelOf,
   orderSets,
   parseChecklist,
-  parseRecipe,
+  parsePlace,
+  readRecipe,
+  addPlace,
+  namedIn,
   parseSummary,
   parseTicketFile,
-  pickSet,
   progressOf,
   setIdOf,
   shortTitle,
   toRelative,
   windowOf,
 } from '../hooks/tickets'
-import type { Recipe } from '../hooks/tickets'
+import type { Place, Recipe } from '../hooks/tickets'
 import { SPRITE, cellsOf, frameCount } from '../hooks/sprite'
 
-const files = parseRecipe(
+const files = parsePlace(
   '{"kind":"files","glob":".scratch/*/issues/*.md","statusLabel":"Status","doneValues":["resolved"],"activeValues":["claimed"]}',
-) as Extract<Recipe, { kind: 'files' }>
+) as Extract<Place, { kind: 'files' }>
+const recipe: Recipe = { places: [files] }
 
-test('a recipe is read from the model reply, and anything outside the fixed fields is refused', async () => {
+test('a place is read from the model reply, and anything outside the fixed fields is refused', async () => {
   expect(files.kind).toBe('files')
   expect(files.doneValues).toContain('resolved')
   expect(files.doneValues).toContain('done')
-  expect(parseRecipe('Here you go: {"kind":"checklist","glob":"TODO.md"}')).toEqual({
+  expect(parsePlace('Here you go: {"kind":"checklist","glob":"TODO.md"}')).toEqual({
     kind: 'checklist',
     glob: 'TODO.md',
   })
-  expect(parseRecipe('{"kind":"none"}')).toEqual({ kind: 'none' })
-  expect(parseRecipe('{"kind":"files","glob":"../other/*.md"}')).toBeUndefined()
-  expect(parseRecipe('{"kind":"files","glob":"C:/x/*.md"}')).toBeUndefined()
-  expect(parseRecipe('{"kind":"script","glob":"a.md"}')).toBeUndefined()
-  expect(parseRecipe('no tickets here')).toBeUndefined()
+  expect(parsePlace('{"kind":"none"}')).toBe('none')
+  expect(parsePlace('{"kind":"files","glob":"../other/*.md"}')).toBeUndefined()
+  expect(parsePlace('{"kind":"files","glob":"C:/x/*.md"}')).toBeUndefined()
+  expect(parsePlace('{"kind":"script","glob":"a.md"}')).toBeUndefined()
+  expect(parsePlace('no tickets here')).toBeUndefined()
 })
 
 test('a glob matches within a folder with * and across folders with **', async () => {
@@ -110,22 +113,64 @@ test('a checklist has one ticket per line', async () => {
   ])
 })
 
-test('the set the session touched wins over the most recently changed one', async () => {
-  const sets = groupSets(files, [
+test('sets are grouped across places with unique ids, and a path maps to its set', async () => {
+  const both: Recipe = { places: [files, { kind: 'checklist', glob: 'TODO.md' }] }
+  const sets = groupSets(both, [
     { path: '.scratch/old/issues/02-b.md', mtimeMs: 10 },
     { path: '.scratch/old/issues/01-a.md', mtimeMs: 5 },
     { path: '.scratch/new/issues/01-a.md', mtimeMs: 99 },
     { path: '.scratch/new/spec.md', mtimeMs: 500 },
+    { path: 'TODO.md', mtimeMs: 7 },
   ])
-  expect(sets.map(set => set.id).sort()).toEqual(['.scratch/new/issues', '.scratch/old/issues'])
-  expect(pickSet(sets, undefined)?.id).toBe('.scratch/new/issues')
-  expect(pickSet(sets, '.scratch/old/issues')?.files.map(file => file.path)).toEqual([
+  expect(sets.map(set => set.id).sort()).toEqual(['.scratch/new/issues', '.scratch/old/issues', 'TODO.md'])
+  expect(sets.find(set => set.id === '.scratch/old/issues')?.files.map(file => file.path)).toEqual([
     '.scratch/old/issues/01-a.md',
     '.scratch/old/issues/02-b.md',
   ])
-  expect(pickSet(sets, '.scratch/gone/issues')?.id).toBe('.scratch/new/issues')
-  expect(setIdOf({ kind: 'checklist', glob: 'TODO.md' }, 'TODO.md')).toBe('TODO.md')
-  expect(setIdOf(files, 'README.md')).toBeUndefined()
+  expect(setIdOf(both, 'TODO.md')).toBe('TODO.md')
+  expect(setIdOf(both, '.scratch/new/issues/01-a.md')).toBe('.scratch/new/issues')
+  expect(setIdOf(both, 'README.md')).toBeUndefined()
+  // Two places reading one folder: the first keeps the set id.
+  const txt: Place = { ...files, glob: '.scratch/*/issues/*.txt' }
+  const one = groupSets({ places: [files, txt] }, [
+    { path: '.scratch/a/issues/1.md', mtimeMs: 1 },
+    { path: '.scratch/a/issues/2.txt', mtimeMs: 2 },
+  ])
+  expect(one).toHaveLength(1)
+  expect(one[0]?.place).toBe(files)
+  expect(one[0]?.files).toHaveLength(1)
+})
+
+test('an old single recipe is read as one place, an old none as no places, and a new place is added', async () => {
+  expect(readRecipe({ kind: 'checklist', glob: 'TODO.md' })).toEqual({ places: [{ kind: 'checklist', glob: 'TODO.md' }] })
+  expect(readRecipe({ ...files })).toEqual({ places: [files] })
+  expect(readRecipe({ kind: 'none' })).toEqual({ places: [] })
+  expect(readRecipe({ places: [files, { kind: 'bogus' }] })).toEqual({ places: [files] })
+  expect(readRecipe(undefined)).toBeUndefined()
+  expect(readRecipe({ kind: 'script' })).toBeUndefined()
+  const todo: Place = { kind: 'checklist', glob: 'TODO.md' }
+  const added = addPlace(recipe, todo)
+  expect(added.places).toEqual([files, todo])
+  // The same glob replaces in place, with the new rules.
+  const wider = { ...files, doneValues: ['x'] }
+  expect(addPlace(added, wider).places).toEqual([wider, todo])
+})
+
+test('a prompt names a set by label or id, ignoring case and - _ spaces; two matches name none', async () => {
+  const sets = groupSets(
+    { places: [files] },
+    ['new-feature', 'old_thing', 'search', 'search-v2'].map(name => ({ path: `.scratch/${name}/issues/1.md`, mtimeMs: 1 })),
+  )
+  const named = (text: string): string | undefined => namedIn(sets, text)?.id
+  expect(named('continue new-feature')).toBe('.scratch/new-feature/issues')
+  expect(named('work on New Feature please')).toBe('.scratch/new-feature/issues')
+  expect(named('back to old thing.')).toBe('.scratch/old_thing/issues')
+  expect(named('look at .scratch/old_thing/issues')).toBe('.scratch/old_thing/issues')
+  expect(named('fix the cart')).toBeUndefined()
+  expect(named('search and old thing')).toBeUndefined()
+  expect(named('research it')).toBeUndefined()
+  // "search-v2" also contains the word "search".
+  expect(named('work on search-v2')).toBeUndefined()
 })
 
 test('progress counts done tickets and names the one in progress, else the first open', async () => {

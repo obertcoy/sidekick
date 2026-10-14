@@ -36,7 +36,10 @@ const twoSets = async ($: Engine, on: On, root: string, posixRoot: string): Prom
   w.answer = () => answered(RECIPE)
   on('tool.call', () => ({ result: { ok: true } }))
   const ran = await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
-  expect(ran.text).toBe(`Reading tickets from ${SHOWS_NEWER.source}: ${SHOWS_NEWER.count}.`)
+  // Two sets and a session with no choice yet: the picker shows, nothing is active.
+  expect(ran.text).toBe('Reading tickets from 2 ticket sets. /sidekick-pick chooses one.')
+  const picked = await $.command.run({ command: 'sidekick-pick', args: 'billing', ...RUN })
+  expect(picked.text).toBe('Showing billing: 0/3 done.')
 
   return w
 }
@@ -53,7 +56,7 @@ const expectPane = async ($: Engine, shown: typeof SHOWS_OLDER, hidden: typeof S
   }
 }
 
-test('with two ticket sets the pane shows the most recently changed one before any ticket is touched', async ($, on) => {
+test('with two ticket sets the pane shows the picked one', async ($, on) => {
   mock.clock(on)
   mock.store(on)
   await twoSets($, on, '/work/shop', '/work/shop')
@@ -76,7 +79,7 @@ for (const { label, root, posixRoot, older } of SPELLINGS) {
   }
 }
 
-test('the touched set stays active through later refreshes and a new session, even when another set changes', async ($, on) => {
+test('the touched set stays active through later refreshes, even when another set changes', async ($, on) => {
   const clock = mock.clock(on)
   mock.store(on)
   const w = await twoSets($, on, '/work/shop', '/work/shop')
@@ -90,16 +93,12 @@ test('the touched set stays active through later refreshes and a new session, ev
   await clock.settle()
   await expectPane($, SHOWS_OLDER, SHOWS_NEWER)
 
-  // A new session in the same project, and its timed refresh.
-  await $.session.start({ cwd: '/work/shop', surface: 'terminal', isInteractive: true })
-  await clock.settle()
-  await expectPane($, SHOWS_OLDER, SHOWS_NEWER)
   await clock.advance(20_000)
   await expectPane($, SHOWS_OLDER, SHOWS_NEWER)
   expect(w.asked.length).toBe(1)
 })
 
-test('when the touched set is gone the pane falls back to the most recently changed set', async ($, on) => {
+test('when the active set is gone the one set left is active', async ($, on) => {
   const clock = mock.clock(on)
   mock.store(on)
   const w = await twoSets($, on, '/work/shop', '/work/shop')

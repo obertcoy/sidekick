@@ -9,6 +9,7 @@ import type { Mode } from './sprite'
 import { projectRoot, setCurrentRoot, setProjectLook, setSavedLook } from './sprite/registry'
 import type { SavedLook } from './sprite/types'
 import {
+  addPlace,
   endsWithPath,
   findSet,
   globReach,
@@ -16,20 +17,21 @@ import {
   groupSets,
   hintPaths,
   labelOf,
+  namedIn,
   normalize,
   orderSets,
   parseChecklist,
-  parseRecipe,
+  parsePlace,
   parseSummary,
   parseTicketFile,
-  pickSet,
   progressOf,
+  readRecipe,
   setIdOf,
   shortTitle,
   toRelative,
   windowOf,
 } from './tickets'
-import type { FileInfo, Recipe, Ticket, TicketSet } from './tickets'
+import type { FileInfo, Place, Recipe, Ticket, TicketSet } from './tickets'
 
 const PANE = 'sidekick'
 const LOOK = 'look'
@@ -44,7 +46,9 @@ const isSkipped = (name: string): boolean => SKIPPED.has(name) || name.startsWit
 const LISTED = /(\.(md|mdx|markdown|txt|org|ya?ml|json|toml)|^[^.]+)$/i
 const LIKELY = /issue|ticket|task|todo|backlog|plan|roadmap|scratch|stor(y|ies)|spec|kanban|board/i
 const GLYPH = { done: '✓', active: '◐', open: '○' } as const
-const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'MultiEdit'])
+// Reading or editing a ticket file is a touch; writing one (maybe a new ticket) is not.
+const TOUCH_TOOLS = new Set(['Read', 'Edit', 'MultiEdit'])
 
 const SEARCH_RULES = `You find where a software project keeps its tickets (units of planned work) as local files.
 You get a file listing and the start of some files. Answer with one JSON object and nothing else.
@@ -56,6 +60,8 @@ You get a file listing and the start of some files. Answer with one JSON object 
   doneValues are the status values that mean finished; activeValues the ones that mean being worked on.
 - Tickets are lines of a checklist ("- [ ] thing"): {"kind":"checklist","glob":"<path pattern of the checklist file or files>"}
 - No tickets, or a layout that fits neither: {"kind":"none"}
+
+Answer with one place to add to the places already known, never a replacement for them.
 
 Documentation, changelogs and notes are not tickets.`
 
@@ -77,12 +83,14 @@ const view = atom({ plugin: 'sidekick', key: 'view' } as const, {
 } satisfies View as View)
 
 let isSearching = false
-// True when the last search found nothing and the recipe that worked before was kept.
+// True when the last search added no place and the recipe was kept as it was.
 let isKept = false
-// The set list is offered right after a session start, a /clear or a rescan, until the developer settles on a set.
+// The set picker shows from a new session or a rescan until a pick, a touch or the end of the next turn.
 let isChoosing = false
-// An offer waits here until a refresh has read the sets, so a search in flight does not lose it.
-let isOffering = false
+// The session the mod last saw; another id means a new session (a /clear gives one).
+let knownSession: string | undefined
+// The id a /clear ended: until the engine reports another, the session holds no choice of its own.
+let clearedSession: string | undefined
 // Folders a new ticket file was already looked into this session, so a burst of writes searches once.
 const probed = new Set<string>()
 const SET_ROWS = 9
@@ -187,8 +195,11 @@ const rootOf = async ($: Dollar): Promise<string> => {
   return root
 }
 
+// An old recipe was one glob; readRecipe wraps it as one place.
 const recipeOf = async ($: Dollar, root: string): Promise<Recipe | undefined> =>
-  parseRecipe(JSON.stringify((await $.store.get(`recipe:${root}`)) ?? null))
+  readRecipe(await $.store.get(`recipe:${root}`))
+
+const activeKey = (root: string, session: string): string => `active:${root}:${session}`
 
 const walk = async (
   $: Dollar,
@@ -277,22 +288,27 @@ const homesOf = async ($: Dollar, root: string): Promise<string[]> => {
   return homes
 }
 
-const filesOf = async ($: Dollar, root: string, recipe: Recipe): Promise<FileInfo[]> => {
-  if (recipe.kind === 'none') return []
-  const { dir, depth } = globReach(recipe.glob)
-  const matches = globToRegExp(recipe.glob)
+const filesIn = async ($: Dollar, root: string, place: Place): Promise<FileInfo[]> => {
+  const { dir, depth } = globReach(place.glob)
+  const matches = globToRegExp(place.glob)
 
   return (await walk($, root, dir, depth, 3000)).filter(file => matches.test(file.path))
 }
 
-const ticketsOf = async ($: Dollar, root: string, recipe: Recipe, file: FileInfo): Promise<Ticket[]> => {
+/** Every file the recipe's places read, each once. */
+const filesOf = async ($: Dollar, root: string, recipe: Recipe): Promise<FileInfo[]> => {
+  const all = (await Promise.all(recipe.places.map(place => filesIn($, root, place)))).flat()
+
+  return all.filter((file, at) => all.findIndex(one => one.path === file.path) === at)
+}
+
+const ticketsOf = async ($: Dollar, root: string, place: Place, file: FileInfo): Promise<Ticket[]> => {
   const key = `${root}/${file.path}`
   const held = parsed.get(key)
   if (held !== undefined && held.mtimeMs === file.mtimeMs) return held.tickets
   const text = await $.fs.read(key).catch(() => '')
   const name = file.path.slice(file.path.lastIndexOf('/') + 1)
-  const tickets =
-    recipe.kind === 'files' ? [parseTicketFile(name, text, recipe)] : parseChecklist(text)
+  const tickets = place.kind === 'files' ? [parseTicketFile(name, text, place)] : parseChecklist(text)
   parsed.set(key, { mtimeMs: file.mtimeMs, tickets })
 
   return tickets
@@ -301,17 +317,17 @@ const ticketsOf = async ($: Dollar, root: string, recipe: Recipe, file: FileInfo
 const head = (text: string, lines: number, chars: number): string =>
   text.split(/\r?\n/).slice(0, lines).join('\n').slice(0, chars)
 
-/** The one-time look at a project that produces its recipe. A recipe that worked before is kept when this finds nothing. */
+/** A search: looks at the project and adds the place the model finds to the recipe; nothing is ever removed. */
 const search = async (
   $: Dollar,
   root: string,
   hint: string,
-  previous?: Recipe,
+  previous: Recipe | undefined,
   cover?: string,
 ): Promise<{ recipe: Recipe; isKept: boolean }> => {
-  const worked = previous !== undefined && previous.kind !== 'none' && (await filesOf($, root, previous)).length > 0
-  const kept = (): { recipe: Recipe; isKept: boolean } =>
-    worked ? { recipe: previous, isKept: true } : { recipe: { kind: 'none' }, isKept: false }
+  const known = previous ?? { places: [] }
+  const worked = known.places.length > 0
+  const kept = (): { recipe: Recipe; isKept: boolean } => ({ recipe: known, isKept: worked })
   const isListed = (file: FileInfo): boolean => LISTED.test(file.path.slice(file.path.lastIndexOf('/') + 1))
   const at = await resolveHint($, root, hint)
   const pointed = at === undefined ? [] : (await walk($, root, at, 4, 600, [], 4)).filter(isListed)
@@ -332,8 +348,7 @@ const search = async (
   const listing =
     pointed.length > 0 ? pointed : (await broad()).sort((a, b) => rank(a) - rank(b))
   if (listing.length === 0) {
-    if (worked) return kept()
-    await $.store.set(`recipe:${root}`, { kind: 'none' })
+    if (previous === undefined) await $.store.set(`recipe:${root}`, known)
 
     return kept()
   }
@@ -350,8 +365,8 @@ const search = async (
   )
   const prompt = [
     hint === '' ? '' : `The developer says: ${hint}`,
-    worked && previous.kind !== 'none'
-      ? `Tickets are already read with the glob \`${previous.glob}\`; if one glob can cover those and the files shown, widen it.`
+    worked
+      ? `Tickets are already read from these places: ${known.places.map(place => `\`${place.glob}\``).join(', ')}. Answer with a place to add to them, not a replacement.`
       : '',
     pointed.length > 0
       ? `The developer pointed at the folder \`${at}\`; globs still start from the project root.`
@@ -365,16 +380,17 @@ const search = async (
   const reply = await $.model
     .complete({ model: 'haiku', system: SEARCH_RULES, prompt, maxTokens: 400, timeoutMs: 60_000 })
     .catch(() => ({ isAnswered: false }) as const)
-  const recipe = (reply.isAnswered ? parseRecipe(reply.text) : undefined) ?? { kind: 'none' }
-  const found = await filesOf($, root, recipe)
+  const place = reply.isAnswered ? parsePlace(reply.text) : undefined
+  const found = place === undefined || place === 'none' ? [] : await filesIn($, root, place)
   const isFound = found.length > 0 && (cover === undefined || found.some(file => file.path === cover))
-  // A failed call is not an answer: leave the project unsearched so the next session asks again.
-  if (!isFound) {
-    if (reply.isAnswered && !worked) await $.store.set(`recipe:${root}`, { kind: 'none' })
+  if (place === undefined || place === 'none' || !isFound) {
+    // A failed call is not an answer: leave an unsearched project unsearched so the next session asks again.
+    if (reply.isAnswered && previous === undefined) await $.store.set(`recipe:${root}`, known)
 
     return kept()
   }
-  if (reply.isAnswered) await $.store.set(`recipe:${root}`, recipe)
+  const recipe = addPlace(known, place)
+  await $.store.set(`recipe:${root}`, recipe)
 
   return { recipe, isKept: false }
 }
@@ -387,10 +403,10 @@ const setsOf = async ($: Dollar, root: string): Promise<{ recipe: Recipe | undef
   return { recipe, sets: recipe === undefined ? [] : orderSets(groupSets(recipe, files)) }
 }
 
-const entriesOf = async ($: Dollar, root: string, recipe: Recipe, sets: TicketSet[]): Promise<SetEntry[]> =>
+const entriesOf = async ($: Dollar, root: string, sets: TicketSet[]): Promise<SetEntry[]> =>
   Promise.all(
     sets.map(async set => {
-      const tickets = (await Promise.all(set.files.map(file => ticketsOf($, root, recipe, file)))).flat()
+      const tickets = (await Promise.all(set.files.map(file => ticketsOf($, root, set.place, file)))).flat()
 
       return {
         id: set.id,
@@ -430,48 +446,67 @@ const show = async ($: Dollar, next: View): Promise<void> => {
   }
 }
 
-const refresh = async ($: Dollar, hint?: string, cover?: string): Promise<View> => {
+/** Refreshes the pane. `isOffering` (a rescan) opens the set picker; a new session opens it by itself. */
+const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = false): Promise<View> => {
   await followProject($)
   if (isSearching) return read($, view)
   const root = await rootOf($)
   const project = root.slice(root.lastIndexOf('/') + 1)
   const summary = ((await $.store.get(`summary:${root}`)) ?? null) as Summary | null
   const previous = await recipeOf($, root)
-  let recipe = hint === undefined ? previous : undefined
-  let files = recipe === undefined ? [] : await filesOf($, root, recipe)
-  const isStale = recipe !== undefined && recipe.kind !== 'none' && files.length === 0
-  if (recipe === undefined || isStale) {
+  let recipe = previous
+  // A place that holds no files drops out; the rest stay.
+  let held: { place: Place; files: FileInfo[] }[] = []
+  if (recipe !== undefined) {
+    held = await Promise.all(recipe.places.map(async place => ({ place, files: await filesIn($, root, place) })))
+    const live = held.filter(one => one.files.length > 0)
+    if (live.length !== held.length) {
+      held = live
+      recipe = { places: live.map(one => one.place) }
+      await $.store.set(`recipe:${root}`, recipe)
+    }
+  }
+  const isGone = previous !== undefined && previous.places.length > 0 && recipe?.places.length === 0
+  if (recipe === undefined || hint !== undefined || isGone) {
     isSearching = true
     await show($, { ...(await read($, view)), project, isSearching: true, summary, progress: null })
     try {
-      const found = await search($, root, hint ?? '', previous, cover)
+      const found = await search($, root, hint ?? '', recipe, cover)
       recipe = found.recipe
       isKept = found.isKept
-      files = await filesOf($, root, recipe)
-      // A new ticket folder the search took in is the one the pane switches to.
-      const id = cover === undefined || found.isKept ? undefined : setIdOf(recipe, cover)
-      if (id !== undefined) await $.store.set(`touched:${root}`, id)
     } finally {
       isSearching = false
     }
   }
-  const touched = (await $.store.get(`touched:${root}`)) as string | undefined
+  const files = recipe === undefined ? [] : await filesOf($, root, recipe)
   const sets = recipe === undefined ? [] : orderSets(groupSets(recipe, files))
-  const set = pickSet(sets, touched)
-  if (isOffering) {
-    isOffering = false
-    isChoosing = sets.length > 1
+  const session = await $.session.id()
+  const key = activeKey(root, session)
+  let active = (await $.store.get(key)) as string | undefined
+  if (!sets.some(set => set.id === active)) active = undefined
+  if (session !== knownSession) {
+    // A new session has no set active; a resumed one comes back with its own.
+    knownSession = session
+    probed.clear()
+    if (session === clearedSession && active !== undefined) {
+      await $.store.delete(key)
+      active = undefined
+    }
+    isChoosing = active === undefined && sets.length > 1
   }
-  const tickets =
-    set === undefined || recipe === undefined
-      ? []
-      : (await Promise.all(set.files.map(file => ticketsOf($, root, recipe, file)))).flat()
+  if (isOffering) isChoosing = sets.length > 1
+  if (sets.length === 1 && active !== sets[0]?.id) {
+    active = sets[0]?.id
+    await $.store.set(key, active)
+  }
+  const set = sets.find(one => one.id === active)
+  const tickets = set === undefined ? [] : (await Promise.all(set.files.map(file => ticketsOf($, root, set.place, file)))).flat()
   const next: View = {
     project,
     isSearching: false,
     summary,
     progress: set === undefined || tickets.length === 0 ? null : progressOf(tickets, set.id),
-    sets: recipe === undefined || sets.length < 2 ? [] : await entriesOf($, root, recipe, sets),
+    sets: sets.length < 2 ? [] : await entriesOf($, root, sets),
     current: set?.id ?? '',
     isChoosing: isChoosing && sets.length > 1,
   }
@@ -555,15 +590,15 @@ const quietly = (work: Promise<unknown>, $: Dollar): void => {
   void work.catch(error => $.ui.log(`sidekick: ${String(error)}`, { to: 'debug' }))
 }
 
-/** Shows the set the developer picked; it holds until Claude touches a file in another set. */
+/** Makes the set the session's active one and closes the picker; it holds until another pick or touch. */
 const choose = async ($: Dollar, id: string): Promise<void> => {
   const root = await rootOf($)
-  await $.store.set(`touched:${root}`, id)
+  await $.store.set(activeKey(root, await $.session.id()), id)
   isChoosing = false
   await refresh($)
 }
 
-/** A new markdown file written in a folder that looks like a ticket home, which the recipe does not read yet. */
+/** A new markdown file written in a folder that looks like a ticket home no place covers: a search adds its place. */
 const adopt = async ($: Dollar, root: string, tool: string, relative: string | undefined): Promise<void> => {
   if (tool !== 'Write' || relative === undefined || !/\.md$/i.test(relative)) return
   const folder = relative.slice(0, Math.max(0, relative.lastIndexOf('/')))
@@ -599,7 +634,6 @@ export const register: Register = on => {
     const root = await rootOrNone($)
     setProjectLook((await storedLook($, lookKey('project', root))) ?? {}, root)
     void $.ui.open({ id: PANE, title: 'Sidekick' })
-    isOffering = true
     quietly(refresh($), $)
     $.clock.every(REFRESH_MS, () => quietly(refresh($), $))
 
@@ -621,17 +655,21 @@ export const register: Register = on => {
   on('command.run', { command: 'sidekick-rescan' }, async ($, e) => {
     if (isSearching) return { text: 'A search is already running.' }
     isKept = false
-    isOffering = true
-    const { progress } = await refresh($, e.args.trim())
-    isOffering = false
+    const { progress, sets } = await refresh($, e.args.trim(), undefined, true)
+    const reading =
+      progress !== null
+        ? `${progress.source}: ${progress.done}/${progress.total} done`
+        : sets.length > 1
+        ? `${sets.length} ticket sets. /sidekick-pick chooses one`
+        : undefined
 
     return {
       text:
-        progress !== null && isKept
-          ? `Found nothing new; still reading ${progress.source}: ${progress.done}/${progress.total} done.`
-          : progress === null
+        reading === undefined
           ? 'No tickets found. Try a hint: /sidekick-rescan tickets are in docs/tasks'
-          : `Reading tickets from ${progress.source}: ${progress.done}/${progress.total} done.`,
+          : isKept
+          ? `Found nothing new; still reading ${reading}.`
+          : `Reading tickets from ${reading}.`,
     }
   })
 
@@ -658,7 +696,7 @@ export const register: Register = on => {
     const chosen = findSet(sets, query)
     if (chosen === 'none') return { text: `No ticket set matches "${query}". /sidekick-pick shows the choices.` }
     if (chosen === 'many') return { text: `More than one ticket set matches "${query}". Type more of the name.` }
-    await $.store.set(`touched:${root}`, chosen.id)
+    await $.store.set(activeKey(root, await $.session.id()), chosen.id)
     isChoosing = false
     const next = await refresh($)
     const entry = next.sets.find(one => one.id === chosen.id)
@@ -717,9 +755,9 @@ export const register: Register = on => {
 
           return
         }
-        await $.store.set(`touched:${root}`, id)
-        isChoosing = false
-        await refresh($)
+        // Only reading or editing a ticket picks its set; a Write may be a new ticket and picks none.
+        if (TOUCH_TOOLS.has(String(e.tool))) await choose($, id)
+        else await refresh($)
       })(),
       $,
     )
@@ -730,7 +768,8 @@ export const register: Register = on => {
   // A /clear fires no session.start; session.end with reason 'clear' is the only sign of it.
   on('session.end', async ($, e, next) => {
     if (e.reason === 'clear') {
-      isOffering = true
+      clearedSession = e.sessionId
+      knownSession = undefined
       quietly(refresh($), $)
     }
 
@@ -738,10 +777,15 @@ export const register: Register = on => {
   })
 
   on('turn.start', async ($, e, next) => {
-    // The first prompt after the list appeared accepts the set shown.
+    // The first prompt after the picker appeared may name a set; one that names exactly one picks it.
     if (isChoosing && e.agentId === undefined) {
-      isChoosing = false
-      quietly(refresh($), $)
+      quietly(
+        (async () => {
+          const named = namedIn((await setsOf($, await rootOf($))).sets, e.text)
+          if (named !== undefined) await choose($, named.id)
+        })(),
+        $,
+      )
     }
     // The session may have moved to another project since the last refresh; draw that project's look.
     await followProject($)
@@ -753,6 +797,11 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     const ended = await next(e)
     if (e.agentId === undefined) animate($, 'idle')
+    // The first turn ended with no pick: the picker gives way to the hint line.
+    if (e.agentId === undefined && isChoosing) {
+      isChoosing = false
+      quietly(refresh($), $)
+    }
     if (e.agentId === undefined && e.reason === 'answer') {
       quietly(summarize($, e.answer).then(() => refresh($)), $)
     }
@@ -824,6 +873,8 @@ export const register: Register = on => {
         </Text>
       )
     }
+    // Two or more sets and none active: the picker shows, or after the first turn only a hint.
+    const isUndecided = sets.length > 1 && current === ''
     const isComplete = progress !== null && progress.done === progress.total
     const accent = isComplete ? 'success' : 'claude'
     const filled = progress === null ? 0 : Math.round((progress.done / progress.total) * columns)
@@ -872,7 +923,7 @@ export const register: Register = on => {
           </Text>
         )}
         {isLooking && <Text color="suggestion">◌ Looking for tickets…</Text>}
-        {!isLooking && progress === null && (
+        {!isLooking && progress === null && !isUndecided && (
           <Text dimColor>○ No tickets here. /sidekick-rescan looks again.</Text>
         )}
         {progress !== null && (
@@ -910,18 +961,21 @@ export const register: Register = on => {
         )}
         {sets.length > 1 && !isListed && (
           <Box marginTop={1}>
-            <Text dimColor wrap="truncate-end">{`${sets.length} sets · /sidekick-pick`}</Text>
+            <Text dimColor wrap="truncate-end">
+              {isUndecided ? `${sets.length} ticket sets · /sidekick-pick` : `${sets.length} sets · /sidekick-pick`}
+            </Text>
           </Box>
         )}
         {sets.length > 1 && isListed && (
           <Box flexDirection="column" marginTop={1}>
+            <Text bold>Pick a ticket set:</Text>
             {sets.slice(0, SET_ROWS).map((one, at) => (
               <Button
                 key={`set-${at + 1}`}
                 plain
                 hotkey={String(at + 1)}
                 dimColor={one.id !== current}
-                label={`${one.id === current ? '›' : ' '} ${one.label} ${one.done}/${one.total}`}
+                label={`${one.id === current ? '›' : ' '} ${at + 1}: ${one.label} ${one.done}/${one.total}`}
                 onPress={() => quietly(choose($, one.id), $)}
               />
             ))}

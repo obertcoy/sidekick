@@ -45,6 +45,7 @@ test('a rescan finds the tickets once, and the pane then shows progress and the 
   const asked: string[] = []
   let reply = '{"kind":"files","glob":".scratch/*/issues/*.md","statusLabel":"Status","doneValues":["done"],"activeValues":["in-progress"]}'
   on('session.root', () => ({ value: ROOT }))
+  on('session.id', () => ({ value: 's1' }))
   on('fs.list', (_, e) => ({
     value: (TREE[posix(e.path)] ?? []).map(entry => ({ ...entry, size: 1, mtimeMs: 5, isLink: false })),
   }))

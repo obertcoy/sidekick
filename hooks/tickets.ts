@@ -1,7 +1,7 @@
 import type { Progress, Summary } from '../types'
 
-export type Recipe =
-  | { kind: 'none' }
+/** One place tickets are kept, and how to read them there. */
+export type Place =
   | { kind: 'checklist'; glob: string }
   | {
       kind: 'files'
@@ -11,11 +11,14 @@ export type Recipe =
       activeValues: string[]
     }
 
+/** A project's saved places; empty once searched and nothing found. */
+export type Recipe = { places: Place[] }
+
 export type Ticket = { title: string; isDone: boolean; isActive: boolean }
 
 export type FileInfo = { path: string; mtimeMs: number }
 
-export type TicketSet = { id: string; files: FileInfo[]; mtimeMs: number }
+export type TicketSet = { id: string; files: FileInfo[]; mtimeMs: number; place: Place }
 
 const DONE_VALUES = ['done', 'closed', 'resolved', 'complete', 'completed', 'merged', 'shipped']
 const ACTIVE_VALUES = ['in-progress', 'in progress', 'claimed', 'doing', 'wip', 'started', 'active']
@@ -126,11 +129,11 @@ const isSafeGlob = (glob: unknown): glob is string =>
   !glob.includes('\\') &&
   !glob.split('/').includes('..')
 
-/** Reads the model's reply to a search; anything that doesn't fit the fixed fields is no recipe. */
-export const parseRecipe = (text: string): Recipe | undefined => {
+/** Reads the model's reply to a search: a place to add, 'none', or undefined when it does not fit the fixed fields. */
+export const parsePlace = (text: string): Place | 'none' | undefined => {
   const found = jsonIn(text)
   if (found === undefined) return undefined
-  if (found.kind === 'none') return { kind: 'none' }
+  if (found.kind === 'none') return 'none'
   if (!isSafeGlob(found.glob)) return undefined
   if (found.kind === 'checklist') return { kind: 'checklist', glob: found.glob }
   if (found.kind !== 'files') return undefined
@@ -143,6 +146,33 @@ export const parseRecipe = (text: string): Recipe | undefined => {
     doneValues: words(found.doneValues, DONE_VALUES),
     activeValues: words(found.activeValues, ACTIVE_VALUES),
   }
+}
+
+/** Reads a stored recipe. An old single place is wrapped as one; an old `none` is no places. */
+export const readRecipe = (stored: unknown): Recipe | undefined => {
+  if (typeof stored !== 'object' || stored === null) return undefined
+  const given = (stored as { places?: unknown }).places
+  if (Array.isArray(given)) {
+    const places = given.flatMap(one => {
+      const place = parsePlace(JSON.stringify(one))
+
+      return place === undefined || place === 'none' ? [] : [place]
+    })
+
+    return { places }
+  }
+  const place = parsePlace(JSON.stringify(stored))
+  if (place === undefined) return undefined
+
+  return { places: place === 'none' ? [] : [place] }
+}
+
+/** The recipe with the place added; a place with the same glob is replaced in its spot. */
+export const addPlace = (recipe: Recipe, place: Place): Recipe => {
+  const at = recipe.places.findIndex(one => one.glob === place.glob)
+  if (at < 0) return { places: [...recipe.places, place] }
+
+  return { places: recipe.places.map((one, index) => (index === at ? place : one)) }
 }
 
 const clip = (value: unknown): string =>
@@ -204,7 +234,7 @@ const hasValue = (status: string, values: string[]): boolean => {
 export const parseTicketFile = (
   name: string,
   text: string,
-  recipe: Extract<Recipe, { kind: 'files' }>,
+  recipe: Extract<Place, { kind: 'files' }>,
 ): Ticket => {
   const lines = text.split(/\r?\n/)
   const title = titleOf(name, lines)
@@ -232,23 +262,30 @@ export const parseChecklist = (text: string): Ticket[] =>
     return [{ title, isDone: mark === 'x', isActive: mark === '~' || mark === '/' || mark === '-' }]
   })
 
+/** The id of the set a path belongs to in the first place that reads it, or undefined. */
 export const setIdOf = (recipe: Recipe, path: string): string | undefined => {
-  if (recipe.kind === 'none' || !globToRegExp(recipe.glob).test(path)) return undefined
-  if (recipe.kind === 'checklist') return path
+  const place = recipe.places.find(one => globToRegExp(one.glob).test(path))
+  if (place === undefined) return undefined
+  if (place.kind === 'checklist') return path
   const cut = path.lastIndexOf('/')
 
   return cut < 0 ? '.' : path.slice(0, cut)
 }
 
+/** Sets across all places. A set id is taken by the first place that reads it, so ids stay unique. */
 export const groupSets = (recipe: Recipe, files: FileInfo[]): TicketSet[] => {
   const sets = new Map<string, TicketSet>()
-  for (const file of files) {
-    const id = setIdOf(recipe, file.path)
-    if (id === undefined) continue
-    const set = sets.get(id) ?? { id, files: [], mtimeMs: 0 }
-    set.files.push(file)
-    set.mtimeMs = Math.max(set.mtimeMs, file.mtimeMs)
-    sets.set(id, set)
+  for (const place of recipe.places) {
+    const matches = globToRegExp(place.glob)
+    for (const file of files) {
+      if (!matches.test(file.path)) continue
+      const id = setIdOf({ places: [place] }, file.path) ?? file.path
+      const set = sets.get(id) ?? { id, files: [], mtimeMs: 0, place }
+      if (set.place !== place) continue
+      set.files.push(file)
+      set.mtimeMs = Math.max(set.mtimeMs, file.mtimeMs)
+      sets.set(id, set)
+    }
   }
   for (const set of sets.values()) {
     set.files.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }))
@@ -257,10 +294,20 @@ export const groupSets = (recipe: Recipe, files: FileInfo[]): TicketSet[] => {
   return [...sets.values()]
 }
 
-/** The set the session touched, else the most recently changed one. */
-export const pickSet = (sets: TicketSet[], touched: string | undefined): TicketSet | undefined =>
-  sets.find(set => set.id === touched) ??
-  [...sets].sort((a, b) => b.mtimeMs - a.mtimeMs)[0]
+/** The one set a prompt names by its label or id, ignoring case and -, _ and spaces; none when it names no set or several. */
+export const namedIn = (sets: TicketSet[], text: string): TicketSet | undefined => {
+  const flat = (value: string): string => value.toLowerCase().replace(/[-_\s]+/g, ' ').trim()
+  const prompt = flat(text)
+  const hits = sets.filter(set =>
+    [labelOf(set.id), set.id].some(name => {
+      const want = flat(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+      return want !== '' && new RegExp(`(?<![\\p{L}\\p{N}])${want}(?![\\p{L}\\p{N}])`, 'u').test(prompt)
+    }),
+  )
+
+  return hits.length === 1 ? hits[0] : undefined
+}
 
 /** Sets in the order the pane and /sidekick-pick number them: most recently changed first. */
 export const orderSets = (sets: TicketSet[]): TicketSet[] =>

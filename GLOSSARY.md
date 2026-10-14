@@ -48,23 +48,27 @@ A group of tickets that belong to one feature or effort within a project.
 _Avoid_: Feature, epic, board
 
 **Active ticket set**:
-The ticket set the project's latest session read or edited, or the most recently changed one when the session touched none.
+The ticket set one session is working on: the one the user picked in that session, or the one the session last read or edited, whichever came last. A project with one ticket set has it active at once; with more, a new session has none until one is picked or touched, and a resumed session keeps its own.
 _Avoid_: Current feature
 
 **Recipe**:
-A project's saved description of where its tickets are and how to read a ticket's title and whether it is done.
+A project's saved description of the places its tickets are kept and how to read a ticket's title and whether it is done. A recipe can name several places; a place found later is added, never swapped in for one already known, and a place drops out only once it holds no tickets.
 _Avoid_: Format, parser, config, schema
 
 **Search**:
-The one-time inspection of a project that produces its recipe.
+An inspection of a project that produces or extends its recipe: once when the project is first seen, on a rescan, and when a session writes a ticket in a place the recipe does not know.
 _Avoid_: Scan, discovery, detection
 
 **Rescan**:
-A search the user asks for, optionally with a hint, that replaces the project's recipe.
+A search the user asks for, optionally with a hint. It adds the places it finds to the recipe and never removes one; a rescan that finds nothing leaves the recipe as it was.
 
 **Done**:
-A ticket whose status says it is finished, or, in a format with no status, whose checkboxes are all ticked.
+A ticket whose status says it is finished, or whose checkboxes are all ticked when it has no status or a status that says neither finished nor in progress. A status that says finished counts even with more words after it.
 _Avoid_: Closed, complete, resolved
+
+**Set picker**:
+The list of a project's ticket sets that the pane offers when a session starts or a rescan finds more than one, until the user picks one or starts working.
+_Avoid_: Menu, list, chooser
 
 **Progress**:
 The tickets of the active ticket set, each done, in progress or open, with the count of done ones and the next ticket that isn't done.

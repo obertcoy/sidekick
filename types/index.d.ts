@@ -29,10 +29,10 @@ export type View = {
   isSearching: boolean
   summary: Summary | null
   progress: Progress | null
-  /** Every ticket set, most recently changed first, and the id of the one shown. */
+  /** Every ticket set, most recently changed first, and the id of the session's active one ('' when none is). */
   sets: SetEntry[]
   current: string
-  /** True while the set list is offered: a new session, a /clear or a rescan, until a pick, a touch or the first prompt. */
+  /** True while the set picker shows: a new session, a /clear or a rescan, until a pick, a touch or the end of the next turn. */
   isChoosing: boolean
 }
 

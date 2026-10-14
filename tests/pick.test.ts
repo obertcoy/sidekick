@@ -11,6 +11,9 @@ const BILLING = { '01-plans.md': ticket('01: Plans', 'open'), '02-invoices.md': 
 const NAMES = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta']
 
 const setup = async ($: Engine, on: On, names: string[]): Promise<World> => {
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
+  on('tool.call', () => ({ result: { ok: true } }))
   const w = world(on, ROOT)
   names.forEach((name, at) => addSet(w, ROOT, name, name === 'search' ? SEARCH : BILLING, 10 + at))
   w.answer = () => answered(RECIPE)
@@ -33,111 +36,240 @@ const dialog = (on: On): Dialog => {
   return d
 }
 
-test('with two sets the pane lists them with the current one marked, and a press switches the set and hides the list', async ($, on) => {
+const START = { cwd: ROOT, surface: 'terminal', isInteractive: true } as const
+const END = { turnId: 't1', answer: 'Done.', durationMs: 1, isAborted: false, reason: 'answer' } as const
+
+type Pane = { buttons: number; has: (text: string | RegExp) => Promise<boolean> }
+const look = async ($: Engine): Promise<Pane> => {
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const buttons = (await ui.findAll({ type: 'Button' })).length
+  const found = new Map<string | RegExp, boolean>()
+  for (const text of PROBES) found.set(text, (await ui.find({ type: 'Text', text })) !== undefined)
+  await ui.unmount()
+
+  return { buttons, has: async text => found.get(text) ?? false }
+}
+const SEARCH_SRC = '.scratch/search/issues'
+const BILLING_SRC = '.scratch/billing/issues'
+const PROBES: (string | RegExp)[] = [
+  SEARCH_SRC, BILLING_SRC, '.scratch/new-feature/issues', 'Pick a ticket set:', '2 sets · /sidekick-pick', '2 ticket sets · /sidekick-pick', /\d+\/\d+ done/,
+]
+
+// A new session in a project with two sets: nothing is active, so the pane offers the picker alone.
+const fresh = async ($: Engine, on: On, names = ['search', 'billing']): Promise<{ w: World; clock: ReturnType<typeof mock.clock> }> => {
   const clock = mock.clock(on)
   mock.store(on)
+  const w = await setup($, on, names)
+  w.sessionId = 's-new'
+  await $.session.start(START)
+  await clock.settle()
+
+  return { w, clock }
+}
+
+const expectPicker = async ($: Engine): Promise<void> => {
+  const pane = await look($)
+  expect(pane.buttons).toBe(2)
+  expect(await pane.has('Pick a ticket set:')).toBe(true)
+  expect(await pane.has(/\d+\/\d+ done/)).toBe(false)
+  expect(await pane.has(SEARCH_SRC)).toBe(false)
+  expect(await pane.has(BILLING_SRC)).toBe(false)
+}
+
+const expectActive = async ($: Engine, source: string): Promise<void> => {
+  const pane = await look($)
+  expect(pane.buttons).toBe(0)
+  expect(await pane.has(source)).toBe(true)
+  expect(await pane.has('2 sets · /sidekick-pick')).toBe(true)
+}
+
+test('with two sets in a new session the pane shows only the picker, rows numbered, newest first', async ($, on) => {
+  await fresh($, on)
+  await expectPicker($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Button', text: /1: billing 0\/2/ })).toBeDefined()
+  expect(await ui.find({ type: 'Button', text: /2: search 1\/2/ })).toBeDefined()
+  expect(await ui.find({ type: 'Button', text: /›/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a button press picks the set and closes the picker, and the timed refresh never reopens it', async ($, on) => {
+  const { clock } = await fresh($, on)
   for (const surface of SURFACES) {
-    await setup($, on, ['search', 'billing'])
     const ui = await $.ui.mount({ ...PANE, surface })
-    // billing is newer, so it is set 2 in the file order but first in the list.
-    expect(await ui.find({ type: 'Button', text: /billing 0\/2/ })).toBeDefined()
-    expect(await ui.find({ type: 'Button', text: /search 1\/2/ })).toBeDefined()
-    expect(await ui.find({ type: 'Button', text: /› billing/ })).toBeDefined()
-    expect(await ui.find({ type: 'Button', text: /› search/ })).toBeUndefined()
     await ui.press({ key: 'set-2' })
-    await clock.settle()
-    expect(await ui.find({ type: 'Text', text: '.scratch/search/issues' })).toBeDefined()
-    expect(await ui.find({ type: 'Button' })).toBeUndefined()
     await ui.unmount()
     break
   }
-})
-
-test('the list shows on a fresh session start with two sets, and the timed refresh does not reopen it', async ($, on) => {
-  const clock = mock.clock(on)
-  mock.store(on)
-  on('turn.start', (_, e) => ({ turnId: e.turnId }))
-  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
-  const w = world(on, ROOT)
-  addSet(w, ROOT, 'search', SEARCH, 10)
-  addSet(w, ROOT, 'billing', BILLING, 11)
-  w.answer = () => answered(RECIPE)
-  await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
   await clock.settle()
-  let ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.findAll({ type: 'Button' })).length).toBe(2)
-  await ui.unmount()
-  await $.turn.start({ text: 'Go.', turnId: 't1' })
+  await expectActive($, SEARCH_SRC)
   await clock.advance(20_000)
-  ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Button' })).toBeUndefined()
-  await ui.unmount()
+  await expectActive($, SEARCH_SRC)
 })
 
-test('the first prompt hides the list and leaves a one-line hint', async ($, on) => {
-  const clock = mock.clock(on)
-  mock.store(on)
-  on('turn.start', (_, e) => ({ turnId: e.turnId }))
-  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
-  await setup($, on, ['search', 'billing'])
-  await $.turn.start({ text: 'Go.', turnId: 't1' })
+test('/sidekick-pick with a number or a name picks directly, and reports a bad or ambiguous one', async ($, on) => {
+  const { clock } = await fresh($, on)
+
+  expect((await $.command.run({ command: 'sidekick-pick', args: '2', ...RUN })).text).toBe('Showing search: 1/2 done.')
   await clock.settle()
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Button' })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: '2 sets · /sidekick-pick' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '.scratch/billing/issues' })).toBeDefined()
-  await ui.unmount()
+  await expectActive($, SEARCH_SRC)
+  expect((await $.command.run({ command: 'sidekick-pick', args: 'bill', ...RUN })).text).toBe('Showing billing: 0/2 done.')
+  expect((await $.command.run({ command: 'sidekick-pick', args: '7', ...RUN })).text).toMatch(/No ticket set matches "7"/)
+  expect((await $.command.run({ command: 'sidekick-pick', args: 'scratch', ...RUN })).text).toMatch(/More than one/)
 })
 
-test('a pick or a touch hides the list, and the hint shows', async ($, on) => {
-  const clock = mock.clock(on)
-  mock.store(on)
-  on('tool.call', () => ({ result: { ok: true } }))
-  await setup($, on, ['search', 'billing'])
-  await $.command.run({ command: 'sidekick-pick', args: 'search', ...RUN })
+test('Claude reading or editing a ticket in a set picks it, but a Write of a new ticket picks none', async ($, on) => {
+  const { w, clock } = await fresh($, on)
+  addSet(w, ROOT, 'billing', { ...BILLING, '03-new.md': ticket('03: New', 'open') }, 20)
+  await $.tool.call({ tool: 'Write', file_path: `${ROOT}/.scratch/billing/issues/03-new.md`, content: 'x' })
   await clock.settle()
-  let ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Button' })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: '2 sets · /sidekick-pick' })).toBeDefined()
-  await ui.unmount()
+  await expectPicker($)
 
-  await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
-  await clock.settle()
-  ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.findAll({ type: 'Button' })).length).toBe(2)
-  await ui.unmount()
   await $.tool.call({ tool: 'Read', file_path: `${ROOT}/.scratch/billing/issues/01-plans.md` })
   await clock.settle()
-  ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Button' })).toBeUndefined()
-  await ui.unmount()
+  await expectActive($, BILLING_SRC)
+  await $.tool.call({ tool: 'Edit', file_path: `${ROOT}/.scratch/search/issues/01-index.md`, old_string: 'a', new_string: 'b' })
+  await clock.settle()
+  await expectActive($, SEARCH_SRC)
 })
 
-test('a rescan with two sets shows the list again, and /clear does too', async ($, on) => {
-  const clock = mock.clock(on)
-  mock.store(on)
-  on('turn.start', (_, e) => ({ turnId: e.turnId }))
-  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
-  await setup($, on, ['search', 'billing'])
-  await $.turn.start({ text: 'Go.', turnId: 't1' })
+for (const text of ['continue search please', 'work on SEARCH']) {
+  test(`the first prompt "${text}" names exactly one set and picks it`, async ($, on) => {
+    const { clock } = await fresh($, on)
+    await $.turn.start({ text, turnId: 't1' })
+    await clock.settle()
+    await expectActive($, SEARCH_SRC)
+  })
+}
+
+test('a prompt with a hyphenated set name picks it from spaced words', async ($, on) => {
+  const { w, clock } = await fresh($, on, ['search', 'new-feature'])
+  await $.turn.start({ text: 'work on new feature', turnId: 't1' })
   await clock.settle()
-  let ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Button' })).toBeUndefined()
-  await ui.unmount()
+  const pane = await look($)
+  expect(pane.buttons).toBe(0)
+  expect(await pane.has('.scratch/new-feature/issues')).toBe(true)
+})
+
+test('a prompt that names two sets, or none, picks none; the turn ending then leaves only the hint', async ($, on) => {
+  const { clock } = await fresh($, on)
+  await $.turn.start({ text: 'compare search with billing', turnId: 't1' })
+  await clock.settle()
+  await expectPicker($)
+  // A touch during the turn still counts; here there is none, so the turn ends with no pick.
+  await $.turn.complete(END)
+  await clock.settle()
+  const pane = await look($)
+  expect(pane.buttons).toBe(0)
+  expect(await pane.has('2 ticket sets · /sidekick-pick')).toBe(true)
+  expect(await pane.has(/\d+\/\d+ done/)).toBe(false)
+  expect(await pane.has(SEARCH_SRC)).toBe(false)
+  expect(await pane.has(BILLING_SRC)).toBe(false)
+  // A pick or a touch later still sets the active set.
+  await $.tool.call({ tool: 'Read', file_path: `${ROOT}/.scratch/billing/issues/01-plans.md` })
+  await clock.settle()
+  await expectActive($, BILLING_SRC)
+})
+
+test('a touch during the first turn counts before the picker would hide', async ($, on) => {
+  const { clock } = await fresh($, on)
+  await $.turn.start({ text: 'Go.', turnId: 't1' })
+  await $.tool.call({ tool: 'Read', file_path: `${ROOT}/.scratch/search/issues/02-query.md` })
+  await clock.settle()
+  await $.turn.complete(END)
+  await clock.settle()
+  await expectActive($, SEARCH_SRC)
+})
+
+test('a subagent turn ending does not hide the picker', async ($, on) => {
+  const { clock } = await fresh($, on)
+  await $.turn.complete({ ...END, agentId: 'sub-1' } as never)
+  await clock.settle()
+  await expectPicker($)
+})
+
+test('each session keeps its own active set, and a resume brings its set back with no picker', async ($, on) => {
+  const { w, clock } = await fresh($, on)
+  w.sessionId = 's-a'
+  await $.session.start(START)
+  await clock.settle()
+  await $.command.run({ command: 'sidekick-pick', args: 'search', ...RUN })
+  await clock.settle()
+  await expectActive($, SEARCH_SRC)
+
+  // Another session in the same project starts with nothing active.
+  w.sessionId = 's-b'
+  await $.session.start(START)
+  await clock.settle()
+  await expectPicker($)
+  await $.command.run({ command: 'sidekick-pick', args: 'billing', ...RUN })
+  await clock.settle()
+  await expectActive($, BILLING_SRC)
+
+  // Resuming the first one: its own set, no picker.
+  w.sessionId = 's-a'
+  await $.session.start(START)
+  await clock.settle()
+  await expectActive($, SEARCH_SRC)
+  w.sessionId = 's-b'
+  await $.session.start(START)
+  await clock.settle()
+  await expectActive($, BILLING_SRC)
+})
+
+test('a resume with no stored set is treated as a new session', async ($, on) => {
+  const { w, clock } = await fresh($, on)
+  w.sessionId = 's-never-picked'
+  await $.session.start(START)
+  await clock.settle()
+  await expectPicker($)
+})
+
+test('/clear starts a new session: its active set is gone and the picker shows again', async ($, on) => {
+  const { w, clock } = await fresh($, on)
+  await $.command.run({ command: 'sidekick-pick', args: 'search', ...RUN })
+  await clock.settle()
+  await expectActive($, SEARCH_SRC)
+
+  await $.session.end({ reason: 'clear', sessionId: w.sessionId, resume: { id: w.sessionId } } as never)
+  w.sessionId = 's-cleared'
+  await clock.settle()
+  await $.command.run({ command: 'sidekick', args: '', ...RUN })
+  await clock.settle()
+  await expectPicker($)
+})
+
+test('/clear that reports the old session id still starts with nothing active', async ($, on) => {
+  const { w, clock } = await fresh($, on)
+  await $.command.run({ command: 'sidekick-pick', args: 'search', ...RUN })
+  await clock.settle()
+  await $.session.end({ reason: 'clear', sessionId: w.sessionId, resume: { id: w.sessionId } } as never)
+  await clock.settle()
+  await expectPicker($)
+})
+
+test('a rescan with two sets mid-session reopens the picker, keeps the current set and its progress, and the next turn closes it', async ($, on) => {
+  const { clock } = await fresh($, on)
+  await $.command.run({ command: 'sidekick-pick', args: 'search', ...RUN })
+  await clock.settle()
+  await $.turn.start({ text: 'Go.', turnId: 't1' })
+  await $.turn.complete(END)
+  await clock.settle()
+  await expectActive($, SEARCH_SRC)
 
   await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
   await clock.settle()
-  ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await ui.findAll({ type: 'Button' })).length).toBe(2)
+  expect(await ui.find({ type: 'Button', text: /› 2: search/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: SEARCH_SRC })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '1/2 done' })).toBeDefined()
   await ui.unmount()
 
   await $.turn.start({ text: 'Go.', turnId: 't2' })
+  await $.turn.complete(END)
   await clock.settle()
-  await $.session.end({ reason: 'clear', sessionId: 's1', resume: { id: 's1' } } as never)
-  await clock.settle()
-  ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.findAll({ type: 'Button' })).length).toBe(2)
-  await ui.unmount()
+  await expectActive($, SEARCH_SRC)
 })
 
 test('a single set shows no list', async ($, on) => {
@@ -215,19 +347,11 @@ test('/sidekick-pick takes a choice from the dialog, and a dismissed dialog chan
 })
 
 test('a pick holds until Claude touches a file in another set', async ($, on) => {
-  const clock = mock.clock(on)
-  mock.store(on)
-  on('tool.call', () => ({ result: { ok: true } }))
-  await setup($, on, ['search', 'billing'])
+  const { clock } = await fresh($, on)
   await $.command.run({ command: 'sidekick-pick', args: 'search', ...RUN })
   await clock.advance(20_000)
-  let ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: '.scratch/search/issues' })).toBeDefined()
-  await ui.unmount()
-
+  await expectActive($, SEARCH_SRC)
   await $.tool.call({ tool: 'Read', file_path: `${ROOT}/.scratch/billing/issues/01-plans.md` })
   await clock.settle()
-  ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: '.scratch/billing/issues' })).toBeDefined()
-  await ui.unmount()
+  await expectActive($, BILLING_SRC)
 })
