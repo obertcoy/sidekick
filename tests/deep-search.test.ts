@@ -81,3 +81,32 @@ test('cache folders are never listed or read', async ($, on) => {
   }
   expect(w.touched.filter(path => /\.(pytest_cache|ruff_cache|tmp_strands)/.test(path))).toEqual([])
 })
+
+// Sibling projects with hundreds of files each, listed before the one that holds the tickets.
+const crowded = (on: Parameters<typeof world>[0], ext: string): World => {
+  const w = monorepo(on)
+  const rows = (n: number): { name: string; kind: 'file' }[] =>
+    Array.from({ length: n }, (_, i) => ({ name: `mod_${i}.${ext}`, kind: 'file' as const }))
+  const names = ['aaa_api', 'aab_etl', 'aac_ml', 'aad_web']
+  w.tree[`${ROOT}/projects`] = [
+    ...names.map(name => ({ name, kind: 'dir' as const })),
+    ...(w.tree[`${ROOT}/projects`] ?? []),
+  ]
+  for (const name of names) {
+    w.tree[`${ROOT}/projects/${name}`] = [{ name: 'src', kind: 'dir' }, ...rows(300)]
+    w.tree[`${ROOT}/projects/${name}/src`] = rows(300)
+  }
+
+  return w
+}
+
+for (const ext of ['py', 'json']) {
+  test(`with no hint, ${ext} files in sibling projects do not use up the cap before the deep folder`, async ($, on) => {
+    mock.clock(on)
+    mock.store(on)
+    const w = crowded(on, ext)
+
+    await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
+    expect(w.asked[0] ?? '').toContain(`${ISSUES}/01-stop.md`)
+  })
+}

@@ -49,7 +49,7 @@ test('a glob matches within a folder with * and across folders with **', async (
 })
 
 test('the status line decides when a ticket has one, else its checkboxes do', async () => {
-  const open = '# 01: Cart\n\n**Status:** ready-for-agent\n\n- [x] one\n- [x] two\n'
+  const open = '# 01: Cart\n\n**Status:** ready-for-agent\n\n- [x] one\n- [ ] two\n'
   expect(parseTicketFile('01-cart.md', open, files)).toEqual({
     title: '01: Cart',
     isDone: false,
@@ -60,6 +60,43 @@ test('the status line decides when a ticket has one, else its checkboxes do', as
   expect(parseTicketFile('04.md', '# Boxes\n- [x] a\n- [X] b\n', files).isDone).toBe(true)
   expect(parseTicketFile('05.md', '# Boxes\n- [x] a\n- [ ] b\n', files).isDone).toBe(false)
   expect(parseTicketFile('06-no-heading.md', 'just text', files).title).toBe('06-no-heading')
+})
+
+const REAL =
+  '**Status:** resolved (commit `8b6d9702` on branch `worktree-agent-a2d462a49df30f41b`, not merged; flag `CHAT_LOOKUP_STOP`)'
+
+test('a status counts by whole words anywhere in it, unless a negation comes right before', async () => {
+  const of = (status: string, boxes = '- [ ] a'): ReturnType<typeof parseTicketFile> =>
+    parseTicketFile('t.md', `# T\n\n**Status:** ${status}\n\n${boxes}\n`, files)
+  expect(of(REAL.replace('**Status:** ', '')).isDone).toBe(true)
+  expect(of('ready-for-agent').isDone).toBe(false)
+  expect(of('ready-for-agent, not merged').isDone).toBe(false)
+  expect(of('not done yet').isDone).toBe(false)
+  expect(of('undone').isDone).toBe(false)
+  expect(of('doneish').isDone).toBe(false)
+  expect(of('\u2705 Done').isDone).toBe(true)
+  expect(of('~~Done~~').isDone).toBe(true)
+  expect(of('In Progress')).toMatchObject({ isDone: false, isActive: true })
+  expect(of('in_progress (alice)').isActive).toBe(true)
+  expect(of('in-progress, not done').isActive).toBe(true)
+  expect(of('done, was in progress')).toMatchObject({ isDone: true, isActive: false })
+})
+
+test('an unknown status falls back to the checkboxes', async () => {
+  const of = (boxes: string): boolean =>
+    parseTicketFile('t.md', `# T\n**Status:** waiting on review\n${boxes}\n`, files).isDone
+  expect(of('- [x] a\n- [x] b')).toBe(true)
+  expect(of('- [x] a\n- [ ] b')).toBe(false)
+  expect(parseTicketFile('t.md', '# T\n**Status:** \u{1F6A7} wip\n- [x] a', files).isActive).toBe(true)
+})
+
+test('two tickets: a resolved one with trailing text and a ready one count 1/2 done', async () => {
+  const tickets = [
+    parseTicketFile('01.md', `# One\n\n${REAL}\n\n- [ ] a step\n`, files),
+    parseTicketFile('02.md', '# Two\n\n**Status:** ready-for-agent\n\n- [ ] a step\n', files),
+  ]
+  expect(tickets.filter(t => t.isDone)).toHaveLength(1)
+  expect(tickets[0]?.isDone).toBe(true)
 })
 
 test('a checklist has one ticket per line', async () => {

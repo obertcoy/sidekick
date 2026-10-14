@@ -181,6 +181,25 @@ const titleOf = (name: string, lines: string[]): string => {
   return name.replace(/\.[^.]+$/, '')
 }
 
+const NEGATIONS = new Set(['not', 'no', 'never', 'isnt', 'un'])
+
+// Lowercase words only: emoji, markdown, dashes and underscores all become one space.
+const wordsOf = (text: string): string[] => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ')
+
+/** True when a value stands in the status as whole words and no negation sits right before it. */
+const hasValue = (status: string, values: string[]): boolean => {
+  const words = wordsOf(status)
+
+  return values.some(value => {
+    const wanted = wordsOf(value)
+
+    return words.some(
+      (_, at) =>
+        wanted.every((word, step) => words[at + step] === word) && !NEGATIONS.has(words[at - 1] ?? ''),
+    )
+  })
+}
+
 /** One ticket per file: the status line decides when the format has one, else the checkboxes. */
 export const parseTicketFile = (
   name: string,
@@ -190,10 +209,11 @@ export const parseTicketFile = (
   const lines = text.split(/\r?\n/)
   const title = titleOf(name, lines)
   const status = recipe.statusLabel === null ? undefined : statusOf(lines, recipe.statusLabel)
+  // A status that names neither state is no answer: the checkboxes decide.
   if (status !== undefined) {
-    const isDone = recipe.doneValues.includes(status)
-
-    return { title, isDone, isActive: !isDone && recipe.activeValues.includes(status) }
+    const isDone = hasValue(status, recipe.doneValues)
+    const isActive = !isDone && hasValue(status, recipe.activeValues)
+    if (isDone || isActive) return { title, isDone, isActive }
   }
   const boxes = lines.flatMap(line => CHECKBOX.exec(line)?.[1] ?? [])
   const ticked = boxes.filter(box => box.toLowerCase() === 'x').length

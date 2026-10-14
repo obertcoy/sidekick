@@ -237,6 +237,30 @@ const resolveHint = async ($: Dollar, root: string, hint: string): Promise<strin
   return undefined
 }
 
+/** Folders that look like ticket homes, found by folder names alone so file counts cannot hide them. */
+const homesOf = async ($: Dollar, root: string): Promise<string[]> => {
+  const homes: string[] = []
+  let level = ['']
+  let seen = 0
+  for (let depth = 0; depth < 10 && level.length > 0 && seen < FOLDER_LIMIT; depth += 1) {
+    const next: string[] = []
+    for (const dir of level) {
+      const entries = await $.fs.list(dir === '' ? root : `${root}/${dir}`).catch(() => [])
+      seen += entries.length
+      for (const entry of entries) {
+        if (entry.kind !== 'dir' || isSkipped(entry.name)) continue
+        const path = dir === '' ? entry.name : `${dir}/${entry.name}`
+        // A home is taken whole; its own walk goes below it.
+        if (LIKELY.test(path)) homes.push(path)
+        else next.push(path)
+      }
+    }
+    level = next
+  }
+
+  return homes
+}
+
 const filesOf = async ($: Dollar, root: string, recipe: Recipe): Promise<FileInfo[]> => {
   if (recipe.kind === 'none') return []
   const { dir, depth } = globReach(recipe.glob)
@@ -272,10 +296,16 @@ const search = async ($: Dollar, root: string, hint: string): Promise<Recipe> =>
 
     return LIKELY.test(dir) ? 0 : LIKELY.test(file.path) ? 1 : 2
   }
+  // Without a hint, the likely folders are walked on their own: a project full of files must not use up the cap first.
+  const broad = async (): Promise<FileInfo[]> => {
+    const near: FileInfo[] = []
+    for (const home of await homesOf($, root)) await walk($, root, home, 4, 600, near, 4)
+    const all = [...near, ...(await walk($, root, '', 5, 2000, [], 10))]
+
+    return all.filter((file, at) => isListed(file) && all.findIndex(one => one.path === file.path) === at)
+  }
   const listing =
-    pointed.length > 0
-      ? pointed
-      : (await walk($, root, '', 5, 2000, [], 10)).filter(isListed).sort((a, b) => rank(a) - rank(b))
+    pointed.length > 0 ? pointed : (await broad()).sort((a, b) => rank(a) - rank(b))
   if (listing.length === 0) {
     await $.store.set(`recipe:${root}`, { kind: 'none' })
 
