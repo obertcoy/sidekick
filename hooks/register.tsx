@@ -9,9 +9,11 @@ import type { Mode } from './sprite'
 import { projectRoot, setCurrentRoot, setProjectLook, setSavedLook } from './sprite/registry'
 import type { SavedLook } from './sprite/types'
 import {
+  endsWithPath,
   globReach,
   globToRegExp,
   groupSets,
+  hintPaths,
   normalize,
   parseChecklist,
   parseRecipe,
@@ -33,7 +35,9 @@ const REFRESH_MS = 20_000
 const SKIPPED = new Set([
   'node_modules', '.git', 'dist', 'build', 'out', 'target', 'vendor', '.next',
   '.venv', 'venv', '__pycache__', '.idea', '.vscode', 'coverage', '.claude-plugin',
+  '.pytest_cache', '.ruff_cache', '.mypy_cache', '.tox', '.cache',
 ])
+const isSkipped = (name: string): boolean => SKIPPED.has(name) || name.startsWith('.tmp')
 const LISTED = /(\.(md|mdx|markdown|txt|org|ya?ml|json|toml)|^[^.]+)$/i
 const LIKELY = /issue|ticket|task|todo|backlog|plan|roadmap|scratch|stor(y|ies)|spec|kanban|board/i
 const GLYPH = { done: '✓', active: '◐', open: '○' } as const
@@ -177,19 +181,60 @@ const walk = async (
   depth: number,
   cap: number,
   found: FileInfo[] = [],
+  deeper = 0,
 ): Promise<FileInfo[]> => {
   if (found.length >= cap) return found
-  const entries = await $.fs.list(dir === '' ? root : `${root}/${dir}`).catch(() => [])
+  const listed = await $.fs.list(dir === '' ? root : `${root}/${dir}`).catch(() => [])
+  const pathOf = (name: string): string => (dir === '' ? name : `${dir}/${name}`)
+  // Folders that look like ticket homes come first, so the cap spends itself elsewhere.
+  const isLikelyDir = (entry: (typeof listed)[number]): boolean =>
+    entry.kind === 'dir' && LIKELY.test(pathOf(entry.name))
+  const entries = [...listed].sort((a, b) => Number(isLikelyDir(b)) - Number(isLikelyDir(a)))
   for (const entry of entries) {
     if (found.length >= cap) break
-    const path = dir === '' ? entry.name : `${dir}/${entry.name}`
+    const path = pathOf(entry.name)
     if (entry.kind === 'file') found.push({ path, mtimeMs: entry.mtimeMs })
-    if (entry.kind === 'dir' && depth > 1 && !SKIPPED.has(entry.name)) {
-      await walk($, root, path, depth - 1, cap, found)
+    // Past the plain depth, only folders that look like ticket homes are followed, down to ten levels.
+    const isEntered = depth > 1 || (deeper > 1 && LIKELY.test(path))
+    if (entry.kind === 'dir' && isEntered && !isSkipped(entry.name)) {
+      await walk($, root, path, depth - 1, cap, found, deeper - 1)
     }
   }
 
   return found
+}
+
+const FOLDER_LIMIT = 3000
+
+/** The folder a hint points at, root-relative, or undefined when none of its paths is on disk. */
+const resolveHint = async ($: Dollar, root: string, hint: string): Promise<string | undefined> => {
+  const wanted = hintPaths(root, hint)
+  for (const path of wanted) {
+    if ((await $.fs.list(`${root}/${path}`).catch(() => [])).length > 0) return path
+  }
+  if (wanted.length === 0) return undefined
+  // Level by level, so the nearest match wins; among equals the folder changed last.
+  let level = ['']
+  let seen = 0
+  for (let depth = 0; depth < 10 && level.length > 0 && seen < FOLDER_LIMIT; depth += 1) {
+    const children: { path: string; mtimeMs: number }[] = []
+    for (const dir of level) {
+      const entries = await $.fs.list(dir === '' ? root : `${root}/${dir}`).catch(() => [])
+      for (const entry of entries) {
+        if (entry.kind !== 'dir' || isSkipped(entry.name)) continue
+        children.push({ path: dir === '' ? entry.name : `${dir}/${entry.name}`, mtimeMs: entry.mtimeMs })
+      }
+      seen += entries.length
+    }
+    for (const path of wanted) {
+      const matches = children.filter(child => endsWithPath(child.path, path))
+      const newest = matches.sort((a, b) => b.mtimeMs - a.mtimeMs)[0]
+      if (newest !== undefined) return newest.path
+    }
+    level = children.map(child => child.path)
+  }
+
+  return undefined
 }
 
 const filesOf = async ($: Dollar, root: string, recipe: Recipe): Promise<FileInfo[]> => {
@@ -218,9 +263,19 @@ const head = (text: string, lines: number, chars: number): string =>
 
 /** The one-time look at a project that produces its recipe. */
 const search = async ($: Dollar, root: string, hint: string): Promise<Recipe> => {
-  const listing = (await walk($, root, '', 5, 2000)).filter(file =>
-    LISTED.test(file.path.slice(file.path.lastIndexOf('/') + 1)),
-  )
+  const isListed = (file: FileInfo): boolean => LISTED.test(file.path.slice(file.path.lastIndexOf('/') + 1))
+  const at = await resolveHint($, root, hint)
+  const pointed = at === undefined ? [] : (await walk($, root, at, 4, 600, [], 4)).filter(isListed)
+  // Paths in a folder that looks like a ticket home go first, so the cut at 600 keeps them.
+  const rank = (file: FileInfo): number => {
+    const dir = file.path.slice(0, Math.max(0, file.path.lastIndexOf('/')))
+
+    return LIKELY.test(dir) ? 0 : LIKELY.test(file.path) ? 1 : 2
+  }
+  const listing =
+    pointed.length > 0
+      ? pointed
+      : (await walk($, root, '', 5, 2000, [], 10)).filter(isListed).sort((a, b) => rank(a) - rank(b))
   if (listing.length === 0) {
     await $.store.set(`recipe:${root}`, { kind: 'none' })
 
@@ -239,6 +294,9 @@ const search = async ($: Dollar, root: string, hint: string): Promise<Recipe> =>
   )
   const prompt = [
     hint === '' ? '' : `The developer says: ${hint}`,
+    pointed.length > 0
+      ? `The developer pointed at the folder \`${at}\`; globs still start from the project root.`
+      : '',
     `Files:\n${listing.slice(0, 600).map(file => file.path).join('\n')}`,
     shown.length === 0 ? '' : `Starts of some files:\n${shown.join('\n\n')}`,
   ]

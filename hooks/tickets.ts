@@ -61,6 +61,37 @@ export const globReach = (glob: string): { dir: string; depth: number } => {
   }
 }
 
+/** The folder paths a hint names: its words with a slash, cleaned to plain root-relative segments. */
+export const hintPaths = (root: string, hint: string): string[] => {
+  const found = hint
+    .split(/\s+/)
+    .filter(word => word.includes('/'))
+    .flatMap(word => {
+      const bare = word.replace(/^["'`@]+/, '').replace(/["'`,;]+$/, '')
+      const relative = toRelative(root, bare)
+      if (relative === undefined) return []
+      const path = relative
+        .split('/')
+        .filter(part => part !== '' && part !== '.' && part !== '..' && !part.includes(':'))
+        .join('/')
+
+      return path === '' ? [] : [path]
+    })
+
+  return [...new Set(found)]
+}
+
+/** Whether the folder ends with the path's segments, ignoring case and a leading dot ("scratch" is ".scratch"). */
+export const endsWithPath = (folder: string, path: string): boolean => {
+  const plain = (value: string): string[] =>
+    value.split('/').filter(part => part !== '').map(part => part.replace(/^\./, '').toLowerCase())
+  const have = plain(folder)
+  const want = plain(path)
+  if (want.length === 0 || want.length > have.length) return false
+
+  return want.every((part, index) => part === have[have.length - want.length + index])
+}
+
 const words = (value: unknown, fallback: string[]): string[] => {
   const given = Array.isArray(value)
     ? value.filter((one): one is string => typeof one === 'string')
