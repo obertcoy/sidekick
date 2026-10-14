@@ -73,11 +73,16 @@ const view = atom({ plugin: 'sidekick', key: 'view' } as const, {
   progress: null,
   sets: [],
   current: '',
+  isChoosing: false,
 } satisfies View as View)
 
 let isSearching = false
 // True when the last search found nothing and the recipe that worked before was kept.
 let isKept = false
+// The set list is offered right after a session start, a /clear or a rescan, until the developer settles on a set.
+let isChoosing = false
+// An offer waits here until a refresh has read the sets, so a search in flight does not lose it.
+let isOffering = false
 // Folders a new ticket file was already looked into this session, so a burst of writes searches once.
 const probed = new Set<string>()
 const SET_ROWS = 9
@@ -453,6 +458,10 @@ const refresh = async ($: Dollar, hint?: string, cover?: string): Promise<View> 
   const touched = (await $.store.get(`touched:${root}`)) as string | undefined
   const sets = recipe === undefined ? [] : orderSets(groupSets(recipe, files))
   const set = pickSet(sets, touched)
+  if (isOffering) {
+    isOffering = false
+    isChoosing = sets.length > 1
+  }
   const tickets =
     set === undefined || recipe === undefined
       ? []
@@ -464,6 +473,7 @@ const refresh = async ($: Dollar, hint?: string, cover?: string): Promise<View> 
     progress: set === undefined || tickets.length === 0 ? null : progressOf(tickets, set.id),
     sets: recipe === undefined || sets.length < 2 ? [] : await entriesOf($, root, recipe, sets),
     current: set?.id ?? '',
+    isChoosing: isChoosing && sets.length > 1,
   }
   await show($, next)
 
@@ -549,6 +559,7 @@ const quietly = (work: Promise<unknown>, $: Dollar): void => {
 const choose = async ($: Dollar, id: string): Promise<void> => {
   const root = await rootOf($)
   await $.store.set(`touched:${root}`, id)
+  isChoosing = false
   await refresh($)
 }
 
@@ -588,6 +599,7 @@ export const register: Register = on => {
     const root = await rootOrNone($)
     setProjectLook((await storedLook($, lookKey('project', root))) ?? {}, root)
     void $.ui.open({ id: PANE, title: 'Sidekick' })
+    isOffering = true
     quietly(refresh($), $)
     $.clock.every(REFRESH_MS, () => quietly(refresh($), $))
 
@@ -609,7 +621,9 @@ export const register: Register = on => {
   on('command.run', { command: 'sidekick-rescan' }, async ($, e) => {
     if (isSearching) return { text: 'A search is already running.' }
     isKept = false
+    isOffering = true
     const { progress } = await refresh($, e.args.trim())
+    isOffering = false
 
     return {
       text:
@@ -645,6 +659,7 @@ export const register: Register = on => {
     if (chosen === 'none') return { text: `No ticket set matches "${query}". /sidekick-pick shows the choices.` }
     if (chosen === 'many') return { text: `More than one ticket set matches "${query}". Type more of the name.` }
     await $.store.set(`touched:${root}`, chosen.id)
+    isChoosing = false
     const next = await refresh($)
     const entry = next.sets.find(one => one.id === chosen.id)
 
@@ -703,6 +718,7 @@ export const register: Register = on => {
           return
         }
         await $.store.set(`touched:${root}`, id)
+        isChoosing = false
         await refresh($)
       })(),
       $,
@@ -711,7 +727,22 @@ export const register: Register = on => {
     return ran
   })
 
+  // A /clear fires no session.start; session.end with reason 'clear' is the only sign of it.
+  on('session.end', async ($, e, next) => {
+    if (e.reason === 'clear') {
+      isOffering = true
+      quietly(refresh($), $)
+    }
+
+    return next(e)
+  })
+
   on('turn.start', async ($, e, next) => {
+    // The first prompt after the list appeared accepts the set shown.
+    if (isChoosing && e.agentId === undefined) {
+      isChoosing = false
+      quietly(refresh($), $)
+    }
     // The session may have moved to another project since the last refresh; draw that project's look.
     await followProject($)
     animate($, 'write')
@@ -731,7 +762,7 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
-    const { project, isSearching: isLooking, summary, progress, sets, current } = await read($, view)
+    const { project, isSearching: isLooking, summary, progress, sets, current, isChoosing: isListed } = await read($, view)
     // One column of padding on each side; the bar and rules span what is left.
     const columns = Math.max(12, e.props.bodyColumns - 2)
     const rows = progress?.rows ?? []
@@ -877,7 +908,12 @@ export const register: Register = on => {
             {end < rows.length && <Text dimColor>↓ {rows.length - end} more</Text>}
           </Box>
         )}
-        {sets.length > 1 && (
+        {sets.length > 1 && !isListed && (
+          <Box marginTop={1}>
+            <Text dimColor wrap="truncate-end">{`${sets.length} sets · /sidekick-pick`}</Text>
+          </Box>
+        )}
+        {sets.length > 1 && isListed && (
           <Box flexDirection="column" marginTop={1}>
             {sets.slice(0, SET_ROWS).map((one, at) => (
               <Button

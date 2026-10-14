@@ -25,7 +25,7 @@ Answer `y` to add the marketplace, then pick a scope.
 | --- | --- |
 | `/sidekick` | Opens the pane. `/sidekick close` closes it. |
 | `/sidekick-rescan [hint]` | Looks again for the project's tickets. The hint is plain words, such as `tickets are in docs/tasks`. |
-| `/sidekick-pick [number or name]` | Chooses which ticket set the pane shows when a project has several. With no argument it asks; `/sidekick-pick 2` or `/sidekick-pick billing` picks directly. The pane also lists the sets as buttons (keys 1-9). A pick holds until Claude touches a file in another set. |
+| `/sidekick-pick [number or name]` | Chooses which ticket set the pane shows when a project has several. With no argument it asks; `/sidekick-pick 2` or `/sidekick-pick billing` picks directly. The pane lists the sets as buttons (keys 1-9) only when a session starts, after `/clear`, and after a rescan that finds 2+ sets. The list hides when you pick, when Claude touches a file in a set, or when you send your first prompt; then a dim `2 sets · /sidekick-pick` line remains. A pick holds until Claude touches a file in another set. |
 | `/sidekick-look [part=name ...]` | Chooses the sidekick's look for every project: `character`, `head`, `face`, `neck`, `held` or `background`, any number at once (`character=classic head=cap background=dusk`). Parts you don't name stay as they were. With no arguments it shows the current look and everything you can pick. |
 
 Sidekick keeps the last recipe that worked: a rescan that finds nothing leaves it in place. When Claude writes a new `.md` file in a ticket-like folder the recipe does not read (say `.scratch/new-feature/issues/01-foo.md`), sidekick looks there once and switches the pane to it.

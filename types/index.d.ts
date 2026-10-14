@@ -32,6 +32,8 @@ export type View = {
   /** Every ticket set, most recently changed first, and the id of the one shown. */
   sets: SetEntry[]
   current: string
+  /** True while the set list is offered: a new session, a /clear or a rescan, until a pick, a touch or the first prompt. */
+  isChoosing: boolean
 }
 
 declare module 'claude-code' {

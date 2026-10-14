@@ -33,13 +33,13 @@ const dialog = (on: On): Dialog => {
   return d
 }
 
-test('with two sets the pane lists them with the current one marked, and a press switches the set', async ($, on) => {
+test('with two sets the pane lists them with the current one marked, and a press switches the set and hides the list', async ($, on) => {
   const clock = mock.clock(on)
   mock.store(on)
-  await setup($, on, ['search', 'billing'])
-  // billing is newer, so it is set 2 in the file order but first in the list.
   for (const surface of SURFACES) {
+    await setup($, on, ['search', 'billing'])
     const ui = await $.ui.mount({ ...PANE, surface })
+    // billing is newer, so it is set 2 in the file order but first in the list.
     expect(await ui.find({ type: 'Button', text: /billing 0\/2/ })).toBeDefined()
     expect(await ui.find({ type: 'Button', text: /search 1\/2/ })).toBeDefined()
     expect(await ui.find({ type: 'Button', text: /› billing/ })).toBeDefined()
@@ -47,12 +47,97 @@ test('with two sets the pane lists them with the current one marked, and a press
     await ui.press({ key: 'set-2' })
     await clock.settle()
     expect(await ui.find({ type: 'Text', text: '.scratch/search/issues' })).toBeDefined()
-    expect(await ui.find({ type: 'Button', text: /› search/ })).toBeDefined()
-    await ui.press({ key: 'set-1' })
-    await clock.settle()
-    expect(await ui.find({ type: 'Text', text: '.scratch/billing/issues' })).toBeDefined()
+    expect(await ui.find({ type: 'Button' })).toBeUndefined()
     await ui.unmount()
+    break
   }
+})
+
+test('the list shows on a fresh session start with two sets, and the timed refresh does not reopen it', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
+  const w = world(on, ROOT)
+  addSet(w, ROOT, 'search', SEARCH, 10)
+  addSet(w, ROOT, 'billing', BILLING, 11)
+  w.answer = () => answered(RECIPE)
+  await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  let ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.findAll({ type: 'Button' })).length).toBe(2)
+  await ui.unmount()
+  await $.turn.start({ text: 'Go.', turnId: 't1' })
+  await clock.advance(20_000)
+  ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Button' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('the first prompt hides the list and leaves a one-line hint', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
+  await setup($, on, ['search', 'billing'])
+  await $.turn.start({ text: 'Go.', turnId: 't1' })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Button' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: '2 sets · /sidekick-pick' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '.scratch/billing/issues' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a pick or a touch hides the list, and the hint shows', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('tool.call', () => ({ result: { ok: true } }))
+  await setup($, on, ['search', 'billing'])
+  await $.command.run({ command: 'sidekick-pick', args: 'search', ...RUN })
+  await clock.settle()
+  let ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Button' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: '2 sets · /sidekick-pick' })).toBeDefined()
+  await ui.unmount()
+
+  await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
+  await clock.settle()
+  ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.findAll({ type: 'Button' })).length).toBe(2)
+  await ui.unmount()
+  await $.tool.call({ tool: 'Read', file_path: `${ROOT}/.scratch/billing/issues/01-plans.md` })
+  await clock.settle()
+  ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Button' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a rescan with two sets shows the list again, and /clear does too', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
+  await setup($, on, ['search', 'billing'])
+  await $.turn.start({ text: 'Go.', turnId: 't1' })
+  await clock.settle()
+  let ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Button' })).toBeUndefined()
+  await ui.unmount()
+
+  await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
+  await clock.settle()
+  ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.findAll({ type: 'Button' })).length).toBe(2)
+  await ui.unmount()
+
+  await $.turn.start({ text: 'Go.', turnId: 't2' })
+  await clock.settle()
+  await $.session.end({ reason: 'clear', sessionId: 's1', resume: { id: 's1' } } as never)
+  await clock.settle()
+  ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.findAll({ type: 'Button' })).length).toBe(2)
+  await ui.unmount()
 })
 
 test('a single set shows no list', async ($, on) => {
@@ -61,6 +146,7 @@ test('a single set shows no list', async ($, on) => {
   await setup($, on, ['search'])
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Button' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /sets · / })).toBeUndefined()
   await ui.unmount()
 })
 
