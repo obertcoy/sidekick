@@ -49,6 +49,8 @@ export type World = {
   messages: SessionMessage[]
   /** The name of every command the mod registered, in order. */
   registered: string[]
+  /** Every pane the mod opened, with whether it asked for the keyboard. */
+  opened: { id: string; focus?: true }[]
   /** The key of every Raster the mod repainted with `$.ui.blit`, in order. */
   blits: string[]
   /** The cells of every one of those repaints, in order: what the sidekick looked like each time. */
@@ -72,6 +74,7 @@ export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}):
       { role: 'assistant', text: 'Built it.', toolUses: [] },
     ],
     registered: [],
+    opened: [],
     blits: [],
     painted: [],
   }
@@ -114,7 +117,11 @@ export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}):
   on('turn.complete', (_, e) => w.endTurn(e))
   on('ui.toast', () => ({ value: undefined }))
   on('ui.log', () => ({ value: undefined }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.open', (_, e) => {
+    w.opened.push({ id: e.id, focus: e.focus })
+
+    return { value: { isPlaced: true } }
+  })
   on('ui.blit', (_, e) => {
     w.blits.push(e.key)
     w.painted.push('cells' in e ? e.cells : '')

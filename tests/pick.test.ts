@@ -282,13 +282,13 @@ test('a single set shows no list', async ($, on) => {
   await ui.unmount()
 })
 
-test('the pane lists at most nine sets and points to the command for the rest', async ($, on) => {
+test('with 9 sets the pane still draws one button per set and no Select', async ($, on) => {
   mock.clock(on)
   mock.store(on)
-  await setup($, on, [...NAMES, 'eta', 'theta', 'iota', 'kappa'])
+  await setup($, on, [...NAMES, 'eta', 'theta', 'iota'])
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await ui.findAll({ type: 'Button' })).length).toBe(9)
-  expect(await ui.find({ type: 'Text', text: /\+1 more/ })).toBeDefined()
+  expect(await ui.find({ type: 'Select' })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -321,16 +321,15 @@ test('/sidekick-pick with no sets only says so', async ($, on) => {
   expect((await $.command.run({ command: 'sidekick-pick', args: '', ...RUN })).text).toMatch(/No ticket sets found/)
 })
 
-test('/sidekick-pick without args asks, offering the 4 newest sets, and takes a typed name', async ($, on) => {
+test('/sidekick-pick without args asks when there are 4 sets or fewer, and takes a typed name', async ($, on) => {
   const clock = mock.clock(on)
   mock.store(on)
   const d = dialog(on)
-  await setup($, on, NAMES)
+  await setup($, on, NAMES.slice(0, 4))
   d.reply = 'alpha'
   const picked = await $.command.run({ command: 'sidekick-pick', args: '', ...RUN })
   await clock.settle()
-  // zeta, epsilon, delta, gamma are the newest four; the typed "alpha" is matched among all.
-  expect(d.asked[0]?.options).toEqual(['zeta', 'epsilon', 'delta', 'gamma'])
+  expect(d.asked[0]?.options).toEqual(['delta', 'gamma', 'beta', 'alpha'])
   expect(picked.text).toBe('Showing alpha: 0/2 done.')
 })
 
@@ -354,4 +353,76 @@ test('a pick holds until Claude touches a file in another set', async ($, on) =>
   await $.tool.call({ tool: 'Read', file_path: `${ROOT}/.scratch/billing/issues/01-plans.md` })
   await clock.settle()
   await expectActive($, BILLING_SRC)
+})
+
+const MANY = ['s01', 's02', 's03', 's04', 's05', 's06', 's07', 's08', 's09', 's10']
+
+test('/sidekick-pick without args and more than 4 sets opens the pane picker with the keys, and asks nothing', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  const d = dialog(on)
+  const w = await setup($, on, NAMES)
+  w.sessionId = 's-new'
+  w.opened.length = 0
+  const ran = await $.command.run({ command: 'sidekick-pick', args: '', ...RUN })
+  expect(ran.text).toBe('Pick a ticket set in the pane (6 sets).')
+  expect(d.asked).toHaveLength(0)
+  expect(w.opened).toEqual([{ id: 'sidekick', focus: true }])
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: 'Pick a ticket set:' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('with 4 sets or fewer the command still asks in a dialog and opens no pane', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  const d = dialog(on)
+  const w = await setup($, on, NAMES.slice(0, 4))
+  w.opened.length = 0
+  d.reply = 'beta'
+  await $.command.run({ command: 'sidekick-pick', args: '', ...RUN })
+  expect(d.asked).toHaveLength(1)
+  expect(w.opened).toEqual([])
+})
+
+test('the picker the command opened closes when the next main-agent turn ends', async ($, on) => {
+  const { clock } = await fresh($, on, NAMES)
+  await $.turn.complete(END)
+  await clock.settle()
+  expect((await look($)).buttons).toBe(0)
+  await $.command.run({ command: 'sidekick-pick', args: '', ...RUN })
+  await clock.settle()
+  expect((await look($)).buttons).toBe(6)
+  await $.turn.complete(END)
+  await clock.settle()
+  const pane = await look($)
+  expect(pane.buttons).toBe(0)
+  expect(await pane.has('Pick a ticket set:')).toBe(false)
+})
+
+test('with 10 sets the pane draws a Select of all of them and picking one makes it active', async ($, on) => {
+  const { clock } = await fresh($, on, MANY)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.findAll({ type: 'Button' })).toHaveLength(0)
+  expect(await ui.find({ type: 'Text', text: 'Pick a ticket set:' })).toBeDefined()
+  expect(await ui.find({ type: 'Select' })).toBeDefined()
+  await ui.select({ key: 'set-select', value: '.scratch/s03/issues' })
+  await ui.unmount()
+  await clock.settle()
+  const shown = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await shown.find({ type: 'Text', text: '.scratch/s03/issues' })).toBeDefined()
+  expect(await shown.find({ type: 'Select' })).toBeUndefined()
+  expect(await shown.find({ type: 'Text', text: 'Pick a ticket set:' })).toBeUndefined()
+  await shown.unmount()
+})
+
+test('/sidekick-pick 10 picks the tenth set of ten', async ($, on) => {
+  const { clock } = await fresh($, on, MANY)
+  // Newest first: s10 is the 1st and s01 the 10th.
+  const ran = await $.command.run({ command: 'sidekick-pick', args: '10', ...RUN })
+  await clock.settle()
+  expect(ran.text).toBe('Showing s01: 0/2 done.')
+  const shown = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await shown.find({ type: 'Text', text: '.scratch/s01/issues' })).toBeDefined()
+  await shown.unmount()
 })

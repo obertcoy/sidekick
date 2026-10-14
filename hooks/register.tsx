@@ -680,6 +680,15 @@ export const register: Register = on => {
     if (sets.length === 0) return { text: 'No ticket sets found. /sidekick-rescan looks again.' }
     if (sets.length === 1) return { text: `Only one ticket set here: ${labelOf(sets[0]?.id ?? '')}.` }
     let query = e.args.trim()
+    if (query === '' && sets.length > ASK_OPTIONS) {
+      // The dialog holds four options at most; more sets are chosen in the pane, which gets the keys.
+      await refresh($, undefined, undefined, true)
+      const opened = await $.ui.open({ id: PANE, title: 'Sidekick', focus: true })
+
+      return {
+        text: `Pick a ticket set in the pane (${sets.length} sets).${opened.isPlaced ? '' : ' The pane is not drawn; widen the terminal.'}`,
+      }
+    }
     if (query === '') {
       const shown = sets.slice(0, ASK_OPTIONS)
       const labels = shown.map(set => labelOf(set.id))
@@ -810,7 +819,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const { Box, Text, Button, Select } = $.ui.resolve(e)
     const { project, isSearching: isLooking, summary, progress, sets, current, isChoosing: isListed } = await read($, view)
     // One column of padding on each side; the bar and rules span what is left.
     const columns = Math.max(12, e.props.bodyColumns - 2)
@@ -969,17 +978,26 @@ export const register: Register = on => {
         {sets.length > 1 && isListed && (
           <Box flexDirection="column" marginTop={1}>
             <Text bold>Pick a ticket set:</Text>
-            {sets.slice(0, SET_ROWS).map((one, at) => (
-              <Button
-                key={`set-${at + 1}`}
-                plain
-                hotkey={String(at + 1)}
-                dimColor={one.id !== current}
-                label={`${one.id === current ? '›' : ' '} ${at + 1}: ${one.label} ${one.done}/${one.total}`}
-                onPress={() => quietly(choose($, one.id), $)}
+            {sets.length > SET_ROWS ? (
+              <Select
+                key="set-select"
+                autoFocus
+                value={current === '' ? undefined : current}
+                options={sets.map(one => ({ value: one.id, label: `${one.label} ${one.done}/${one.total}` }))}
+                onSelect={value => quietly(choose($, value), $)}
               />
-            ))}
-            {sets.length > SET_ROWS && <Text dimColor>{`+${sets.length - SET_ROWS} more: /sidekick-pick`}</Text>}
+            ) : (
+              sets.map((one, at) => (
+                <Button
+                  key={`set-${at + 1}`}
+                  plain
+                  hotkey={String(at + 1)}
+                  dimColor={one.id !== current}
+                  label={`${one.id === current ? '›' : ' '} ${at + 1}: ${one.label} ${one.done}/${one.total}`}
+                  onPress={() => quietly(choose($, one.id), $)}
+                />
+              ))
+            )}
           </Box>
         )}
         <Box flexDirection="column" marginTop={1}>
