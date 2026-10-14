@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { Summary, View } from '../types'
+import type { SetEntry, Summary, View } from '../types'
 import { changeLook, lookReport, parseSaved, targetOf } from './look'
 import type { Target } from './look'
 import { SPRITE, cellsOf, frameCount, leftOut, msPerFrame } from './sprite'
@@ -10,11 +10,14 @@ import { projectRoot, setCurrentRoot, setProjectLook, setSavedLook } from './spr
 import type { SavedLook } from './sprite/types'
 import {
   endsWithPath,
+  findSet,
   globReach,
   globToRegExp,
   groupSets,
   hintPaths,
+  labelOf,
   normalize,
+  orderSets,
   parseChecklist,
   parseRecipe,
   parseSummary,
@@ -26,7 +29,7 @@ import {
   toRelative,
   windowOf,
 } from './tickets'
-import type { FileInfo, Recipe, Ticket } from './tickets'
+import type { FileInfo, Recipe, Ticket, TicketSet } from './tickets'
 
 const PANE = 'sidekick'
 const LOOK = 'look'
@@ -68,9 +71,17 @@ const view = atom({ plugin: 'sidekick', key: 'view' } as const, {
   isSearching: false,
   summary: null,
   progress: null,
+  sets: [],
+  current: '',
 } satisfies View as View)
 
 let isSearching = false
+// True when the last search found nothing and the recipe that worked before was kept.
+let isKept = false
+// Folders a new ticket file was already looked into this session, so a burst of writes searches once.
+const probed = new Set<string>()
+const SET_ROWS = 9
+const ASK_OPTIONS = 4
 const parsed = new Map<string, { mtimeMs: number; tickets: Ticket[] }>()
 
 type Dollar = EngineInterface
@@ -285,8 +296,17 @@ const ticketsOf = async ($: Dollar, root: string, recipe: Recipe, file: FileInfo
 const head = (text: string, lines: number, chars: number): string =>
   text.split(/\r?\n/).slice(0, lines).join('\n').slice(0, chars)
 
-/** The one-time look at a project that produces its recipe. */
-const search = async ($: Dollar, root: string, hint: string): Promise<Recipe> => {
+/** The one-time look at a project that produces its recipe. A recipe that worked before is kept when this finds nothing. */
+const search = async (
+  $: Dollar,
+  root: string,
+  hint: string,
+  previous?: Recipe,
+  cover?: string,
+): Promise<{ recipe: Recipe; isKept: boolean }> => {
+  const worked = previous !== undefined && previous.kind !== 'none' && (await filesOf($, root, previous)).length > 0
+  const kept = (): { recipe: Recipe; isKept: boolean } =>
+    worked ? { recipe: previous, isKept: true } : { recipe: { kind: 'none' }, isKept: false }
   const isListed = (file: FileInfo): boolean => LISTED.test(file.path.slice(file.path.lastIndexOf('/') + 1))
   const at = await resolveHint($, root, hint)
   const pointed = at === undefined ? [] : (await walk($, root, at, 4, 600, [], 4)).filter(isListed)
@@ -307,9 +327,10 @@ const search = async ($: Dollar, root: string, hint: string): Promise<Recipe> =>
   const listing =
     pointed.length > 0 ? pointed : (await broad()).sort((a, b) => rank(a) - rank(b))
   if (listing.length === 0) {
+    if (worked) return kept()
     await $.store.set(`recipe:${root}`, { kind: 'none' })
 
-    return { kind: 'none' }
+    return kept()
   }
   const samples = listing
     .filter(file => LIKELY.test(file.path) || hint !== '')
@@ -324,6 +345,9 @@ const search = async ($: Dollar, root: string, hint: string): Promise<Recipe> =>
   )
   const prompt = [
     hint === '' ? '' : `The developer says: ${hint}`,
+    worked && previous.kind !== 'none'
+      ? `Tickets are already read with the glob \`${previous.glob}\`; if one glob can cover those and the files shown, widen it.`
+      : '',
     pointed.length > 0
       ? `The developer pointed at the folder \`${at}\`; globs still start from the project root.`
       : '',
@@ -337,12 +361,40 @@ const search = async ($: Dollar, root: string, hint: string): Promise<Recipe> =>
     .complete({ model: 'haiku', system: SEARCH_RULES, prompt, maxTokens: 400, timeoutMs: 60_000 })
     .catch(() => ({ isAnswered: false }) as const)
   const recipe = (reply.isAnswered ? parseRecipe(reply.text) : undefined) ?? { kind: 'none' }
-  const isFound = (await filesOf($, root, recipe)).length > 0
+  const found = await filesOf($, root, recipe)
+  const isFound = found.length > 0 && (cover === undefined || found.some(file => file.path === cover))
   // A failed call is not an answer: leave the project unsearched so the next session asks again.
-  if (reply.isAnswered) await $.store.set(`recipe:${root}`, isFound ? recipe : { kind: 'none' })
+  if (!isFound) {
+    if (reply.isAnswered && !worked) await $.store.set(`recipe:${root}`, { kind: 'none' })
 
-  return isFound ? recipe : { kind: 'none' }
+    return kept()
+  }
+  if (reply.isAnswered) await $.store.set(`recipe:${root}`, recipe)
+
+  return { recipe, isKept: false }
 }
+
+/** The ticket sets the saved recipe reads, most recently changed first. */
+const setsOf = async ($: Dollar, root: string): Promise<{ recipe: Recipe | undefined; sets: TicketSet[] }> => {
+  const recipe = await recipeOf($, root)
+  const files = recipe === undefined ? [] : await filesOf($, root, recipe)
+
+  return { recipe, sets: recipe === undefined ? [] : orderSets(groupSets(recipe, files)) }
+}
+
+const entriesOf = async ($: Dollar, root: string, recipe: Recipe, sets: TicketSet[]): Promise<SetEntry[]> =>
+  Promise.all(
+    sets.map(async set => {
+      const tickets = (await Promise.all(set.files.map(file => ticketsOf($, root, recipe, file)))).flat()
+
+      return {
+        id: set.id,
+        label: labelOf(set.id),
+        done: tickets.filter(ticket => ticket.isDone).length,
+        total: tickets.length,
+      }
+    }),
+  )
 
 const show = async ($: Dollar, next: View): Promise<void> => {
   const held = await read($, view)
@@ -373,27 +425,34 @@ const show = async ($: Dollar, next: View): Promise<void> => {
   }
 }
 
-const refresh = async ($: Dollar, hint?: string): Promise<View> => {
+const refresh = async ($: Dollar, hint?: string, cover?: string): Promise<View> => {
   await followProject($)
   if (isSearching) return read($, view)
   const root = await rootOf($)
   const project = root.slice(root.lastIndexOf('/') + 1)
   const summary = ((await $.store.get(`summary:${root}`)) ?? null) as Summary | null
-  let recipe = hint === undefined ? await recipeOf($, root) : undefined
+  const previous = await recipeOf($, root)
+  let recipe = hint === undefined ? previous : undefined
   let files = recipe === undefined ? [] : await filesOf($, root, recipe)
   const isStale = recipe !== undefined && recipe.kind !== 'none' && files.length === 0
   if (recipe === undefined || isStale) {
     isSearching = true
-    await show($, { project, isSearching: true, summary, progress: null })
+    await show($, { ...(await read($, view)), project, isSearching: true, summary, progress: null })
     try {
-      recipe = await search($, root, hint ?? '')
+      const found = await search($, root, hint ?? '', previous, cover)
+      recipe = found.recipe
+      isKept = found.isKept
       files = await filesOf($, root, recipe)
+      // A new ticket folder the search took in is the one the pane switches to.
+      const id = cover === undefined || found.isKept ? undefined : setIdOf(recipe, cover)
+      if (id !== undefined) await $.store.set(`touched:${root}`, id)
     } finally {
       isSearching = false
     }
   }
   const touched = (await $.store.get(`touched:${root}`)) as string | undefined
-  const set = recipe === undefined ? undefined : pickSet(groupSets(recipe, files), touched)
+  const sets = recipe === undefined ? [] : orderSets(groupSets(recipe, files))
+  const set = pickSet(sets, touched)
   const tickets =
     set === undefined || recipe === undefined
       ? []
@@ -403,6 +462,8 @@ const refresh = async ($: Dollar, hint?: string): Promise<View> => {
     isSearching: false,
     summary,
     progress: set === undefined || tickets.length === 0 ? null : progressOf(tickets, set.id),
+    sets: recipe === undefined || sets.length < 2 ? [] : await entriesOf($, root, recipe, sets),
+    current: set?.id ?? '',
   }
   await show($, next)
 
@@ -484,6 +545,23 @@ const quietly = (work: Promise<unknown>, $: Dollar): void => {
   void work.catch(error => $.ui.log(`sidekick: ${String(error)}`, { to: 'debug' }))
 }
 
+/** Shows the set the developer picked; it holds until Claude touches a file in another set. */
+const choose = async ($: Dollar, id: string): Promise<void> => {
+  const root = await rootOf($)
+  await $.store.set(`touched:${root}`, id)
+  await refresh($)
+}
+
+/** A new markdown file written in a folder that looks like a ticket home, which the recipe does not read yet. */
+const adopt = async ($: Dollar, root: string, tool: string, relative: string | undefined): Promise<void> => {
+  if (tool !== 'Write' || relative === undefined || !/\.md$/i.test(relative)) return
+  const folder = relative.slice(0, Math.max(0, relative.lastIndexOf('/')))
+  if (folder === '' || !LIKELY.test(folder) || isSearching || probed.has(folder)) return
+  if (relative.split('/').some(part => part === '..' || isSkipped(part))) return
+  probed.add(folder)
+  await refresh($, `tickets are in ${folder}/`, relative)
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -495,6 +573,11 @@ export const register: Register = on => {
       name: 'sidekick-rescan',
       description: 'Look again for where this project keeps its tickets',
       argumentHint: '[hint, e.g. tickets are in docs/tasks]',
+    })
+    await $.command.register({
+      name: 'sidekick-pick',
+      description: 'Choose which ticket set the pane shows',
+      argumentHint: '[number or name]',
     })
     await $.command.register({
       name: 'sidekick-look',
@@ -525,13 +608,51 @@ export const register: Register = on => {
 
   on('command.run', { command: 'sidekick-rescan' }, async ($, e) => {
     if (isSearching) return { text: 'A search is already running.' }
+    isKept = false
     const { progress } = await refresh($, e.args.trim())
 
     return {
       text:
-        progress === null
+        progress !== null && isKept
+          ? `Found nothing new; still reading ${progress.source}: ${progress.done}/${progress.total} done.`
+          : progress === null
           ? 'No tickets found. Try a hint: /sidekick-rescan tickets are in docs/tasks'
           : `Reading tickets from ${progress.source}: ${progress.done}/${progress.total} done.`,
+    }
+  })
+
+  on('command.run', { command: 'sidekick-pick' }, async ($, e) => {
+    const root = await rootOrNone($)
+    if (root === undefined) return { text: 'Could not find the project.' }
+    const { sets } = await setsOf($, root)
+    if (sets.length === 0) return { text: 'No ticket sets found. /sidekick-rescan looks again.' }
+    if (sets.length === 1) return { text: `Only one ticket set here: ${labelOf(sets[0]?.id ?? '')}.` }
+    let query = e.args.trim()
+    if (query === '') {
+      const shown = sets.slice(0, ASK_OPTIONS)
+      const labels = shown.map(set => labelOf(set.id))
+      // Two sets with one name are told apart by their whole id.
+      const options = labels.map((label, at) => (labels.indexOf(label) === at ? label : (shown[at]?.id ?? label)))
+      try {
+        query = await $.ui.ask('Which ticket set?', { options, header: 'Tickets' })
+      } catch {
+        return { text: 'Pick cancelled.' }
+      }
+      const at = options.indexOf(query)
+      if (at >= 0) query = shown[at]?.id ?? query
+    }
+    const chosen = findSet(sets, query)
+    if (chosen === 'none') return { text: `No ticket set matches "${query}". /sidekick-pick shows the choices.` }
+    if (chosen === 'many') return { text: `More than one ticket set matches "${query}". Type more of the name.` }
+    await $.store.set(`touched:${root}`, chosen.id)
+    const next = await refresh($)
+    const entry = next.sets.find(one => one.id === chosen.id)
+
+    return {
+      text:
+        entry === undefined
+          ? `Showing ${labelOf(chosen.id)}.`
+          : `Showing ${entry.label}: ${entry.done}/${entry.total} done.`,
     }
   })
 
@@ -576,7 +697,11 @@ export const register: Register = on => {
         const relative = toRelative(root, path)
         const recipe = await recipeOf($, root)
         const id = relative === undefined || recipe === undefined ? undefined : setIdOf(recipe, relative)
-        if (id === undefined) return
+        if (id === undefined) {
+          await adopt($, root, String(e.tool), relative)
+
+          return
+        }
         await $.store.set(`touched:${root}`, id)
         await refresh($)
       })(),
@@ -605,8 +730,8 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
-    const { project, isSearching: isLooking, summary, progress } = await read($, view)
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const { project, isSearching: isLooking, summary, progress, sets, current } = await read($, view)
     // One column of padding on each side; the bar and rules span what is left.
     const columns = Math.max(12, e.props.bodyColumns - 2)
     const rows = progress?.rows ?? []
@@ -750,6 +875,21 @@ export const register: Register = on => {
               )
             })}
             {end < rows.length && <Text dimColor>↓ {rows.length - end} more</Text>}
+          </Box>
+        )}
+        {sets.length > 1 && (
+          <Box flexDirection="column" marginTop={1}>
+            {sets.slice(0, SET_ROWS).map((one, at) => (
+              <Button
+                key={`set-${at + 1}`}
+                plain
+                hotkey={String(at + 1)}
+                dimColor={one.id !== current}
+                label={`${one.id === current ? '›' : ' '} ${one.label} ${one.done}/${one.total}`}
+                onPress={() => quietly(choose($, one.id), $)}
+              />
+            ))}
+            {sets.length > SET_ROWS && <Text dimColor>{`+${sets.length - SET_ROWS} more: /sidekick-pick`}</Text>}
           </Box>
         )}
         <Box flexDirection="column" marginTop={1}>

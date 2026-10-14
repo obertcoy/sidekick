@@ -179,7 +179,7 @@ test('the look command is registered at session start beside the existing comman
   mock.store(on)
   const w = world(on, ROOT)
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
-  expect(w.registered).toEqual(['sidekick', 'sidekick-rescan', 'sidekick-look'])
+  expect(w.registered).toEqual(['sidekick', 'sidekick-rescan', 'sidekick-pick', 'sidekick-look'])
 })
 
 /** A store the test can reach into: `data` is what the mod saved, the flags make a read or a write fail. */

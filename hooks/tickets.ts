@@ -262,6 +262,33 @@ export const pickSet = (sets: TicketSet[], touched: string | undefined): TicketS
   sets.find(set => set.id === touched) ??
   [...sets].sort((a, b) => b.mtimeMs - a.mtimeMs)[0]
 
+/** Sets in the order the pane and /sidekick-pick number them: most recently changed first. */
+export const orderSets = (sets: TicketSet[]): TicketSet[] =>
+  [...sets].sort((a, b) => b.mtimeMs - a.mtimeMs || a.id.localeCompare(b.id))
+
+/** A short name for a set: ".scratch/search/issues" is "search". */
+export const labelOf = (id: string): string => {
+  const parts = id.split('/').filter(part => part !== '')
+  if (parts[0] === '.scratch' && parts.length > 1) parts.shift()
+  if (parts.length > 1 && /^(issues|tickets|tasks)$/i.test(parts[parts.length - 1] ?? '')) parts.pop()
+
+  return parts.slice(-2).join('/') || id
+}
+
+/** The set a pick names: a 1-based number, an id, a label, or a part of an id that only one set has. */
+export const findSet = (sets: TicketSet[], query: string): TicketSet | 'none' | 'many' => {
+  const wanted = query.trim().toLowerCase()
+  if (wanted === '') return 'none'
+  if (/^\d+$/.test(wanted)) return sets[Number(wanted) - 1] ?? 'none'
+  const exact = sets.filter(set => set.id.toLowerCase() === wanted || labelOf(set.id).toLowerCase() === wanted)
+  if (exact.length > 1) return 'many'
+  if (exact[0] !== undefined) return exact[0]
+  const part = sets.filter(set => set.id.toLowerCase().includes(wanted))
+  if (part.length > 1) return 'many'
+
+  return part[0] ?? 'none'
+}
+
 export const progressOf = (tickets: Ticket[], source: string): Progress => {
   const open = tickets.filter(ticket => !ticket.isDone)
 

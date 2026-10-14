@@ -2,8 +2,11 @@ import { expect, test } from 'claude-code/testing'
 
 import {
   globReach,
+  findSet,
   globToRegExp,
   groupSets,
+  labelOf,
+  orderSets,
   parseChecklist,
   parseRecipe,
   parseSummary,
@@ -184,4 +187,23 @@ test('every frame of the character fills its grid, and the frames differ', async
   expect(cellsOf('write', 0)).not.toBe(cellsOf('idle', 0))
   expect(cellsOf('zap', 2)).not.toBe(cellsOf('zap', 0))
   expect(cellsOf('zap', frameCount('zap'))).toBe(cellsOf('zap', 0))
+})
+
+test('sets are numbered most recently changed first, and a set is found by number, name or part of its id', () => {
+  const sets = orderSets([
+    { id: '.scratch/search/issues', files: [], mtimeMs: 5 },
+    { id: '.scratch/billing/issues', files: [], mtimeMs: 9 },
+    { id: 'docs/tasks', files: [], mtimeMs: 9 },
+  ])
+  expect(sets.map(set => set.id)).toEqual(['.scratch/billing/issues', 'docs/tasks', '.scratch/search/issues'])
+  expect(labelOf('.scratch/search/issues')).toBe('search')
+  expect(labelOf('docs/tasks')).toBe('docs')
+  expect(labelOf('.')).toBe('.')
+  expect((findSet(sets, '3') as { id: string }).id).toBe('.scratch/search/issues')
+  expect(findSet(sets, '4')).toBe('none')
+  expect((findSet(sets, 'Billing') as { id: string }).id).toBe('.scratch/billing/issues')
+  expect((findSet(sets, 'sear') as { id: string }).id).toBe('.scratch/search/issues')
+  expect(findSet(sets, 'scratch')).toBe('many')
+  expect(findSet(sets, 'nope')).toBe('none')
+  expect(findSet(sets, ' ')).toBe('none')
 })
