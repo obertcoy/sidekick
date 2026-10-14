@@ -8,6 +8,8 @@ export const write: Animation = {
   frames: 6,
   msPerFrame: 220,
   once: false,
+  // The paper is drawn at the paw, where a held accessory would be.
+  hides: ['held'],
   frame: (step, { paw }) => {
     const paper = { x: paw.x + 1, y: paw.y - 1 }
     const lift = step % 2

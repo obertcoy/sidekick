@@ -31,6 +31,12 @@ export const classic = defineCharacter({
   },
   anchors: {
     head: { x: 6, y: 6 },
+    // The top row of the lenses, which cover the eye row below; in the head region, so glasses bob with the head.
+    face: { x: 6, y: 7 },
+    // The first row of the body under the head, outside the head region: a scarf stays put while the head bobs.
+    neck: { x: 6, y: 10 },
+    // The foot of a held pole, one pixel right of the paw and two down, so the whole flag (x 10-13, y 8-13) clears the head and the cap's brim even when the brim bobs down a pixel; outside the head region, so it stays put while the head bobs.
+    held: { x: 10, y: 13 },
     paw: { x: 9, y: 11 },
     reach: { x: 10, y: 9 },
     boltFrom: { x: 14, y: 2 },
@@ -41,4 +47,6 @@ export const classic = defineCharacter({
   },
   // Columns 0-1 hold the tail, which stays put while the head bobs.
   headRegion: { left: 2, top: 3, right: 17, bottom: 9 },
+  // The cap and glasses ride the head; the scarf and what is held stay on the body.
+  bobs: { head: true, face: true, neck: false, held: false },
 })

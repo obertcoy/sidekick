@@ -33,6 +33,12 @@ export const foxkit = defineCharacter({
   },
   anchors: {
     head: { x: 7, y: 1 },
+    // Between the eyes; in the head region, so glasses bob with the head.
+    face: { x: 7, y: 4 },
+    // The row under the chin, outside the head region: a scarf stays put while the head bobs.
+    neck: { x: 7, y: 9 },
+    // The foot of a held pole, on the paw's pixel; outside the head region, so a held item stays put while the head bobs.
+    held: { x: 12, y: 10 },
     paw: { x: 12, y: 10 },
     reach: { x: 13, y: 7 },
     boltFrom: { x: 17, y: 0 },
@@ -43,4 +49,6 @@ export const foxkit = defineCharacter({
   },
   // Columns 0-2 hold the ear tip and the tail, which stay put while the head bobs.
   headRegion: { left: 3, top: 1, right: 17, bottom: 8 },
+  // The cap and glasses ride the head; the scarf and what is held stay on the body.
+  bobs: { head: true, face: true, neck: false, held: false },
 })

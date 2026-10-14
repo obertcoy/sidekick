@@ -2,8 +2,12 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Summary, View } from '../types'
-import { SPRITE, cellsOf, frameCount } from './sprite'
+import { changeLook, lookReport, parseSaved, targetOf } from './look'
+import type { Target } from './look'
+import { SPRITE, cellsOf, frameCount, leftOut, msPerFrame } from './sprite'
 import type { Mode } from './sprite'
+import { projectRoot, setCurrentRoot, setProjectLook, setSavedLook } from './sprite/registry'
+import type { SavedLook } from './sprite/types'
 import {
   globReach,
   globToRegExp,
@@ -23,6 +27,7 @@ import {
 import type { FileInfo, Recipe, Ticket } from './tickets'
 
 const PANE = 'sidekick'
+const LOOK = 'look'
 const BUDDY = 'buddy'
 const REFRESH_MS = 20_000
 const SKIPPED = new Set([
@@ -88,7 +93,7 @@ const animate = ($: Dollar, next: Mode): void => {
   frame = 0
   paint($)
   if (mode === 'idle') return
-  ticker = $.clock.every(mode === 'zap' ? 110 : 220, () => {
+  ticker = $.clock.every(msPerFrame(mode), () => {
     frame += 1
     if (mode === 'zap' && frame >= frameCount('zap')) {
       ticker?.cancel()
@@ -105,7 +110,7 @@ const animate = ($: Dollar, next: Mode): void => {
 // have the strike-through burn across them before they settle as done. One step per zap frame.
 type Was = 'active' | 'open'
 type Strike = { rows: Map<string, Was>; step: number }
-const STRIKE_MS = 110
+const STRIKE_MS = msPerFrame('zap')
 const BOLT = '↯'
 // Steps: 0-1 the critter charges (the row still shows what it was), 2 the bolt leaves the critter,
 // 3 it lands on the row's glyph, 4 the row flashes as done, 5-10 the strike-through burns, 11-12 rest.
@@ -154,7 +159,13 @@ const strikeRows = ($: Dollar, rows: Map<string, Was>): void => {
   else for (const [title, was] of rows) last.set(title, was)
 }
 
-const rootOf = async ($: Dollar): Promise<string> => normalize(await $.session.root())
+const rootOf = async ($: Dollar): Promise<string> => {
+  const root = normalize(await $.session.root())
+  // Whatever asks for the root also tells the sprite which project it is drawing for.
+  setCurrentRoot(root)
+
+  return root
+}
 
 const recipeOf = async ($: Dollar, root: string): Promise<Recipe | undefined> =>
   parseRecipe(JSON.stringify((await $.store.get(`recipe:${root}`)) ?? null))
@@ -275,6 +286,7 @@ const show = async ($: Dollar, next: View): Promise<void> => {
 }
 
 const refresh = async ($: Dollar, hint?: string): Promise<View> => {
+  await followProject($)
   if (isSearching) return read($, view)
   const root = await rootOf($)
   const project = root.slice(root.lastIndexOf('/') + 1)
@@ -345,6 +357,41 @@ const summarize = async ($: Dollar, answer: string): Promise<void> => {
   if (summary !== undefined) await $.store.set(`summary:${root}`, summary)
 }
 
+/** The project root, or undefined (logged) when the session cannot say; a look command then has no project to work on. */
+const rootOrNone = async ($: Dollar): Promise<string | undefined> => {
+  try {
+    return await rootOf($)
+  } catch (error) {
+    $.ui.log(`sidekick: ${String(error)}`, { to: 'debug' })
+    setCurrentRoot(undefined)
+
+    return undefined
+  }
+}
+
+/** Where a look is saved: the global one under `look`, a project's override under `look:${root}`. */
+const lookKey = (target: Target, root: string | undefined): string | undefined =>
+  target === 'global' ? LOOK : root === undefined ? undefined : `${LOOK}:${root}`
+
+/** The look the store holds under the key; undefined when it cannot be read, so the caller keeps going without it. */
+const storedLook = async ($: Dollar, key: string | undefined): Promise<SavedLook | undefined> => {
+  if (key === undefined) return undefined
+  try {
+    return parseSaved(await $.store.get(key))
+  } catch (error) {
+    $.ui.log(`sidekick: ${String(error)}`, { to: 'debug' })
+
+    return undefined
+  }
+}
+
+/** Reads the override of the project the session is in now, unless the one in memory is already for it. */
+const followProject = async ($: Dollar): Promise<void> => {
+  const root = await rootOrNone($)
+  if (root === undefined || projectRoot() === root) return
+  setProjectLook((await storedLook($, lookKey('project', root))) ?? {}, root)
+}
+
 const quietly = (work: Promise<unknown>, $: Dollar): void => {
   void work.catch(error => $.ui.log(`sidekick: ${String(error)}`, { to: 'debug' }))
 }
@@ -361,6 +408,14 @@ export const register: Register = on => {
       description: 'Look again for where this project keeps its tickets',
       argumentHint: '[hint, e.g. tickets are in docs/tasks]',
     })
+    await $.command.register({
+      name: 'sidekick-look',
+      description: 'Choose the sidekick\'s character, accessories and background',
+      argumentHint: '[character=classic head=cap background=dusk]',
+    })
+    setSavedLook((await storedLook($, LOOK)) ?? {})
+    const root = await rootOrNone($)
+    setProjectLook((await storedLook($, lookKey('project', root))) ?? {}, root)
     void $.ui.open({ id: PANE, title: 'Sidekick' })
     quietly(refresh($), $)
     $.clock.every(REFRESH_MS, () => quietly(refresh($), $))
@@ -392,6 +447,37 @@ export const register: Register = on => {
     }
   })
 
+  on('command.run', { command: 'sidekick-look' }, async ($, e) => {
+    // Another terminal may have changed either look since this session read it, so the store is the truth.
+    const { target, words } = targetOf(e.args)
+    // The root is read once, so a read and the save that follows it are for the same project.
+    const root = await rootOrNone($)
+    const globalLook = await storedLook($, LOOK)
+    const projectLook = await storedLook($, lookKey('project', root))
+    if (globalLook !== undefined) setSavedLook(globalLook)
+    // An override that cannot be read is dropped, as at session start, rather than drawn stale.
+    setProjectLook(projectLook ?? {}, root)
+    if (e.args.trim() === '') return { text: lookReport() }
+    const held = target === 'project' ? projectLook : globalLook
+    if (held === undefined) return { text: 'Could not read the saved look. Nothing was changed.' }
+    const change = changeLook(words, held, target)
+    if (!change.isSaved) return { text: change.text }
+    try {
+      await $.store.set(lookKey(target, root) ?? LOOK, change.saved)
+    } catch (error) {
+      $.ui.log(`sidekick: ${String(error)}`, { to: 'debug' })
+
+      return { text: 'Could not save the look. Nothing was changed.' }
+    }
+    if (target === 'project') setProjectLook(change.saved, root)
+    else setSavedLook(change.saved)
+    // The sidekick repaints with the new look before the command returns.
+    paint($)
+    $.ui.invalidate('ui.render')
+
+    return { text: change.text }
+  })
+
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
     const path = (e as unknown as { file_path?: unknown }).file_path
@@ -412,7 +498,9 @@ export const register: Register = on => {
     return ran
   })
 
-  on('turn.start', ($, e, next) => {
+  on('turn.start', async ($, e, next) => {
+    // The session may have moved to another project since the last refresh; draw that project's look.
+    await followProject($)
     animate($, 'write')
 
     return next(e)
@@ -496,6 +584,7 @@ export const register: Register = on => {
     const accent = isComplete ? 'success' : 'claude'
     const filled = progress === null ? 0 : Math.round((progress.done / progress.total) * columns)
     const needsYou = summary?.needsYou ?? ''
+    const dropped = leftOut()
     // Only the terminal has a cell grid to draw the character on.
     const buddy =
       e.surface === 'terminal'
@@ -531,6 +620,11 @@ export const register: Register = on => {
             )}
             <Text color={accent}>{'━'.repeat(trailOn(LEAVES) ? Math.max(0, filled - 1) : filled)}</Text>
             <Text dimColor>{'─'.repeat(columns - Math.max(filled, trailOn(LEAVES) ? 1 : 0))}</Text>
+          </Text>
+        )}
+        {dropped !== '' && (
+          <Text dimColor wrap="truncate-end">
+            Left out: {dropped}
           </Text>
         )}
         {isLooking && <Text color="suggestion">◌ Looking for tickets…</Text>}

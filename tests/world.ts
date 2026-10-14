@@ -27,6 +27,8 @@ export const ticket = (title: string, status: string): string =>
   `# ${title}\n\n**Status:** ${status}\n\n- [ ] a step\n`
 
 export type World = {
+  /** The project root the session reports; a test can move it to stand in another project. */
+  root: string
   /** How the engine answers the end of a turn. */
   endTurn: (e: TurnCompleteInput) => TurnCompleteResult
   /** Set to make every ask for the project root fail. */
@@ -43,13 +45,18 @@ export type World = {
   answer: (prompt: string) => Reply | Promise<Reply>
   /** What the session holds for the latest turn. */
   messages: SessionMessage[]
+  /** The name of every command the mod registered, in order. */
+  registered: string[]
   /** The key of every Raster the mod repainted with `$.ui.blit`, in order. */
   blits: string[]
+  /** The cells of every one of those repaints, in order: what the sidekick looked like each time. */
+  painted: string[]
 }
 
 /** Stands beneath the mod as a project at `root` (spelled as the host spells it). */
 export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}): World => {
   const w: World = {
+    root,
     isRootGone: false,
     endTurn: e => ({ text: e.answer }),
     tree,
@@ -61,14 +68,20 @@ export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}):
       { role: 'user', text: 'Build the cart.', toolUses: [] },
       { role: 'assistant', text: 'Built it.', toolUses: [] },
     ],
+    registered: [],
     blits: [],
+    painted: [],
   }
   on('session.root', () => {
     if (w.isRootGone) throw new Error('the session has no root')
 
-    return { value: root }
+    return { value: w.root }
   })
-  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('command.register', (_, e) => {
+    w.registered.push(e.name)
+
+    return { value: { command: e.name } }
+  })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('fs.list', (_, e) => {
     w.touched.push(posix(e.path))
@@ -100,6 +113,7 @@ export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}):
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.blit', (_, e) => {
     w.blits.push(e.key)
+    w.painted.push('cells' in e ? e.cells : '')
 
     return { value: {} }
   })

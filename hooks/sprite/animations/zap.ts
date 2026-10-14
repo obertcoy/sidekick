@@ -15,6 +15,8 @@ export const zap: Animation = {
   frames: 12,
   msPerFrame: 110,
   once: true,
+  // The arm and the bolt are drawn at the paw, where a held accessory would be.
+  hides: ['held'],
   frame: (step, { boltFrom, cheeks, ears, paw, reach, tail }) => {
     const paper = { x: paw.x + 1, y: paw.y - 1 }
     const bolt = (role: Role): Dot[] => BOLT.map(([dx, dy]) => [boltFrom.x + dx, boltFrom.y + dy, role] as const)

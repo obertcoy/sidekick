@@ -25,6 +25,7 @@ Answer `y` to add the marketplace, then pick a scope.
 | --- | --- |
 | `/sidekick` | Opens the pane. `/sidekick close` closes it. |
 | `/sidekick-rescan [hint]` | Looks again for the project's tickets. The hint is plain words, such as `tickets are in docs/tasks`. |
+| `/sidekick-look [part=name ...]` | Chooses the sidekick's look for every project: `character`, `head`, `face`, `neck`, `held` or `background`, any number at once (`character=classic head=cap background=dusk`). Parts you don't name stay as they were. With no arguments it shows the current look and everything you can pick. |
 
 The pane opens by itself in a wide terminal (144 columns or more). In a narrower one, use `/sidekick`.
 
@@ -53,9 +54,9 @@ claude plugin validate .
 claude plugin test .
 ```
 
-### Sprite: characters, animations, outfits, backgrounds
+### Sprite: characters, animations, accessories, backgrounds
 
-The sidekick is drawn on a fixed stage of 18×8 cells (18×16 pixels, two stacked in each cell), in layers: background, body, outfit, then the animation's props and effects. Each part is one file in `hooks/sprite/` plus one line in `hooks/sprite/registry.ts`; `LOOK` there picks what the pane shows.
+The sidekick is drawn on a fixed stage of 18×8 cells (18×16 pixels, two stacked in each cell), in layers: background, body, accessories, then the animation's props and effects. Each part is one file in `hooks/sprite/` plus one line in `hooks/sprite/registry.ts`; `currentLook()` there resolves what the pane shows at each refresh (the bare foxkit until a look is chosen with `/sidekick-look`).
 
 - **Character** (`characters/<name>.ts`): a pixel grid, a legend from letters to colour roles (`outline`, `base`, `shade`, `highlight`, `cheek`, `eye`, `belly`), a colour per role, anchors (`head`, `paw`, `reach`, `boltFrom`, `cheeks`, `tail`, `ears`, `feet`) and the `headRegion` that bobs. `defineCharacter` refuses one that is too big for the stage or misses an anchor.
 
@@ -66,21 +67,21 @@ The sidekick is drawn on a fixed stage of 18×8 cells (18×16 pixels, two stacke
   // registry.ts: CHARACTERS = { foxkit, classic, owl }
   ```
 
-- **Animation** (`animations/<name>.ts`): a frame count and a function from a step and the character's anchors to a head bob and dots coloured by role. It never reads the character's pixels, so it fits every character. Its key in `ANIMATIONS` is the mode name; `register.tsx` sets the frame timing.
+- **Animation** (`animations/<name>.ts`): a frame count and a function from a step and the character's anchors to a head bob and dots coloured by role. It never reads the character's pixels, so it fits every character. `hides` lists the slots whose accessory is not drawn while it plays (`['held']` for writing and zapping, which draw at the paw; `[]` hides none). Its key in `ANIMATIONS` is the mode name; `msPerFrame` is the pace `register.tsx` plays it at.
 
   ```ts
-  export const wave: Animation = { frames: 2, msPerFrame: 220, once: false,
+  export const wave: Animation = { frames: 2, msPerFrame: 220, once: false, hides: [],
     frame: (step, { paw }) => ({ dots: [[paw.x, paw.y - 1 - step, 'base']] }) }
   // registry.ts: ANIMATIONS = { idle, write, zap, wave }
   ```
 
-- **Outfit** (`outfits/<name>.ts`): a small grid with its own colours and the `origin` pixel that sits on the `head` anchor; it bobs with the head. Wear it with `LOOK = { character: 'foxkit', outfit: 'cap', background: null }`.
+- **Accessory** (`accessories/<name>.ts`): a small grid with its own colours, the `slot` it belongs to and the `origin` pixel that sits on that slot's anchor; in the head slot it bobs with the head. An outfit is a set of accessories, at most one per slot: `{ character: 'foxkit', outfit: { head: 'cap' }, background: null }`.
 
   ```ts
-  export const band: Outfit = { name: 'band', pixels: ['rrrrr'], origin: { x: 2, y: 0 }, palette: { r: 0xe5484d } }
+  export const band: Accessory = { name: 'band', slot: 'head', pixels: ['rrrrr'], origin: { x: 2, y: 0 }, palette: { r: 0xe5484d } }
   ```
 
-- **Background** (`backgrounds/<name>.ts`): one or more full-stage grids, shown only where nothing is drawn above. Use it with `background: 'dusk'` in `LOOK`.
+- **Background** (`backgrounds/<name>.ts`): one or more full-stage grids, shown only where nothing is drawn above. Use it with `background: 'dusk'` in a look.
 
   ```ts
   export const floor: Background = { name: 'floor', frames: [[...Array(15).fill(''), 'gggggggggggggggggg']], palette: { g: 0x3a3340 } }

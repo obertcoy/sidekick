@@ -1,8 +1,9 @@
-import type { Outfit } from '../types'
+import type { Accessory } from '../types'
 
 /** A red cap with a white button and a brim to the right. Its band covers the head anchor's row. */
-export const cap: Outfit = {
+export const cap: Accessory = {
   name: 'cap',
+  slot: 'head',
   pixels: [
     '.ccwccc...',
     'dddddddbbb',

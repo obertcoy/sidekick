@@ -1,4 +1,4 @@
-import type { Animation, Character, Layers, Point, PropRole, Role } from './types'
+import type { Animation, Character, Layers, Point, PropRole, Role, Slot } from './types'
 
 /** The fixed stage every look is drawn on: 18 cells wide, 8 tall, two pixels stacked in each cell. */
 export const STAGE = { columns: 18, rows: 8, width: 18, height: 16 } as const
@@ -12,7 +12,9 @@ export const PROPS: Readonly<Record<PropRole, number>> = {
   check: 0x40c057,
 }
 
+const SLOT_NAMES = ['head', 'face', 'neck', 'held'] as const
 const ANCHOR_POINTS = ['head', 'paw', 'reach', 'boltFrom', 'feet'] as const
+const OPTIONAL_ANCHORS = ['face', 'neck', 'held'] as const
 const ANCHOR_LISTS = ['cheeks', 'tail', 'ears'] as const
 
 const onStage = (point: Point | undefined): boolean =>
@@ -48,6 +50,9 @@ export const defineCharacter = (character: Character): Character => {
   for (const name of ANCHOR_POINTS) {
     if (!onStage(anchors[name] as Point | undefined)) fail(`is missing the anchor "${name}", or it is off the stage`)
   }
+  for (const name of OPTIONAL_ANCHORS) {
+    if (anchors[name] !== undefined && !onStage(anchors[name] as Point)) fail(`has the anchor "${name}" off the stage`)
+  }
   for (const name of ANCHOR_LISTS) {
     const list = anchors[name]
     if (!Array.isArray(list) || list.length === 0 || !list.every(point => onStage(point as Point))) {
@@ -63,6 +68,20 @@ export const defineCharacter = (character: Character): Character => {
     region.top > region.bottom
   ) {
     fail('has no headRegion on the stage')
+  }
+  const bobs = (character.bobs ?? {}) as Partial<Record<Slot, unknown>>
+  for (const slot of Object.keys(bobs)) {
+    if (!(SLOT_NAMES as readonly string[]).includes(slot) || anchors[slot] === undefined) {
+      fail(`declares whether the slot "${slot}" bobs, but has no anchor for it`)
+    }
+  }
+  for (const slot of SLOT_NAMES) {
+    if (anchors[slot] === undefined) continue
+    const moves = bobs[slot]
+    if (typeof moves !== 'boolean') fail(`does not declare whether the slot "${slot}" bobs`)
+    else if (moves && !inRegion(anchors[slot] as Point, character)) {
+      fail(`declares the slot "${slot}" as bobbing, but its anchor is outside the headRegion`)
+    }
   }
 
   return character
@@ -84,9 +103,14 @@ const inRegion = (point: Point, character: Character): boolean => {
   return point.x >= region.left && point.x <= region.right && point.y >= region.top && point.y <= region.bottom
 }
 
+/** The order accessories are drawn in, back to front. */
+export const SLOT_ORDER: readonly Slot[] = ['neck', 'face', 'head', 'held']
+
 /**
  * One frame as stage pixels, in layer order: background, body (with the frame's head bob),
- * outfit (on the head anchor, bobbing with it), then the animation's props and effects.
+ * accessories (each on its slot's anchor, bobbing with it where the character declares the slot bobs;
+ * a slot the animation hides is skipped),
+ * then the animation's props and effects.
  */
 export const composePixels = (look: Layers, animation: Animation, step: number): Pixels => {
   const { character } = look
@@ -116,13 +140,14 @@ export const composePixels = (look: Layers, animation: Animation, step: number):
     }
   }
 
-  const outfit = look.outfit
-  if (outfit) {
-    const head = character.anchors.head
-    const lift = inRegion(head, character) ? bob : 0
-    outfit.pixels.forEach((row, y) =>
+  for (const slot of SLOT_ORDER) {
+    const accessory = look.outfit[slot]
+    const anchor = character.anchors[slot]
+    if (accessory === undefined || anchor === undefined || animation.hides.includes(slot)) continue
+    const lift = character.bobs[slot] ? bob : 0
+    accessory.pixels.forEach((row, y) =>
       [...row].forEach((letter, x) =>
-        put(pixels, head.x - outfit.origin.x + x, head.y - outfit.origin.y + y + lift, outfit.palette[letter]),
+        put(pixels, anchor.x - accessory.origin.x + x, anchor.y - accessory.origin.y + y + lift, accessory.palette[letter]),
       ),
     )
   }

@@ -12,7 +12,7 @@ My tickets already describe the planned work, but nothing shows me at a glance h
 
 A Claude Code mod that keeps a pane open beside the conversation for the project the session is running in. The pane shows two things without my asking:
 
-- A **summary** of where the project stands: what happened, what's next, and what needs me. It changes only when a turn decides something or moves the work.
+- A **summary** of the session I'm in: its goal, the phase it is in, and what needs me. It is rewritten only on a turn that made an edit, or when I ask for a note.
 - **Progress** through the project's tickets: how many are done out of the total in the ticket set I'm working on, and the title of the next ticket.
 
 The mod works out where a project keeps its tickets by itself. The first time it sees a project it runs one **search** with a small model, saves the result as a **recipe**, and from then on reads the tickets with plain code. If the search guesses wrong, I can see where it is reading from and ask for a **rescan** with a hint.
@@ -22,11 +22,11 @@ The mod works out where a project keeps its tickets by itself. The first time it
 ### Seeing where the project stands
 
 1. As a developer, I want a pane that shows the current project's summary, so that I don't have to ask the chat for a recap.
-2. As a developer, I want the summary split into what happened, what's next and what needs me, so that I can find the part I care about at a glance.
+2. As a developer, I want the summary split into the session's goal, its phase and what needs me, so that I can find the part I care about at a glance.
 3. As a developer, I want "what needs me" to stand out visually, so that I notice when the work is waiting on a decision of mine.
-4. As a developer, I want the summary to change only when a turn decides something or moves the work, so that a question or small talk doesn't overwrite a useful summary.
-5. As a developer, I want a decision made purely in conversation, with no file touched, to update the summary, so that planning sessions are captured too.
-6. As a developer, I want the summary to survive closing the session, so that I see it when I come back to the project later.
+4. As a developer, I want the summary rewritten only on a turn that made an edit or when I ask for a note, so that a question or small talk neither overwrites a useful summary nor costs a model call.
+5. As a developer, I want a decision made purely in conversation, with no file touched, kept in the session's turn log and written into its note on the next turn with an edit or when I run the note command, so that planning sessions are captured without a model call on every turn.
+6. As a developer, I want a session I have not yet typed in to list the project's other recent sessions with their goal, phase and age, so that I see where things stood when I come back to the project later.
 7. As a developer, I want the pane to tell me when there is no summary yet and when one will appear, so that an empty pane doesn't look broken.
 8. As a developer, I want turns run by subagents not to rewrite the summary, so that it reflects my conversation and not internal steps.
 9. As a developer, I want an interrupted or failed turn to leave the summary alone, so that a half-finished turn isn't recorded as progress.
@@ -101,7 +101,7 @@ The mod works out where a project keeps its tickets by itself. The first time it
 
 - The mod is a Claude Code plugin of function hooks: one hooks module, a type contract for the value the pane draws from, and a manifest.
 - It has two modules. A **ticket-reading module** is pure: it turns text and file lists into recipes, tickets, ticket sets and progress, and touches nothing outside its arguments. A **hooks module** does everything that reaches the engine: commands, timers, file access, model calls, storage and drawing.
-- The pane is scoped to the **project** the session runs in, identified by the session's project root. It shows no other project. A view across projects was considered and dropped: the mod's storage is per machine, so such a view would silently miss projects worked on from another machine or a VM.
+- The pane is scoped to the **project** the session runs in, identified by the session's project root. It shows no other project. A view across projects was considered and dropped: the mod's storage is per machine, so such a view would silently miss projects worked on from another machine or a VM. Within the project, the summary, the turn log and the note belong to one **session**; tickets, the recipe and the active ticket set stay per project.
 
 ### Recipe
 
@@ -144,10 +144,17 @@ The mod works out where a project keeps its tickets by itself. The first time it
 
 ### Summary
 
-- At the end of a main-conversation turn that ended with an answer, the mod sends a small model the current summary and an account of the turn: the user's message, the tools used with their main argument, and the assistant's final answer, each truncated.
-- The model answers either "no change" or a new summary. "No change" and any unparseable answer keep the stored summary.
-- A turn with no answer text and no tool use is skipped without a model call.
-- The summary is stored in the mod's own store, keyed by project root.
+- The summary belongs to one **session** and holds three things: the **goal**, the **phase** and what needs the user. `/clear` starts a new session. A resume continues the earlier session's summary, turn log and note.
+- A model call is made in two cases only: at the end of a main-conversation turn that ended with an answer and made an **edit**, and when the user runs the note command. A turn with no edit makes no call, with no exception.
+- An edit is detected from the turn's tool calls, including those of its subagents. A successful call of an edit tool (Edit, Write, MultiEdit, NotebookEdit) always counts. A shell command counts unless it is on a read-only list, which starts as `ls`, `cat`, `head`, `tail`, `grep`, `rg`, `find`, `pwd`, `which`, `git status`, `git log`, `git diff` and `git show`. A command the list does not know counts, so the error is an extra call and never a missed edit; a test run counts for the same reason. A failed edit tool call does not count.
+- The call sends a small model (haiku) the current summary, the session's note, the turn log's unread turns, and an account of the latest turn: the user's message, the tools used with their main argument, and the assistant's final answer, each truncated.
+- The model answers either "no change" or a new summary together with the amended note. "No change" and any unparseable answer keep what is stored.
+- The goal and the phase are sticky. The model is given the current ones and must return them unchanged unless the user changed direction (goal) or the work moved to a different step (phase). Both are free text.
+- Until a session's first turn with an edit, its goal is provisional: the session's first prompt, cut to one line and drawn dim, with no phase.
+- What needs the user is written only by a turn with an edit and is cleared when the user sends their next prompt.
+- The **turn log** is hidden and per session. Each entry is raw text, not model-written: the user's prompt, the assistant's final answer and the files changed, each cut to about 300 characters. Turns with no edit are logged too. The log keeps every turn the model has not yet read, up to 40, dropping the oldest beyond that; after a model call it is cut back to the last 8 as context.
+- The **note** is a per-session list of at most 12 one-line decisions, each cut to about 160 characters. Every model call amends it. When it is full the model merges or drops the least important line, but never a line the user typed.
+- Each session's summary, turn log and note are stored in the mod's own store, keyed by project root and session. The 20 most recently written sessions of a project are kept; an older session is deleted with its log and note. The earlier per-project summary is discarded without migration.
 - Summarising runs after the turn's own result is returned, so it never delays the turn.
 
 ### Refreshing and drawing
@@ -156,7 +163,9 @@ The mod works out where a project keeps its tickets by itself. The first time it
 - A refresh runs at session start, on a timer of about twenty seconds, after a turn ends, after a ticket file is read or edited by a file tool, and when either command runs.
 - The pane opens unasked at session start, which the engine honours only in a wide terminal; the open command works at any width.
 - The pane lists the active ticket set's tickets as a checklist, each with a glyph for done, in progress or open, under a header holding the project name, the count and a full-width progress bar. This replaced an earlier decision to show only the count and the next ticket. A list longer than the pane's height is cut to a window around the next ticket, with the number hidden above and below.
-- The summary sits under the checklist, and what needs the user is shown last as a highlighted label.
+- The summary sits under the checklist as two labelled rows, "Goal" and "Phase", each cut to one line with an ellipsis; a provisional goal is drawn dim. What needs the user is shown last as a highlighted label.
+- A session in which no prompt has been sent yet shows, in place of its own summary, up to three of the project's other recent sessions, newest first, each as a dim line of goal, phase and age. A session that has only a provisional goal is listed too. The list is removed at the session's first prompt.
+- The **note view** is a second pane, "Notes", opened with focus and closed by Escape, after which the main pane shows again. It lists this session's goal and note lines, then the project's other recent sessions with goal, age and note lines, newest first, and scrolls. Escape is the engine's key and is not delivered while a turn runs or while the prompt holds text; running the view command again also closes it.
 - In the terminal the header holds a small pixel character drawn on a cell grid and repainted in place without redrawing the pane. It writes while a main-conversation turn runs, plays a short zap when a ticket becomes done, and stands still otherwise; a timer runs only while it is moving. Other surfaces show the header without it.
 - A finished ticket and a new "needs you" each raise a brief toast, the one floating element a mod can draw; the first load and a search's result raise none.
 - The mod is written to draw on any surface the engine offers, using only elements every surface has.
@@ -165,6 +174,8 @@ The mod works out where a project keeps its tickets by itself. The first time it
 
 - One command opens the pane, and closes it when given `close`.
 - One command runs a rescan, taking everything after its name as the hint, and answers with the source and count found, or a suggestion to add a hint.
+- `/sidekick-note` amends the session's note with one model call and then opens the note view. Text after its name is added to the note in the user's own words. With no text and no unread turn it makes no call and only opens the view.
+- `/sidekick-note-view` opens the note view without a model call, and closes it when it is already open.
 
 ### Failure handling
 
@@ -179,6 +190,7 @@ The mod works out where a project keeps its tickets by itself. The first time it
 - New behaviour should be tested at the primary seam unless it is a parsing edge case.
 - Fakes must accept paths as the host machine spells them. On Windows the engine hands file hooks a drive-letter, backslash path even when the mod asked with forward slashes.
 - Prior art: the mod already has one test at each seam, and both follow the patterns above. Beyond the automated tests, the search was run once with the real model against four sample projects (Matt Pocock local layout with two feature folders, a single checklist, front-matter status files, and a project with no tickets); all four gave the expected source and count.
+- The per-session summary changes two existing assertions: the summary test that expects a model call after a shell-only turn with an empty answer, and the pane test that expects a call on a turn the model then reports as "no change". The test fakes do not yet cover the session id, the session ending or a turn starting.
 - Not covered by any automated test, and worth a manual pass: how the pane looks and wraps in a real terminal, whether the real model's judgement of "something moved" matches the user's, and the active ticket set following real file reads and edits in a live session.
 
 ## Out of Scope
@@ -190,13 +202,14 @@ The mod works out where a project keeps its tickets by itself. The first time it
 - Ticket layouts that fit neither one-file-per-ticket nor a checklist. These are treated as no tickets.
 - Reading Matt Pocock's wayfinder maps as anything other than ordinary ticket files.
 - Running inside T3 Code or any front end that does not load Claude Code mods.
-- Sharing the mod through a marketplace.
 - User-configurable options, such as the refresh interval or which model is used.
 
 ## Further Notes
 
-- The mod is already built and passing its tests; this spec records the agreed behaviour and decisions as built, so later changes have something to be judged against.
-- Vocabulary follows the project glossary: project, summary, ticket, ticket set, active ticket set, recipe, search, rescan, done, progress.
+- The mod is already built and passing its tests; this spec records the agreed behaviour and decisions as built, so later changes have something to be judged against. The exception is the per-session summary with its turn log, note and note view, which is agreed but not yet built.
+- Vocabulary follows the project glossary: project, summary, session, goal, phase, edit, turn log, note, note view, ticket, ticket set, active ticket set, recipe, search, rescan, done, progress.
 - No ADR has been recorded. The two decisions most likely to be questioned later are the fixed-field recipe (chosen over model-written parsing code for safety and repeatable counts) and the single-project scope (chosen because per-machine storage makes a cross-project view misleading).
-- The mod is loaded per session with the plugin-folder flag. Loading it in every session is a settings change that has not been made.
+- The mod can be loaded per session with the plugin-folder flag, or in every session through the settings change the README describes.
 - The mod API is early access and may change between Claude Code releases; a break after an update is most likely an API change, and the engine's own validator and type declarations are the first things to check.
+- Open: whether a new `claude --resume <id>` process reports the resumed session's old id. An in-process resume changes the id, and the ending session's own end event carries the old one, so the mod can record that link itself. If a new process reports a different id and nothing links the two, that case is treated as a new session.
+- Open, and separate from the summary: the developer forgets the flow of the app. That is durable knowledge about the project, not session state, and the pane is not the place for it. It needs its own design session.
