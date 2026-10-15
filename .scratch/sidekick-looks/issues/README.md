@@ -13,13 +13,14 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 | 7 | 07 The sidekick looks around during a search and shrugs when it fails | 01 | done |
 | 8 | 08 The sidekick cheers when the set is done | 07 | done |
 | 9 | 08b Refactor: parts declare what they need, activity is a state machine | 08 | done |
-| 10 | 08c Zap raises its arm with a pose | 08b | ready |
-| 11 | 08d The sidekick can blink | 08c | ready |
-| 12 | 09 Ambient motion with an off switch | 07, 08d | ready |
-| 13 | 10 A multi-frame background cycles at rest | 09 | ready |
-| 14 | 11 A character replaces a state animation | 07 | ready |
-| 15 | 13 Animations wait until the pane is shown | 09 | ready |
-| 16 | 12 README and vocabulary match the new system | 06, 10, 11, 13 | ready (last) |
+| 10 | 14 The type check is clean (independent; can also run alongside 08c) | — | ready |
+| 11 | 08c Zap raises its arm with a pose | 08b | ready |
+| 12 | 08d The sidekick can blink | 08c | ready |
+| 13 | 09 Ambient motion with an off switch | 07, 08d | ready |
+| 14 | 10 A multi-frame background cycles at rest | 09 | ready |
+| 15 | 11 A character replaces a state animation | 07 | ready |
+| 16 | 13 Animations wait until the pane is shown | 09 | ready |
+| 17 | 12 README and vocabulary match the new system | 06, 10, 11, 13 | ready (last) |
 | — | 08e A fuller raised arm | 08c | optional, needs the owner's decision |
 
 ## Decisions on record
