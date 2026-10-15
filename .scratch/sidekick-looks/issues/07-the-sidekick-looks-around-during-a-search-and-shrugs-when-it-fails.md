@@ -4,16 +4,16 @@
 
 **Blocked by:** 01: The look is resolved, not a constant
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The sidekick plays the looking animation from the start of a search or rescan until it ends
-- [ ] It plays the shrug once when a search gets no answer and when it finds no tickets
-- [ ] No shrug when the search finds tickets
-- [ ] When a turn and a search run together the sidekick writes; when the turn ends first it looks; when both end it stands still
-- [ ] A once-only animation is not cut short by a change of conditions or by another queued animation
-- [ ] Once-only animations that arrive together play in the order they arrived
-- [ ] Subagent turns do not start or stop the writing, as today
-- [ ] The existing strike tests pass unchanged in what they assert
-- [ ] A timer runs only while the sidekick is moving
-- [ ] Every registered character plays the two new animations without leaving the stage
-- [ ] Covered by whole-mod tests that hold a search pending, resolve or fail it, and read the painted cells
+- [x] The sidekick plays the looking animation from the start of a search or rescan until it ends
+- [x] It plays the shrug once when a search gets no answer and when it finds no tickets
+- [x] No shrug when the search finds tickets
+- [x] When a turn and a search run together the sidekick writes; when the turn ends first it looks; when both end it stands still
+- [x] A once-only animation is not cut short by a change of conditions or by another queued animation
+- [x] Once-only animations that arrive together play in the order they arrived
+- [x] Subagent turns do not start or stop the writing, as today
+- [x] The existing strike tests pass unchanged in what they assert
+- [x] A timer runs only while the sidekick is moving
+- [x] Every registered character plays the two new animations without leaving the stage
+- [x] Covered by whole-mod tests that hold a search pending, resolve or fail it, and read the painted cells

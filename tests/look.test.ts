@@ -15,6 +15,8 @@ import { PANE, RECIPE, RUN, addSet, answered, ticket, world } from './world'
 
 // The pane draws the look resolved at each refresh, and the test world keeps what was painted.
 const ROOT = '/work/shop'
+// A session start with no tickets to find ends in the shrug; these tests are about the look, so they wait it out.
+const SETTLED = ANIMATIONS.shrug.frames * ANIMATIONS.shrug.msPerFrame
 
 test('with nothing saved the pane paints the bare foxkit: writing in a turn, idle after it, zapping on a done ticket', async ($, on) => {
   const clock = mock.clock(on)
@@ -29,7 +31,9 @@ test('with nothing saved the pane paints the bare foxkit: writing in a turn, idl
 
   // What the renderer draws for the resolved look and an animation frame is what the world saw painted.
   const bare = layersOf(currentLook())
-  expect(w.painted).toHaveLength(0)
+  // The rescan above made the sidekick look and then stand still; what follows is the turn's own.
+  expect(w.painted.at(-1)).toBe(GOLDEN.idle[0])
+  w.painted.length = 0
 
   await $.turn.start({ text: 'Build it.', turnId: 't1' })
   expect(w.painted.at(-1)).toBe(render(bare, ANIMATIONS.write, 0))
@@ -59,7 +63,7 @@ const started = async ($: Engine, on: On) => {
   const w = world(on, ROOT)
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
-  await clock.settle()
+  await clock.advance(SETTLED)
   w.painted.length = 0
 
   return { clock, w }
@@ -205,7 +209,7 @@ test('a part set from another terminal is kept when this terminal sets a differe
   const store = openStore(on)
   const w = world(on, ROOT)
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
-  await clock.settle()
+  await clock.advance(SETTLED)
   w.painted.length = 0
   // Another terminal saved a character after this session read the store.
   store.data.set('look', { character: 'classic' })
@@ -225,7 +229,7 @@ test('a store that cannot be read at session start still opens the pane with the
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   setSavedLook({ character: 'classic' })
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
-  await clock.settle()
+  await clock.advance(SETTLED)
   // The pane was opened (ui.open is answered by the world) and the refresh ran after the failed read.
   await $.turn.start({ text: 'Build it.', turnId: 't1' })
   expect(w.painted.at(-1)).toBe(GOLDEN.write[0])
@@ -240,7 +244,7 @@ test('a look that cannot be saved is reported, and the old look stays', async ($
   const store = openStore(on)
   const w = world(on, ROOT)
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
-  await clock.settle()
+  await clock.advance(SETTLED)
   await $.command.run({ ...LOOK, args: 'character=classic' })
   w.painted.length = 0
   store.failsSet = true
@@ -275,7 +279,7 @@ test('here changes the sidekick in this project and not in another, and survives
   const w = world(on, SHOP)
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   await $.session.start({ cwd: SHOP, surface: 'terminal', isInteractive: true })
-  await clock.settle()
+  await clock.advance(SETTLED)
   w.painted.length = 0
 
   const ran = await $.command.run({ ...LOOK, args: 'here character=classic' })
@@ -284,6 +288,8 @@ test('here changes the sidekick in this project and not in another, and survives
 
   expect(await lookOf($, BLOG, w)).toContain('  character: foxkit\n')
   expect(await lookOf($, SHOP, w)).toContain('  character: classic (this project)\n')
+  // The fresh session starts found no tickets and shrugged; the turn waits behind the shrug.
+  await clock.advance(SETTLED)
   w.painted.length = 0
   await $.turn.start({ text: 'Build it.', turnId: 't1' })
   expect(w.painted.at(-1)).toBe(render(dressed('classic'), ANIMATIONS.write, 0))
@@ -385,7 +391,7 @@ test('an override set from another terminal is kept when this terminal overrides
   const store = openStore(on)
   const w = world(on, SHOP)
   await $.session.start({ cwd: SHOP, surface: 'terminal', isInteractive: true })
-  await clock.settle()
+  await clock.advance(SETTLED)
   w.painted.length = 0
   store.data.set('look:/work/shop', { character: 'classic' })
   store.data.set('look', { background: 'dusk' })
@@ -405,7 +411,7 @@ test('an override that cannot be read still lets the pane open, and nothing is c
   const w = world(on, SHOP)
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   await $.session.start({ cwd: SHOP, surface: 'terminal', isInteractive: true })
-  await clock.settle()
+  await clock.advance(SETTLED)
   await $.turn.start({ text: 'Build it.', turnId: 't1' })
   expect(w.painted.at(-1)).toBe(render(dressed('classic'), ANIMATIONS.write, 0))
 
@@ -421,7 +427,7 @@ test('an override that cannot be saved is reported, and the old override stays',
   const store = openStore(on)
   const w = world(on, SHOP)
   await $.session.start({ cwd: SHOP, surface: 'terminal', isInteractive: true })
-  await clock.settle()
+  await clock.advance(SETTLED)
   await $.command.run({ ...LOOK, args: 'here character=classic' })
   w.painted.length = 0
   store.failsSet = true
@@ -450,7 +456,7 @@ test('a session that moves to another project without a new session start paints
 })
 
 test('an override can clear the background for this project only, and stays cleared after a fresh session start', async ($, on) => {
-  const { w } = await started($, on)
+  const { clock, w } = await started($, on)
   await $.command.run({ ...LOOK, args: 'background=dusk' })
   const ran = await $.command.run({ ...LOOK, args: 'here background=none' })
   expect(ran.text).toBe('Look set for this project: background=none.')
@@ -460,6 +466,8 @@ test('an override can clear the background for this project only, and stays clea
 
   w.painted.length = 0
   expect(await lookOf($, SHOP, w)).toContain('  background: - (this project)')
+  await clock.advance(SETTLED)
+  w.painted.length = 0
   await $.turn.start({ text: 'Build it.', turnId: 't1' })
   expect(w.painted.at(-1)).toBe(render(dressed('foxkit'), ANIMATIONS.write, 0))
 })
@@ -469,7 +477,7 @@ test('a global command after an override that cannot be read draws no stale over
   const store = openStore(on)
   const w = world(on, SHOP)
   await $.session.start({ cwd: SHOP, surface: 'terminal', isInteractive: true })
-  await clock.settle()
+  await clock.advance(SETTLED)
   await $.command.run({ ...LOOK, args: 'here character=classic' })
   store.failsProjectGet = true
   w.painted.length = 0
@@ -529,7 +537,7 @@ for (const bad of BAD) for (const where of ['global', 'project'] as const) {
     setSavedLook({})
     setProjectLook({}, undefined)
     await $.session.start({ cwd: SHOP, surface: 'terminal', isInteractive: true })
-    await clock.settle()
+    await clock.advance(SETTLED)
     const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
     const [character, outfit, background] = bad.drawn
 
@@ -573,7 +581,7 @@ test('a project override holding only a bad character over a good global look dr
   setSavedLook({})
   setProjectLook({}, undefined)
   await $.session.start({ cwd: SHOP, surface: 'terminal', isInteractive: true })
-  await clock.settle()
+  await clock.advance(SETTLED)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
 
   expect((await ui.findAll({ type: 'Raster' })).at(0)?.props.cells).toBe(render(dressed('foxkit', { head: 'cap' }, 'dusk'), ANIMATIONS.idle, 0))
@@ -598,7 +606,7 @@ for (const where of ['global', 'project'] as const) {
     setSavedLook({})
     setProjectLook({}, undefined)
     await $.session.start({ cwd: SHOP, surface: 'terminal', isInteractive: true })
-    await clock.settle()
+    await clock.advance(SETTLED)
     const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
 
     // neck: cap is a real wrong-slot part and is dropped; the empty names are not parts at all.
@@ -801,7 +809,7 @@ for (const character of ['foxkit', 'classic']) {
     on('turn.start', (_, e) => ({ turnId: e.turnId }))
     on('tool.call', () => ({ result: { ok: true } }))
     await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
-    await clock.settle()
+    await clock.advance(SETTLED)
     await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
     const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
     w.painted.length = 0
@@ -883,7 +891,7 @@ const flagged = async ($: Engine, on: On) => {
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('tool.call', () => ({ result: { ok: true } }))
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
-  await clock.settle()
+  await clock.advance(SETTLED)
   await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.command.run({ ...LOOK, args: 'head=cap face=glasses neck=scarf held=flag' })

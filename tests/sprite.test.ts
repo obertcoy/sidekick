@@ -33,15 +33,22 @@ test('the foxkit draws every frame of every mode exactly as the standalone sprit
   }
 })
 
-test('every character fills the stage in every animation, and write and zap move', async () => {
+test('every character fills the stage in every animation, write and zap leave rest in every frame, and look and shrug move', async () => {
   for (const [name, character] of Object.entries(CHARACTERS)) {
     const layers = bare(character)
     const still = render(layers, ANIMATIONS.idle, 0)
     for (const [mode, animation] of Object.entries(ANIMATIONS)) {
       for (let step = 0; step < animation.frames; step++) {
         expect(render(layers, animation, step).length, `${name} ${mode} ${step}`).toBe(cellsLength)
-        if (mode !== 'idle') expect(render(layers, animation, step), `${name} ${mode} ${step}`).not.toBe(still)
+        // Looking and shrugging start and end at rest, so only write and zap differ from it in every frame.
+        if (mode === 'write' || mode === 'zap') expect(render(layers, animation, step), `${name} ${mode} ${step}`).not.toBe(still)
       }
+    }
+    for (const mode of ['look', 'shrug'] as const) {
+      const animation = ANIMATIONS[mode]
+      const frames = Array.from({ length: animation.frames }, (_, step) => render(layers, animation, step))
+      expect(frames.some(frame => frame !== still), `${name} ${mode} leaves rest`).toBe(true)
+      expect(new Set(frames).size, `${name} ${mode} has different frames`).toBeGreaterThan(1)
     }
     expect(render(layers, ANIMATIONS.write, 1), name).not.toBe(render(layers, ANIMATIONS.write, 0))
     expect(render(layers, ANIMATIONS.zap, 2), name).not.toBe(render(layers, ANIMATIONS.zap, 0))
@@ -363,4 +370,34 @@ test('layersOf takes the flag in the held slot only, and a held anchor needs a b
   expect(() => defineCharacter({ ...foxkit, name: 'offstage', anchors: { ...foxkit.anchors, held: { x: 18, y: 4 } } })).toThrow(
     'character "offstage" has the anchor "held" off the stage',
   )
+})
+
+// Looking and shrugging: what they draw stays on the stage and clear of the body and every accessory.
+
+test('looking and shrugging hide no slot, and what they draw is on the stage and clear of the body and all four accessories, bobbed frames included', async () => {
+  for (const mode of ['look', 'shrug'] as const) expect(ANIMATIONS[mode].hides, mode).toEqual([])
+  for (const [name, character] of Object.entries(CHARACTERS)) {
+    const layers = { character, outfit: withAll(character), background: null }
+    for (const mode of ['look', 'shrug'] as const) {
+      const animation = ANIMATIONS[mode]
+      let bobbed = 0
+      let drawn = 0
+      for (let step = 0; step < animation.frames; step++) {
+        const plan = animation.frame(step, character.anchors)
+        if ((plan.bob ?? 0) > 0) bobbed += 1
+        // The same frame with the head where the bob puts it, wearing everything, and nothing but the animation's own dots left out.
+        const without = composePixels(layers, { ...animation, frame: () => ({ bob: plan.bob ?? 0 }) }, step)
+        const full = composePixels(layers, animation, step)
+        for (const [x, y] of plan.dots ?? []) {
+          const label = `${name} ${mode} ${step} dot ${x},${y}`
+          expect(x >= 0 && x < STAGE.width && y >= 0 && y < STAGE.height, `${label} is on the stage`).toBe(true)
+          expect(without[y]?.[x], `${label} lands on nothing worn or grown`).toBeUndefined()
+          expect(full[y]?.[x], `${label} is drawn`).toBeDefined()
+          drawn += 1
+        }
+      }
+      expect(bobbed, `${name} ${mode} has bobbed frames, which the check covered`).toBeGreaterThan(0)
+      expect(drawn, `${name} ${mode} draws something`).toBeGreaterThan(0)
+    }
+  }
 })

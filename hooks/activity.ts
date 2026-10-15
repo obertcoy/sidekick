@@ -65,10 +65,12 @@ export const createActivity = (clock: Clock, draw: (state: State, frame: number)
   // Starts what comes next: the head of the queue, or the loop for what still goes on.
   const begin = (): void => {
     stop()
+    // An entry that has only the hold left already shows the resting frame; drawing it again would be a repaint of the same picture.
+    const isShown = isHolding && state === resting() && frame === 0
     isHolding = false
     playing = waiting.shift()
     if (playing === undefined) {
-      show(resting(), 0)
+      if (!isShown) show(resting(), 0)
       // A single frame does not move, so it needs no timer.
       if (animation(state).frames > 1) {
         timer = clock.every(animation(state).msPerFrame, () => show(state, (frame + 1) % animation(state).frames))
@@ -106,6 +108,8 @@ export const createActivity = (clock: Clock, draw: (state: State, frame: number)
     set: (condition, isOn) => {
       if (conditions[condition] === isOn) return
       conditions[condition] = isOn
+      // A change that leaves the resting animation as it is (a search ending while a turn writes) must not restart it.
+      if (resting() === state) return
       if (playing === undefined) begin()
       else if (isHolding) show(resting(), 0)
     },

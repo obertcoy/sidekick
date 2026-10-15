@@ -1,12 +1,13 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, Timer } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 
 import type { SetEntry, Summary, View } from '../types'
+import { createActivity } from './activity'
+import type { Activity } from './activity'
 import { changeLook, lookReport, parseSaved, targetOf } from './look'
 import type { Target } from './look'
-import { SPRITE, cellsOf, frameCount, leftOut, msPerFrame } from './sprite'
-import type { Mode } from './sprite'
-import { projectRoot, setCurrentRoot, setProjectLook, setSavedLook } from './sprite/registry'
+import { SPRITE, cellsOf, leftOut, msPerFrame } from './sprite'
+import { STATES, projectRoot, setCurrentRoot, setProjectLook, setSavedLook } from './sprite/registry'
 import type { SavedLook } from './sprite/types'
 import {
   addPlace,
@@ -99,41 +100,6 @@ const parsed = new Map<string, { mtimeMs: number; tickets: Ticket[] }>()
 
 type Dollar = EngineInterface
 
-// The character in the pane's corner: it writes while a turn runs and zaps when a ticket is done.
-let mode: Mode = 'idle'
-let resting: Mode = 'idle'
-let frame = 0
-let ticker: Timer | undefined
-
-const paint = ($: Dollar): void => {
-  void $.ui
-    .blit({ requestId: PANE, key: BUDDY, cells: cellsOf(mode, frame) })
-    .catch(() => undefined)
-}
-
-const animate = ($: Dollar, next: Mode): void => {
-  if (next !== 'zap') resting = next
-  // A zap plays to its end; what was asked meanwhile is where it rests after.
-  if (mode === 'zap' && next !== 'zap' && ticker !== undefined) return
-  ticker?.cancel()
-  ticker = undefined
-  mode = next
-  frame = 0
-  paint($)
-  if (mode === 'idle') return
-  ticker = $.clock.every(msPerFrame(mode), () => {
-    frame += 1
-    if (mode === 'zap' && frame >= frameCount('zap')) {
-      ticker?.cancel()
-      ticker = undefined
-      animate($, resting)
-
-      return
-    }
-    paint($)
-  })
-}
-
 // The strike: when tickets finish, the critter zaps and a bolt lands on their rows, which flash and
 // have the strike-through burn across them before they settle as done. One step per zap frame.
 type Was = 'active' | 'open'
@@ -148,43 +114,66 @@ const HITS = 4
 const BURNS = 5
 const BURN_STEPS = 6
 const STRIKE_STEPS = 13
-let strike: Strike | undefined
-let striker: Timer | undefined
-const waiting: Map<string, Was>[] = []
 
-const play = ($: Dollar, rows: Map<string, Was>): void => {
-  striker?.cancel()
-  strike = { rows, step: 0 }
-  animate($, 'zap')
-  $.ui.invalidate('ui.render')
-  striker = $.clock.every(STRIKE_MS, () => {
-    if (strike === undefined) return
-    strike.step += 1
-    if (strike.step < STRIKE_STEPS) {
-      $.ui.invalidate('ui.render')
+/** What one pane keeps: what its sidekick is doing, the strike on show, and the batch of rows waiting to be struck. */
+type Scene = {
+  activity: Activity
+  strike: Strike | undefined
+  pending: Map<string, Was> | undefined
+}
 
-      return
-    }
-    striker?.cancel()
-    striker = undefined
-    strike = undefined
-    const queued = waiting.shift()
-    if (queued === undefined) $.ui.invalidate('ui.render')
-    else play($, queued)
-  })
+// One scene per pane, so what one pane shows is never read from another's.
+const scenes = new Map<string, Scene>()
+
+const sceneOf = ($: Dollar): Scene => {
+  const held = scenes.get(PANE)
+  if (held !== undefined) return held
+  const scene: Scene = {
+    strike: undefined,
+    pending: undefined,
+    activity: createActivity(
+      { every: (ms, fn) => $.clock.every(ms, fn) },
+      (state, frame) => {
+        void $.ui
+          .blit({ requestId: PANE, key: BUDDY, cells: cellsOf(STATES[state], frame) })
+          .catch(() => undefined)
+      },
+    ),
+  }
+  scenes.set(PANE, scene)
+
+  return scene
 }
 
 /** Strikes the rows that just finished, after any strike already under way. */
 const strikeRows = ($: Dollar, rows: Map<string, Was>): void => {
-  if (strike === undefined) {
-    play($, rows)
+  const scene = sceneOf($)
+  // A burst of finishes waits as one batch behind the strike on show, never as a long queue.
+  if (scene.pending !== undefined) {
+    for (const [title, was] of rows) scene.pending.set(title, was)
 
     return
   }
-  // A burst of finishes waits as one batch behind the strike on show, never as a long queue.
-  const last = waiting.at(-1)
-  if (last === undefined) waiting.push(rows)
-  else for (const [title, was] of rows) last.set(title, was)
+  const batch = new Map(rows)
+  scene.pending = batch
+  scene.activity.queue({
+    state: 'ticket-done',
+    // The strike has one more step than the zap has frames; the sidekick rests for the last one.
+    holdMs: STRIKE_STEPS * STRIKE_MS,
+    onStart: () => {
+      if (scene.pending === batch) scene.pending = undefined
+      scene.strike = { rows: batch, step: 0 }
+      $.ui.invalidate('ui.render')
+    },
+    onStep: step => {
+      if (scene.strike !== undefined) scene.strike.step = step
+      $.ui.invalidate('ui.render')
+    },
+    onEnd: () => {
+      scene.strike = undefined
+      $.ui.invalidate('ui.render')
+    },
+  })
 }
 
 const rootOf = async ($: Dollar): Promise<string> => {
@@ -324,10 +313,15 @@ const search = async (
   hint: string,
   previous: Recipe | undefined,
   cover?: string,
-): Promise<{ recipe: Recipe; isKept: boolean }> => {
+): Promise<{ recipe: Recipe; isKept: boolean; isFailed: boolean }> => {
   const known = previous ?? { places: [] }
   const worked = known.places.length > 0
-  const kept = (): { recipe: Recipe; isKept: boolean } => ({ recipe: known, isKept: worked })
+  // `isFailed`: the model gave no answer, or none that could be read. An answer of "no tickets" is an answer.
+  const kept = (isFailed = false): { recipe: Recipe; isKept: boolean; isFailed: boolean } => ({
+    recipe: known,
+    isKept: worked,
+    isFailed,
+  })
   const isListed = (file: FileInfo): boolean => LISTED.test(file.path.slice(file.path.lastIndexOf('/') + 1))
   const at = await resolveHint($, root, hint)
   const pointed = at === undefined ? [] : (await walk($, root, at, 4, 600, [], 4)).filter(isListed)
@@ -387,12 +381,12 @@ const search = async (
     // A failed call is not an answer: leave an unsearched project unsearched so the next session asks again.
     if (reply.isAnswered && previous === undefined) await $.store.set(`recipe:${root}`, known)
 
-    return kept()
+    return kept(place === undefined)
   }
   const recipe = addPlace(known, place)
   await $.store.set(`recipe:${root}`, recipe)
 
-  return { recipe, isKept: false }
+  return { recipe, isKept: false, isFailed: false }
 }
 
 /** The ticket sets the saved recipe reads, most recently changed first. */
@@ -433,7 +427,7 @@ const show = async ($: Dollar, next: View): Promise<void> => {
     }
     // The critter zaps either way; the rows it can name are struck in step with it.
     if (finished.size > 0) strikeRows($, finished)
-    else animate($, 'zap')
+    else sceneOf($).activity.queue({ state: 'ticket-done' })
     $.ui.toast(
       now.next === null
         ? `✓ All ${now.total} tickets done`
@@ -467,18 +461,27 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
     }
   }
   const isGone = previous !== undefined && previous.places.length > 0 && recipe?.places.length === 0
+  let files: FileInfo[] | undefined
   if (recipe === undefined || hint !== undefined || isGone) {
+    const { activity } = sceneOf($)
     isSearching = true
-    await show($, { ...(await read($, view)), project, isSearching: true, summary, progress: null })
+    activity.set('search', true)
+    let isFailed = true
     try {
+      await show($, { ...(await read($, view)), project, isSearching: true, summary, progress: null })
       const found = await search($, root, hint ?? '', recipe, cover)
       recipe = found.recipe
       isKept = found.isKept
+      isFailed = found.isFailed
+      files = recipe === undefined ? [] : await filesOf($, root, recipe)
     } finally {
       isSearching = false
+      // The shrug is queued first, so the sidekick goes from looking straight into it.
+      if (isFailed || (files ?? []).length === 0) activity.queue({ state: 'search-failed' })
+      activity.set('search', false)
     }
   }
-  const files = recipe === undefined ? [] : await filesOf($, root, recipe)
+  files ??= recipe === undefined ? [] : await filesOf($, root, recipe)
   const sets = recipe === undefined ? [] : orderSets(groupSets(recipe, files))
   const session = await $.session.id()
   const key = activeKey(root, session)
@@ -630,6 +633,8 @@ export const register: Register = on => {
       description: 'Choose the sidekick\'s character, accessories and background',
       argumentHint: '[character=classic head=cap background=dusk]',
     })
+    // A session that ended mid-turn may never have raised turn.complete; the new one starts with no turn running.
+    sceneOf($).activity.set('turn', false)
     setSavedLook((await storedLook($, LOOK)) ?? {})
     const root = await rootOrNone($)
     setProjectLook((await storedLook($, lookKey('project', root))) ?? {}, root)
@@ -743,7 +748,7 @@ export const register: Register = on => {
     if (target === 'project') setProjectLook(change.saved, root)
     else setSavedLook(change.saved)
     // The sidekick repaints with the new look before the command returns.
-    paint($)
+    sceneOf($).activity.repaint()
     $.ui.invalidate('ui.render')
 
     return { text: change.text }
@@ -798,14 +803,19 @@ export const register: Register = on => {
     }
     // The session may have moved to another project since the last refresh; draw that project's look.
     await followProject($)
-    animate($, 'write')
+    // A subagent run raises no turn.start, so this is always the main conversation's turn.
+    const { activity } = sceneOf($)
+    const isWriting = activity.has('turn')
+    activity.set('turn', true)
+    // A turn that follows one with no end is not a change of conditions, but the project's look may be.
+    if (isWriting) activity.repaint()
 
     return next(e)
   })
 
   on('turn.complete', async ($, e, next) => {
     const ended = await next(e)
-    if (e.agentId === undefined) animate($, 'idle')
+    if (e.agentId === undefined) sceneOf($).activity.set('turn', false)
     // The first turn ended with no pick: the picker gives way to the hint line.
     if (e.agentId === undefined && isChoosing) {
       isChoosing = false
@@ -828,7 +838,8 @@ export const register: Register = on => {
     const room = Math.max(3, e.props.scroll.bodyRows - 17)
     const steady = windowOf(rows.length, Math.max(0, focus), room)
     // A row being struck is brought into view for the strike, then the list goes back to the next ticket.
-    const struck = strike === undefined ? -1 : rows.findIndex(row => row.state === 'done' && strike?.rows.has(row.title))
+    const { activity, strike } = sceneOf($)
+    const struck = strike === undefined ? -1 : rows.findIndex(row => row.state === 'done' && strike.rows.has(row.title))
     const isHidden = struck !== -1 && (struck < steady.start || struck >= steady.end)
     const { start, end } = isHidden ? windowOf(rows.length, struck, room) : steady
     const step = struck === -1 ? -1 : (strike?.step ?? -1)
@@ -895,7 +906,9 @@ export const register: Register = on => {
         ? (() => {
             const { Raster } = $.ui.resolve(e)
 
-            return <Raster key={BUDDY} columns={SPRITE.columns} rows={SPRITE.rows} cells={cellsOf(mode, frame)} />
+            const { state, frame } = activity.shown()
+
+            return <Raster key={BUDDY} columns={SPRITE.columns} rows={SPRITE.rows} cells={cellsOf(STATES[state], frame)} />
           })()
         : null
 

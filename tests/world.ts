@@ -171,3 +171,33 @@ export const RUN = {
 } as const
 
 export const SURFACES = ['terminal', 'desktop'] as const
+
+/** The pane's refresh, which waits through every session; it is not the sidekick moving. */
+export const REFRESH_MS = 20_000
+
+/**
+ * Hand `counting(on).on` to `mock.clock` in place of `on`, and `running()` says how many `clock.every` and
+ * `clock.after` waits are in flight now, those of `ignored` lengths left out. A timer the mod cancels is not counted.
+ */
+export const counting = (on: On, ignored: readonly number[] = [REFRESH_MS]): { on: On; running: () => number } => {
+  let waits = 0
+  const hooked = (event: string, ...rest: unknown[]): unknown => {
+    const hook = rest[rest.length - 1] as (...args: unknown[]) => unknown
+    if (event === 'clock.every' || event === 'clock.after') {
+      rest[rest.length - 1] = async (...args: unknown[]) => {
+        const { ms } = args[1] as { ms: number }
+        const isCounted = !ignored.includes(ms)
+        if (isCounted) waits += 1
+        try {
+          return await hook(...args)
+        } finally {
+          if (isCounted) waits -= 1
+        }
+      }
+    }
+
+    return (on as unknown as (...args: unknown[]) => unknown)(event, ...rest)
+  }
+
+  return { on: hooked as unknown as On, running: () => waits }
+}
