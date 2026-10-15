@@ -2,9 +2,10 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
+import { STRIKE_STEPS } from '../hooks/strike'
 import { render } from '../hooks/sprite/compose'
 import { ANIMATIONS, currentLook, layersOf } from '../hooks/sprite/registry'
-import { PANE, RECIPE, RUN, addSet, answered, counting, failed, ticket, world } from './world'
+import { PANE, RECIPE, REFRESH_MS, RUN, addSet, answered, counting, failed, ticket, world } from './world'
 import type { Reply, World } from './world'
 
 // What the sidekick does while a search runs, when one fails, and how that mixes with turns and
@@ -17,7 +18,16 @@ const WRITE_MS = ANIMATIONS.write.msPerFrame
 const SHRUG_STEP = ANIMATIONS.shrug.msPerFrame
 const ZAP_STEP = ANIMATIONS.zap.msPerFrame
 // The strike runs one step longer than the zap has frames; the sidekick rests for that last step.
-const STRIKE_MS = 13 * ZAP_STEP
+const STRIKE_MS = STRIKE_STEPS * ZAP_STEP
+
+type Mounted = Awaited<ReturnType<Engine['ui']['mount']>>
+
+/** The rows the strike has flashing now. The clock settles first so a repaint the last tick asked for is in. */
+const flashingOf = async (ui: Pick<Mounted, 'findAll'>, clock: MockClock) => {
+  await clock.settle()
+
+  return (await ui.findAll({ type: 'Text' })).filter(one => one.props.backgroundColor === 'warning')
+}
 const NONE = '{"kind":"none"}'
 
 const TICKETS = {
@@ -34,7 +44,7 @@ const REST = (): string => framesOf('idle')[0] ?? ''
 /** What each painted picture is, by name ("look3", "shrug7"), so that a failure reads as a sequence. Pictures that are the same frame have the same name. */
 const named = (painted: readonly string[]): string[] => {
   const names = new Map<string, string>()
-  for (const mode of ['idle', 'shrug', 'look', 'write', 'zap'] as const) {
+  for (const mode of ['idle', 'shrug', 'look', 'write', 'zap', 'cheer'] as const) {
     framesOf(mode).forEach((cells, step) => {
       if (!names.has(cells)) names.set(cells, `${mode}${step}`)
     })
@@ -53,12 +63,12 @@ type Open = {
 }
 
 /** A session whose first search is held until the test answers it; the sidekick is looking. */
-const open = async ($: Engine, on: On): Promise<Open> => {
+const open = async ($: Engine, on: On, tickets: Record<string, string> = TICKETS): Promise<Open> => {
   const timers = counting(on)
   const clock = mock.clock(timers.on)
   mock.store(on)
   const w = world(on, ROOT)
-  addSet(w, ROOT, 'checkout', TICKETS, 5)
+  addSet(w, ROOT, 'checkout', tickets, 5)
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('tool.call', () => ({ result: { ok: true } }))
   let release: ((reply: Reply) => void) | undefined
@@ -78,8 +88,8 @@ const open = async ($: Engine, on: On): Promise<Open> => {
 }
 
 /** A session that has found its tickets and stands still. */
-const settled = async ($: Engine, on: On): Promise<Open> => {
-  const session = await open($, on)
+const settled = async ($: Engine, on: On, tickets: Record<string, string> = TICKETS): Promise<Open> => {
+  const session = await open($, on, tickets)
   await session.answerSearch(answered(RECIPE))
   session.w.painted.length = 0
 
@@ -272,7 +282,7 @@ test('a turn that begins and ends during a shrug leaves the shrug whole and rest
 test('a ticket that finishes during a shrug is struck after it: the shrug plays whole, then the zap, then rest', async ($, on) => {
   const { clock, w } = await settled($, on)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const flashing = async () => (await ui.findAll({ type: 'Text' })).filter(one => one.props.backgroundColor === 'warning')
+  const flashing = () => flashingOf(ui, clock)
   await failRescan($, w)
   const from = w.painted.length - 1
   await clock.advance(SHRUG_STEP * 2)
@@ -341,7 +351,7 @@ test('a new session does not start with a turn that never completed: the sidekic
 test('tickets that finish while a strike is still waiting join it, and are struck together after the shrug', async ($, on) => {
   const { clock, w } = await settled($, on)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const flashing = async () => (await ui.findAll({ type: 'Text' })).filter(one => one.props.backgroundColor === 'warning')
+  const flashing = () => flashingOf(ui, clock)
   await failRescan($, w)
   await clock.advance(SHRUG_STEP)
   await finish($, w, clock)
@@ -380,4 +390,200 @@ test('a timer runs only while the sidekick is moving, and never more than one', 
   expect(running(), 'shrugging').toBe(1)
   await clock.advance(SHRUG_MS)
   expect(running(), 'done shrugging').toBe(0)
+})
+
+// The cheer: once, when the last ticket of the active ticket set becomes done, after that ticket's zap and strike.
+const CHEER_MS = ANIMATIONS.cheer.frames * ANIMATIONS.cheer.msPerFrame
+const CHEER_STEP = ANIMATIONS.cheer.msPerFrame
+/** Two of three tickets are done: finishing the last one finishes the set. */
+const ALMOST = { ...TICKETS, '02-pay.md': ticket('02: Payment', 'done') }
+const ALL = { ...ALMOST, '03-ship.md': ticket('03: Shipping', 'done') }
+const isMoving = (name: string): boolean => name.startsWith('cheer') || name.startsWith('zap')
+
+/** The tickets change on disk and the mod notices, as it does when a file tool touches one. */
+const change = async ($: Engine, w: World, clock: MockClock, tickets: Record<string, string>, mtimeMs: number): Promise<void> => {
+  addSet(w, ROOT, 'checkout', tickets, mtimeMs)
+  await $.tool.call({ tool: 'Read', file_path: `${ISSUES}/${Object.keys(tickets).at(-1) ?? '03-ship.md'}` })
+  await clock.settle()
+}
+
+const cheers = (painted: readonly string[]): number => named(painted).filter(name => name === 'cheer0').length
+
+test('the cheer frames are told apart from every other animation, so a painted sequence reads as it was played', async () => {
+  const others = new Set((['idle', 'shrug', 'look', 'write', 'zap'] as const).flatMap(mode => framesOf(mode)))
+  const cheer = framesOf('cheer')
+  expect(cheer.length).toBe(ANIMATIONS.cheer.frames)
+  expect(cheer[0], 'it starts with a picture of its own').not.toBe(REST())
+  for (const [step, cells] of cheer.entries()) {
+    // The last frames may be the resting picture: the cheer ends where it began.
+    if (cells !== REST()) expect(others.has(cells), `cheer ${step} is its own picture`).toBe(false)
+  }
+})
+
+test('the last ticket of the set finishing gives the zap and its whole strike, and only then the cheer, and then the sidekick stands still', async ($, on) => {
+  const { clock, w, running } = await settled($, on, ALMOST)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const flashing = () => flashingOf(ui, clock)
+  const from = w.painted.length
+  await change($, w, clock, ALL, 9)
+  const zap = framesOf('zap')
+  const cheer = framesOf('cheer')
+  expect(named(w.painted.slice(from))).toEqual(named([zap[0] ?? '']))
+  await clock.advance(4 * ZAP_STEP)
+  expect((await flashing()).map(one => one.text), 'the strike lands on the row').toEqual(['✓ Shipping'])
+
+  // One tick short of the end of the strike: the zap is over, the strike is not, and no cheer has begun.
+  await clock.advance(STRIKE_MS - 4 * ZAP_STEP - 1)
+  expect(cheers(w.painted.slice(from)), 'no cheer before the strike is done').toBe(0)
+  expect(named(w.painted.slice(from)).slice(0, ANIMATIONS.zap.frames)).toEqual(named(zap))
+  await clock.advance(1)
+  expect(await flashing(), 'the strike has completed').toHaveLength(0)
+  expect(w.painted.at(-1), 'the cheer begins when the strike ends').toBe(cheer[0])
+
+  for (let step = 1; step < ANIMATIONS.cheer.frames; step++) {
+    await clock.advance(CHEER_STEP)
+    expect(w.painted.at(-1), `cheer step ${step}`).toBe(cheer[step])
+  }
+  await clock.advance(CHEER_STEP)
+  expect(w.painted.at(-1), 'after the cheer the sidekick stands still').toBe(REST())
+  expect(named(w.painted.slice(from))).toEqual(named([...zap, REST(), ...cheer, REST()]))
+  expect(running(), 'the timer stops with the cheer').toBe(0)
+  const painted = w.painted.length
+  await clock.advance(10_000)
+  expect(w.painted.length, 'nothing moves after the cheer').toBe(painted)
+  await ui.unmount()
+})
+
+test('a ticket that finishes while others remain open gets the zap and no cheer', async ($, on) => {
+  const { clock, w } = await settled($, on)
+  const from = w.painted.length
+  await change($, w, clock, ALMOST, 9)
+  await clock.advance(STRIKE_MS + CHEER_MS * 2)
+  expect(named(w.painted.slice(from))).toEqual(named([...framesOf('zap'), REST()]))
+  expect(cheers(w.painted)).toBe(0)
+})
+
+test('reopening a ticket and finishing the set again cheers again, and the reopening itself paints nothing', async ($, on) => {
+  const { clock, w } = await settled($, on, ALMOST)
+  await change($, w, clock, ALL, 9)
+  await clock.advance(STRIKE_MS + CHEER_MS)
+  expect(cheers(w.painted), 'the first completion').toBe(1)
+
+  const painted = w.painted.length
+  await change($, w, clock, ALMOST, 12)
+  await clock.advance(STRIKE_MS + CHEER_MS)
+  expect(w.painted.length, 'reopening is no zap and no cheer').toBe(painted)
+
+  await change($, w, clock, ALL, 15)
+  await clock.advance(STRIKE_MS + CHEER_MS)
+  expect(cheers(w.painted), 'the second completion').toBe(2)
+  expect(w.painted.at(-1)).toBe(REST())
+})
+
+test('a turn that begins during the cheer does not cut it short, and the sidekick writes when it is over', async ($, on) => {
+  const { clock, w } = await settled($, on, ALMOST)
+  await change($, w, clock, ALL, 9)
+  await clock.advance(STRIKE_MS + CHEER_STEP * 2)
+  const cheer = framesOf('cheer')
+  expect(w.painted.at(-1)).toBe(cheer[2])
+  await startTurn($, 't1')
+  expect(w.painted.at(-1), 'the turn did not interrupt').toBe(cheer[2])
+  for (let step = 3; step < ANIMATIONS.cheer.frames; step++) {
+    await clock.advance(CHEER_STEP)
+    expect(w.painted.at(-1), `cheer step ${step}`).toBe(cheer[step])
+  }
+  await clock.advance(CHEER_STEP)
+  expect(w.painted.at(-1)).toBe(framesOf('write')[0])
+  await endTurn($, 't1')
+  expect(w.painted.at(-1)).toBe(REST())
+})
+
+test('a set that is already all done when the session opens does not cheer, at the first refresh, at later ones, or at a later session start', async ($, on) => {
+  const { clock, w, answerSearch } = await open($, on, ALL)
+  await answerSearch(answered(RECIPE))
+  await clock.advance(REFRESH_MS * 2)
+  await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  await clock.advance(REFRESH_MS * 2)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: '3/3 done' }), 'the pane does show the finished set').toBeDefined()
+  await ui.unmount()
+  expect(named(w.painted).filter(isMoving)).toEqual([])
+})
+
+test('changing the active ticket set to one that is all done does not cheer', async ($, on) => {
+  const { clock, w } = await settled($, on)
+  addSet(w, ROOT, 'billing', { '01-plans.md': ticket('01: Plans', 'done'), '02-invoices.md': ticket('02: Invoices', 'done') }, 20)
+  const from = w.painted.length
+  const picked = await $.command.run({ command: 'sidekick-pick', args: 'billing', ...RUN })
+  await clock.settle()
+  expect(picked.text).toBe('Showing billing: 2/2 done.')
+  await clock.advance(STRIKE_MS + CHEER_MS)
+  expect(named(w.painted.slice(from)).filter(isMoving)).toEqual([])
+})
+
+test('a done ticket added to a set that was already all done does not cheer', async ($, on) => {
+  const { clock, w } = await settled($, on, ALL)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: '3/3 done' })).toBeDefined()
+  await change($, w, clock, { ...ALL, '04-track.md': ticket('04: Tracking', 'done') }, 9)
+  await clock.advance(STRIKE_MS + CHEER_MS)
+  expect(await ui.find({ type: 'Text', text: '4/4 done' }), 'the pane has read the new ticket').toBeDefined()
+  await ui.unmount()
+  expect(cheers(w.painted)).toBe(0)
+})
+
+test('two tickets finishing in one refresh that complete the set give one zap striking both rows, then one cheer, then rest', async ($, on) => {
+  const { clock, w } = await settled($, on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const from = w.painted.length
+  await change($, w, clock, ALL, 9)
+  await clock.advance(ZAP_STEP * 4)
+  expect((await flashingOf(ui, clock)).map(one => one.text).sort(), 'one strike takes both rows').toEqual(['✓ Payment', '✓ Shipping'])
+  await clock.advance(STRIKE_MS + CHEER_MS * 2)
+  expect(named(w.painted.slice(from))).toEqual(named([...framesOf('zap'), REST(), ...framesOf('cheer'), REST()]))
+  expect(await flashingOf(ui, clock)).toHaveLength(0)
+  await ui.unmount()
+})
+
+test('the last ticket finishing while an earlier strike is on show is struck after it, and the cheer comes once after that', async ($, on) => {
+  const { clock, w } = await settled($, on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const from = w.painted.length
+  await change($, w, clock, ALMOST, 9)
+  await clock.advance(ZAP_STEP * 3)
+  await change($, w, clock, ALL, 12)
+  expect(cheers(w.painted.slice(from)), 'the cheer waits for both strikes').toBe(0)
+  await clock.advance(STRIKE_MS * 2 + CHEER_MS * 2)
+  const zap = framesOf('zap')
+  expect(named(w.painted.slice(from))).toEqual(named([...zap, REST(), ...zap, REST(), ...framesOf('cheer'), REST()]))
+  expect(await flashingOf(ui, clock)).toHaveLength(0)
+  await ui.unmount()
+})
+
+test('the last ticket finishing while an earlier strike still waits behind a shrug joins it, and the cheer comes once after the strike', async ($, on) => {
+  const { clock, w } = await settled($, on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await failRescan($, w)
+  const from = w.painted.length - 1
+  await clock.advance(SHRUG_STEP)
+  await change($, w, clock, ALMOST, 9)
+  await change($, w, clock, ALL, 12)
+  await clock.advance(SHRUG_MS + STRIKE_MS + CHEER_MS * 2)
+  expect(named(w.painted.slice(from))).toEqual(
+    named([...framesOf('shrug'), ...framesOf('zap'), REST(), ...framesOf('cheer'), REST()]),
+  )
+  expect(await flashingOf(ui, clock)).toHaveLength(0)
+  await ui.unmount()
+})
+
+test('a set whose tickets all go away does not cheer', async ($, on) => {
+  const { clock, w } = await settled($, on, ALMOST)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: '2/3 done' })).toBeDefined()
+  await change($, w, clock, {}, 9)
+  await clock.advance(STRIKE_MS + CHEER_MS)
+  expect(await ui.find({ type: 'Text', text: '2/3 done' }), 'the pane has read the empty set').toBeUndefined()
+  await ui.unmount()
+  expect(named(w.painted).filter(isMoving)).toEqual([])
 })

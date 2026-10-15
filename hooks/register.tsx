@@ -3,6 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { SetEntry, Summary, View } from '../types'
 import { createActivity } from './activity'
+import { STRIKE_STEPS } from './strike'
 import type { Activity } from './activity'
 import { changeLook, lookReport, parseSaved, targetOf } from './look'
 import type { Target } from './look'
@@ -113,7 +114,6 @@ const LANDS = 3
 const HITS = 4
 const BURNS = 5
 const BURN_STEPS = 6
-const STRIKE_STEPS = 13
 
 /** What one pane keeps: what its sidekick is doing, the strike on show, and the batch of rows waiting to be struck. */
 type Scene = {
@@ -428,6 +428,9 @@ const show = async ($: Dollar, next: View): Promise<void> => {
     // The critter zaps either way; the rows it can name are struck in step with it.
     if (finished.size > 0) strikeRows($, finished)
     else sceneOf($).activity.queue({ state: 'ticket-done' })
+    // The set became all done: it was not at the previous refresh of this same set (`was` is that refresh, and a
+    // first load or another set never gets here). The cheer waits behind the zap and its strike.
+    if (now.done === now.total && was.done < was.total) sceneOf($).activity.queue({ state: 'set-done' })
     $.ui.toast(
       now.next === null
         ? `✓ All ${now.total} tickets done`

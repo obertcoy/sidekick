@@ -4,15 +4,15 @@
 
 **Blocked by:** 07: The sidekick looks around during a search and shrugs when it fails
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] When the last ticket of the active ticket set becomes done, the cheer plays once
-- [ ] The cheer starts only after that ticket's zap has reached its last frame, and the strike on the row completes as before
-- [ ] After the cheer the sidekick writes if a turn is still running, and stands still otherwise
-- [ ] A ticket that becomes done while others remain open gets a zap and no cheer
-- [ ] Reopening a ticket and finishing the set again plays the cheer again
-- [ ] No cheer on the first refresh of a session when the set is already all done
-- [ ] No cheer when the active ticket set changes to a set that is all done
-- [ ] No cheer for a set with no tickets
-- [ ] Every registered character plays the cheer without leaving the stage
-- [ ] Covered by whole-mod tests that read the painted cells across the zap and the cheer
+- [x] When the last ticket of the active ticket set becomes done, the cheer plays once
+- [x] The cheer starts only after that ticket's zap and its strike have played to the end; the strike on the row completes as before
+- [x] After the cheer the sidekick writes if a turn is still running, and stands still otherwise
+- [x] A ticket that becomes done while others remain open gets a zap and no cheer
+- [x] Reopening a ticket and finishing the set again plays the cheer again
+- [x] No cheer on the first refresh of a session when the set is already all done
+- [x] No cheer when the active ticket set changes to a set that is all done
+- [x] No cheer for a set with no tickets
+- [x] Every registered character plays the cheer without leaving the stage
+- [x] Covered by whole-mod tests that read the painted cells across the zap and the cheer

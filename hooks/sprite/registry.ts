@@ -1,5 +1,6 @@
 import { classic } from './characters/classic'
 import { foxkit } from './characters/foxkit'
+import { cheer } from './animations/cheer'
 import { idle } from './animations/idle'
 import { look } from './animations/look'
 import { shrug } from './animations/shrug'
@@ -16,7 +17,7 @@ import type { Accessory, Animation, Background, Character, Layers, Look, Outfit,
 
 export const CHARACTERS: Readonly<Record<string, Character>> = { foxkit, classic }
 
-export const ANIMATIONS = { idle, write, zap, look, shrug } as const satisfies Record<string, Animation>
+export const ANIMATIONS = { idle, write, zap, look, shrug, cheer } as const satisfies Record<string, Animation>
 
 /** What the sidekick is shown doing, and the animation that plays for each. */
 export const STATES = {
@@ -24,6 +25,7 @@ export const STATES = {
   searching: 'look',
   'search-failed': 'shrug',
   'ticket-done': 'zap',
+  'set-done': 'cheer',
   resting: 'idle',
 } as const satisfies Record<string, keyof typeof ANIMATIONS>
 

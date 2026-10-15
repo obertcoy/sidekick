@@ -148,6 +148,7 @@ export const addSet = (
   w.tree[scratch] = [...(w.tree[scratch] ?? []).filter(one => one.name !== set), { name: set, kind: 'dir' }]
   w.tree[`${scratch}/${set}`] = [{ name: 'issues', kind: 'dir' }]
   w.tree[`${scratch}/${set}/issues`] = Object.keys(tickets).map(name => ({ name, kind: 'file', mtimeMs }))
+  // Files of tickets dropped from a set stay in `w.files`; that is harmless, since the mod reads only the paths the `tree` lists.
   for (const [name, text] of Object.entries(tickets)) w.files[`${scratch}/${set}/issues/${name}`] = text
 }
 

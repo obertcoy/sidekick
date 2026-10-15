@@ -10,6 +10,7 @@ import { render } from '../hooks/sprite/compose'
 import { ACCESSORIES, ANIMATIONS, CHARACTERS, currentLook, drawable, droppedOf, layersOf, projectLook, savedLook, setCurrentRoot } from '../hooks/sprite/registry'
 import { changeLook, lookReport } from '../hooks/look'
 import { leftOut } from '../hooks/sprite'
+import { STRIKE_STEPS } from '../hooks/strike'
 import { GOLDEN } from './sprite-golden'
 import { PANE, RECIPE, RUN, addSet, answered, ticket, world } from './world'
 
@@ -804,7 +805,8 @@ for (const character of ['foxkit', 'classic']) {
     const clock = mock.clock(on)
     mock.store(on)
     const w = world(on, ROOT)
-    addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'in-progress') }, 5)
+    // A second ticket stays open, so finishing the first is a zap and not the end of the set.
+    addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'in-progress'), '02-pay.md': ticket('02: Pay', 'in-progress') }, 5)
     w.answer = () => answered(RECIPE)
     on('turn.start', (_, e) => ({ turnId: e.turnId }))
     on('tool.call', () => ({ result: { ok: true } }))
@@ -842,7 +844,7 @@ for (const character of ['foxkit', 'classic']) {
 
     // Zapping: all twelve frames, one after the other, none with the flag.
     const zapFrom = w.painted.length
-    addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'done') }, 9)
+    addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'done'), '02-pay.md': ticket('02: Pay', 'in-progress') }, 9)
     await $.tool.call({ tool: 'Read', file_path: `${ROOT}/.scratch/checkout/issues/01-cart.md` })
     await clock.settle()
     for (let step = 0; step < ANIMATIONS.zap.frames; step++) {
@@ -886,7 +888,8 @@ const flagged = async ($: Engine, on: On) => {
   const clock = mock.clock(on)
   mock.store(on)
   const w = world(on, ROOT)
-  addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'in-progress') }, 5)
+  // A second ticket stays open, so finishing the first is a zap and not the end of the set.
+  addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'in-progress'), '02-pay.md': ticket('02: Pay', 'in-progress') }, 5)
   w.answer = () => answered(RECIPE)
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('tool.call', () => ({ result: { ok: true } }))
@@ -899,7 +902,7 @@ const flagged = async ($: Engine, on: On) => {
   expect(w.painted.at(-1)).toBe(resting)
   w.painted.length = 0
   const finish = async () => {
-    addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'done') }, 9)
+    addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'done'), '02-pay.md': ticket('02: Pay', 'in-progress') }, 9)
     await $.tool.call({ tool: 'Read', file_path: `${ROOT}/.scratch/checkout/issues/01-cart.md` })
     await clock.settle()
   }
@@ -940,6 +943,30 @@ test('a turn that starts and completes while a zap plays: every frame is a zap f
     expect(zapFrames.includes(painted) || painted === resting, `paint ${at}`).toBe(true)
   }
   expect(w.painted.some(painted => zapFrames.includes(painted))).toBe(true)
+  expect(w.painted.at(-1)).toBe(resting)
+  await ui.unmount()
+})
+
+test('the flag stays drawn through the cheer that ends a set, in every frame, while the zap before it hides it', async ($, on) => {
+  const { clock, w, ui, resting, finish, zapFrames } = await flagged($, on)
+  await finish()
+  await clock.advance(ANIMATIONS.zap.msPerFrame * (STRIKE_STEPS + 1))
+  w.painted.length = 0
+  // The second ticket finishes: the set is done, and the zap and its strike come first.
+  addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'done'), '02-pay.md': ticket('02: Pay', 'done') }, 12)
+  await $.tool.call({ tool: 'Read', file_path: `${ROOT}/.scratch/checkout/issues/02-pay.md` })
+  await clock.settle()
+  const cheerFrames = Array.from({ length: ANIMATIONS.cheer.frames }, (_, step) => render(dressed('foxkit', FOUR), ANIMATIONS.cheer, step))
+  const bareCheer = Array.from({ length: ANIMATIONS.cheer.frames }, (_, step) => render(dressed('foxkit', THREE), ANIMATIONS.cheer, step))
+  await clock.advance(ANIMATIONS.zap.msPerFrame * STRIKE_STEPS + ANIMATIONS.cheer.msPerFrame * (ANIMATIONS.cheer.frames + 1))
+  for (const [at, painted] of w.painted.entries()) {
+    expect([...zapFrames, ...cheerFrames, resting], `paint ${at}`).toContain(painted)
+  }
+  // The cheer was painted as it is with the flag, and the flag is what tells it from the cheer without.
+  for (const [step, frame] of cheerFrames.entries()) {
+    if (frame !== resting) expect(frame, `cheer ${step} keeps the flag`).not.toBe(bareCheer[step])
+    expect(w.painted, `cheer ${step} was painted`).toContain(frame)
+  }
   expect(w.painted.at(-1)).toBe(resting)
   await ui.unmount()
 })

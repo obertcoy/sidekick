@@ -4,7 +4,7 @@ import { SPRITE, cellsOf, frameCount } from '../hooks/sprite'
 import { STAGE, composePixels, defineCharacter, render } from '../hooks/sprite/compose'
 import type { Pixels } from '../hooks/sprite/compose'
 import { foxkit } from '../hooks/sprite/characters/foxkit'
-import { ACCESSORIES, ANIMATIONS, BACKGROUNDS, CHARACTERS, DEFAULT_LOOK, currentLook, layersOf } from '../hooks/sprite/registry'
+import { ACCESSORIES, ANIMATIONS, BACKGROUNDS, CHARACTERS, DEFAULT_LOOK, STATES, currentLook, layersOf } from '../hooks/sprite/registry'
 import type { Animation, Background, Character, Layers } from '../hooks/sprite/types'
 import { GOLDEN } from './sprite-golden'
 
@@ -33,7 +33,7 @@ test('the foxkit draws every frame of every mode exactly as the standalone sprit
   }
 })
 
-test('every character fills the stage in every animation, write and zap leave rest in every frame, and look and shrug move', async () => {
+test('every character fills the stage in every animation, write and zap leave rest in every frame, and look, shrug and cheer move', async () => {
   for (const [name, character] of Object.entries(CHARACTERS)) {
     const layers = bare(character)
     const still = render(layers, ANIMATIONS.idle, 0)
@@ -44,7 +44,7 @@ test('every character fills the stage in every animation, write and zap leave re
         if (mode === 'write' || mode === 'zap') expect(render(layers, animation, step), `${name} ${mode} ${step}`).not.toBe(still)
       }
     }
-    for (const mode of ['look', 'shrug'] as const) {
+    for (const mode of ['look', 'shrug', 'cheer'] as const) {
       const animation = ANIMATIONS[mode]
       const frames = Array.from({ length: animation.frames }, (_, step) => render(layers, animation, step))
       expect(frames.some(frame => frame !== still), `${name} ${mode} leaves rest`).toBe(true)
@@ -374,11 +374,11 @@ test('layersOf takes the flag in the held slot only, and a held anchor needs a b
 
 // Looking and shrugging: what they draw stays on the stage and clear of the body and every accessory.
 
-test('looking and shrugging hide no slot, and what they draw is on the stage and clear of the body and all four accessories, bobbed frames included', async () => {
-  for (const mode of ['look', 'shrug'] as const) expect(ANIMATIONS[mode].hides, mode).toEqual([])
+test('looking, shrugging and cheering hide no slot, and what they draw is on the stage and clear of the body and all four accessories, bobbed frames included', async () => {
+  for (const mode of ['look', 'shrug', 'cheer'] as const) expect(ANIMATIONS[mode].hides, mode).toEqual([])
   for (const [name, character] of Object.entries(CHARACTERS)) {
     const layers = { character, outfit: withAll(character), background: null }
-    for (const mode of ['look', 'shrug'] as const) {
+    for (const mode of ['look', 'shrug', 'cheer'] as const) {
       const animation = ANIMATIONS[mode]
       let bobbed = 0
       let drawn = 0
@@ -400,4 +400,10 @@ test('looking and shrugging hide no slot, and what they draw is on the stage and
       expect(drawn, `${name} ${mode} draws something`).toBeGreaterThan(0)
     }
   }
+})
+
+test('the cheer plays once for the set-done state, and every state still plays an animation that exists', async () => {
+  expect(STATES['set-done']).toBe('cheer')
+  expect(ANIMATIONS.cheer.once).toBe(true)
+  for (const [state, mode] of Object.entries(STATES)) expect(ANIMATIONS[mode], state).toBeDefined()
 })
