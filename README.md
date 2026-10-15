@@ -55,11 +55,17 @@ Then, from the mod's folder:
 ```
 claude plugin validate .
 claude plugin test .
-node ~/.pi-lens/tools/node_modules/typescript/bin/tsc --noEmit -p .
-npx @biomejs/biome@2.5.15 check .
+npx -y -p typescript@5.9.3 tsc --noEmit -p .
+npx -y @biomejs/biome@2.5.15 ci .
 ```
 
-The last line lints and checks the format with Biome; add `--write` to apply the fixes. The version is pinned in `biome.json` and in this command, and the repo has no `package.json` or `node_modules`.
+The last line lints and checks the format with Biome; use `check --write .` to apply the fixes. The versions are pinned in these commands (and Biome's in `biome.json`), and the repo has no `package.json` or `node_modules`.
+
+CI runs Biome and the tests. Types are checked locally only: the mod API types in `.claude-plugin/types` are written by a logged-in Claude Code session and are gitignored, so a fresh clone cannot type-check. Enable the pre-commit hook (Biome on staged files, then the type check) once per clone:
+
+```
+git config core.hooksPath .githooks
+```
 
 ### Sprite: characters, animations, accessories, backgrounds
 

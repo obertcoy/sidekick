@@ -1,0 +1,24 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# No type check here: the mod API types in .claude-plugin/types are written
+# only by a logged-in Claude Code session and are gitignored, so a fresh clone
+# cannot type-check. The type check runs in the pre-commit hook instead.
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.300
+      - name: Lint and format
+        run: npx -y @biomejs/biome@2.5.15 ci .
+      - name: Tests
+        run: claude plugin test .

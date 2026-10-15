@@ -27,12 +27,20 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 
 ## Checks
 
-Run from the repo root before a commit. The tests and Biome must pass. The type check must show zero errors; ticket 16 replaces the borrowed TypeScript with a pinned one.
+Run from the repo root before a commit. The tests and Biome must pass. The type check must show zero errors.
 
 ```
+npx -y @biomejs/biome@2.5.15 ci .
 claude plugin test .
-node ~/.pi-lens/tools/node_modules/typescript/bin/tsc --noEmit -p .
-npx @biomejs/biome@2.5.15 check .
+npx -y -p typescript@5.9.3 tsc --noEmit -p .
+```
+
+CI (`.github/workflows/check.yml`) runs the first two. Types are checked locally only: the mod API types in `.claude-plugin/types` are written by a logged-in Claude Code session and are gitignored, so a fresh clone cannot type-check.
+
+Enable the pre-commit hook once per clone (Biome on staged files, then the type check):
+
+```
+git config core.hooksPath .githooks
 ```
 
 ## Decisions on record

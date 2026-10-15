@@ -1,0 +1,19 @@
+#!/bin/sh
+# Enable once per clone: git config core.hooksPath .githooks
+# Runs Biome on the staged files, then the pinned type check.
+
+if ! npx -y @biomejs/biome@2.5.15 check --staged --no-errors-on-unmatched; then
+  echo "pre-commit: Biome failed. Fix it (biome check --write) and commit again." >&2
+  exit 1
+fi
+
+if [ ! -f .claude-plugin/types/tsconfig.json ]; then
+  echo "pre-commit: .claude-plugin/types is missing, so the type check cannot run." >&2
+  echo "Open this repo in Claude Code once (logged in); it writes the types. Then commit again." >&2
+  exit 1
+fi
+
+if ! npx -y -p typescript@5.9.3 tsc --noEmit -p .; then
+  echo "pre-commit: the type check failed." >&2
+  exit 1
+fi
