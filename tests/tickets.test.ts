@@ -232,9 +232,9 @@ test('every frame of the character fills its grid, and the frames differ', async
 
 test('sets are numbered most recently changed first, and a set is found by number, name or part of its id', () => {
   const sets = orderSets([
-    { id: '.scratch/search/issues', files: [], mtimeMs: 5 },
-    { id: '.scratch/billing/issues', files: [], mtimeMs: 9 },
-    { id: 'docs/tasks', files: [], mtimeMs: 9 },
+    { id: '.scratch/search/issues', files: [], mtimeMs: 5, place: files },
+    { id: '.scratch/billing/issues', files: [], mtimeMs: 9, place: files },
+    { id: 'docs/tasks', files: [], mtimeMs: 9, place: files },
   ])
   expect(sets.map(set => set.id)).toEqual(['.scratch/billing/issues', 'docs/tasks', '.scratch/search/issues'])
   expect(labelOf('.scratch/search/issues')).toBe('search')

@@ -27,7 +27,7 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 
 ## Checks
 
-Run from the repo root before a commit. The tests and Biome must pass. The type check must show no errors beyond the old ones ticket 14 removes; after ticket 14 it must show zero, and ticket 16 replaces the borrowed TypeScript with a pinned one.
+Run from the repo root before a commit. The tests and Biome must pass. The type check must show zero errors; ticket 16 replaces the borrowed TypeScript with a pinned one.
 
 ```
 claude plugin test .

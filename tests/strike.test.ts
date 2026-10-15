@@ -1,5 +1,5 @@
 import type { On } from 'claude-code'
-import type { Engine, MockClock } from 'claude-code/testing'
+import type { Engine, MockClock, Mounted as MountedPane } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 import type { World } from './world'
 import { addSet, answered, PANE, RECIPE, RUN, ticket, world } from './world'
@@ -12,7 +12,7 @@ const ISSUES = `${ROOT}/.scratch/checkout/issues`
 const STEP = 110
 const WHOLE = 13 * STEP
 
-type Mounted = Awaited<ReturnType<Engine['ui']['mount']>>
+type Mounted = MountedPane<'terminal' | 'desktop', 'Pane'>
 
 const rowOf = (ui: Mounted, title: string) => ui.find({ type: 'Text', text: new RegExp(`^\\S ${title}$`) })
 

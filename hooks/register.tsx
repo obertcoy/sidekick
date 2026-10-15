@@ -788,7 +788,7 @@ export const register: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     // The first prompt after the picker appeared may name a set; one that names exactly one picks it.
-    if (isChoosing && e.agentId === undefined) {
+    if (isChoosing) {
       quietly(
         (async () => {
           const named = namedIn((await setsOf($, await rootOf($))).sets, e.text)
@@ -828,7 +828,10 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button, Select } = $.ui.resolve(e)
+    const table = $.ui.resolve(e)
+    const { Box, Text, Button } = table
+    // The mobile app draws no Select yet, so only the tables that declare one offer it.
+    const Select = 'Select' in table ? table.Select : undefined
     const { project, isSearching: isLooking, summary, progress, sets, current, isChoosing: isListed } = await read($, view)
     // One column of padding on each side; the bar and rules span what is left.
     const columns = Math.max(12, e.props.bodyColumns - 2)
@@ -981,7 +984,7 @@ export const register: Register = on => {
         {sets.length > 1 && isListed && (
           <Box flexDirection="column" marginTop={1}>
             <Text bold>Pick a ticket set:</Text>
-            {sets.length > SET_ROWS ? (
+            {sets.length > SET_ROWS && Select !== undefined ? (
               <Select
                 key="set-select"
                 autoFocus

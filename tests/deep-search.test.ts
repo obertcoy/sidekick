@@ -38,11 +38,8 @@ const monorepo = (on: Parameters<typeof world>[0]): World => {
   return w
 }
 
-const HINTS = [
-  'tickets are in .scratch/qa-stop-when-answered/issues',
-  `tickets are in ${SUB}/scratch/qa-stop-when-answered/issues/`,
-  'tickets are in @../../../.scratch/qa-stop-when-answered/issues/',
-]
+const PLAIN_HINT = 'tickets are in .scratch/qa-stop-when-answered/issues'
+const HINTS = [PLAIN_HINT, `tickets are in ${SUB}/scratch/qa-stop-when-answered/issues/`, 'tickets are in @../../../.scratch/qa-stop-when-answered/issues/']
 
 for (const hint of HINTS)
   test(`the hint "${hint}" resolves to the folder on disk`, async ($, on) => {
@@ -72,7 +69,7 @@ test('cache folders are never listed or read', async ($, on) => {
   const w = monorepo(on)
 
   await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
-  await $.command.run({ command: 'sidekick-rescan', args: HINTS[0], ...RUN })
+  await $.command.run({ command: 'sidekick-rescan', args: PLAIN_HINT, ...RUN })
   for (const prompt of w.asked) {
     expect(prompt).not.toContain('.pytest_cache')
     expect(prompt).not.toContain('.ruff_cache')
