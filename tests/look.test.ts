@@ -2,21 +2,22 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { setProjectLook, setSavedLook } from '../hooks/sprite/registry'
+import { ACCESSORIES, ANIMATIONS, CHARACTERS } from '../hooks/sprite/registry'
+import { currentLook, drawable, droppedOf, layersOf, projectLook, savedLook, setCurrentRoot, setProjectLook, setSavedLook } from '../hooks/sprite/look-in-use'
 import { defineCharacter } from '../hooks/sprite/compose'
 import { foxkit } from '../hooks/sprite/characters/foxkit'
 import type { Accessory, Character } from '../hooks/sprite/types'
 import { render } from '../hooks/sprite/compose'
-import { ACCESSORIES, ANIMATIONS, CHARACTERS, currentLook, drawable, droppedOf, layersOf, projectLook, savedLook, setCurrentRoot } from '../hooks/sprite/registry'
 import { changeLook, lookReport } from '../hooks/look'
 import { leftOut } from '../hooks/sprite'
-import { STRIKE_STEPS } from '../hooks/strike'
+import { strikeSteps } from '../hooks/strike'
 import { GOLDEN } from './sprite-golden'
 import { PANE, RECIPE, RUN, addSet, answered, ticket, world } from './world'
 
 // The pane draws the look resolved at each refresh, and the test world keeps what was painted.
 const ROOT = '/work/shop'
 // A session start with no tickets to find ends in the shrug; these tests are about the look, so they wait it out.
+const STRIKE_STEPS = strikeSteps(ANIMATIONS.zap)
 const SETTLED = ANIMATIONS.shrug.frames * ANIMATIONS.shrug.msPerFrame
 
 test('with nothing saved the pane paints the bare foxkit: writing in a turn, idle after it, zapping on a done ticket', async ($, on) => {
@@ -506,8 +507,8 @@ const BAD: Bad[] = [
     what: 'an accessory saved under a slot it does not belong to',
     saved: { ...GOOD, outfit: { head: 'cap', neck: 'cap' } },
     drawn: ['classic', { head: 'cap' }, 'dusk'],
-    line: 'Left out: cap belongs in the head slot, not neck',
-    mark: '(not drawn: cap belongs in the head slot, not neck)',
+    line: 'Left out: "cap" is a head accessory and does not go in the neck slot',
+    mark: '(not drawn: "cap" is a head accessory and does not go in the neck slot)',
   },
   {
     what: 'a background that does not exist',
@@ -611,7 +612,7 @@ for (const where of ['global', 'project'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
 
     // neck: cap is a real wrong-slot part and is dropped; the empty names are not parts at all.
-    expect((await texts(ui)).filter(text => text.startsWith('Left out:'))).toEqual(['Left out: cap belongs in the head slot, not neck'])
+    expect((await texts(ui)).filter(text => text.startsWith('Left out:'))).toEqual(['Left out: "cap" is a head accessory and does not go in the neck slot'])
     await $.turn.start({ text: 'Build it.', turnId: 't1' })
     expect(w.painted.at(-1)).toBe(render(dressed('foxkit'), ANIMATIONS.write, 0))
     const listing = (await $.command.run({ ...LOOK, args: '' })).text

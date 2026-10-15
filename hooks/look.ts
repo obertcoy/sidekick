@@ -1,15 +1,13 @@
-import { ACCESSORIES, BACKGROUNDS, CHARACTERS, DEFAULT_LOOK, currentLook, droppedOf, projectLook, savedLook } from './sprite/registry'
-import type { Look, SavedLook, Slot } from './sprite/types'
+import { ACCESSORIES, BACKGROUNDS, CHARACTERS, DEFAULT_LOOK, found, slotRefusal } from './sprite/registry'
+import { currentLook, droppedOf, projectLook, savedLook } from './sprite/look-in-use'
+import { LOOK_PARTS, SLOTS } from './sprite/types'
+import type { Look, LookPart, SavedLook, Slot } from './sprite/types'
 
 // The look command: reading what the store holds, turning `part=name` words into a new saved look
 // or a refusal, and describing the look. Pure; register.tsx does the storing and repainting.
 
-export const SLOTS: readonly Slot[] = ['head', 'face', 'neck', 'held']
-const PARTS = ['character', ...SLOTS, 'background'] as const
-type Part = (typeof PARTS)[number]
-
-const isPart = (word: string): word is Part => (PARTS as readonly string[]).includes(word)
-const isSlot = (part: Part): part is Slot => (SLOTS as readonly string[]).includes(part)
+const isPart = (word: string): word is LookPart => (LOOK_PARTS as readonly string[]).includes(word)
+const isSlot = (part: LookPart): part is Slot => (SLOTS as readonly string[]).includes(part)
 const names = (registry: Readonly<Record<string, unknown>>): string => Object.keys(registry).join(', ')
 const known = (registry: Readonly<Record<string, unknown>>, name: string): boolean => Object.hasOwn(registry, name)
 
@@ -54,12 +52,12 @@ const NOTE = ' (this project)'
 const describe = (look: Look): string[] => {
   const mine = projectLook()
   const dropped = droppedOf(look)
-  const line = (part: 'character' | Slot | 'background', name: string, isMine: boolean): string => {
+  const line = (part: LookPart, name: string, isMine: boolean): string => {
     const why = dropped.find(one => one.part === part)?.why
 
     return `  ${part}: ${name}${isMine ? NOTE : ''}${why === undefined ? '' : ` (not drawn: ${why})`}`
   }
-  const isMine = (part: 'character' | Slot | 'background'): boolean =>
+  const isMine = (part: LookPart): boolean =>
     part === 'character' ? mine.character !== undefined : part === 'background' ? mine.background !== undefined : mine.outfit?.[part] !== undefined
   const lines = [
     line('character', look.character, isMine('character')),
@@ -118,7 +116,7 @@ export const changeLook = (args: string, held: SavedLook, target: Target): LookC
     const part = at === -1 ? word : word.slice(0, at)
     const name = at === -1 ? '' : word.slice(at + 1)
     if (!isPart(part)) {
-      refusals.push(`Unknown part "${part}"; the parts are: ${PARTS.join(', ')}`)
+      refusals.push(`Unknown part "${part}"; the parts are: ${LOOK_PARTS.join(', ')}`)
       continue
     }
     if (isSlot(part)) touched.add(part)
@@ -139,13 +137,14 @@ export const changeLook = (args: string, held: SavedLook, target: Target): LookC
       if (part === 'character') character = name
       else background = name
     } else if (isSlot(part)) {
-      const accessory = known(ACCESSORIES, name) ? ACCESSORIES[name] : undefined
+      const accessory = found(ACCESSORIES, name)
       if (accessory === undefined) {
         refusals.push(`No accessory named "${name}" for ${part}; known: ${accessoriesFor(part) || '(none yet)'}`)
         continue
       }
-      if (accessory.slot !== part) {
-        refusals.push(`"${name}" is a ${accessory.slot} accessory and does not go in the ${part} slot`)
+      const refusal = slotRefusal(name, accessory, part)
+      if (refusal !== undefined) {
+        refusals.push(refusal)
         continue
       }
       outfit[part] = name

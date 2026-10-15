@@ -2,9 +2,10 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { STRIKE_STEPS } from '../hooks/strike'
+import { strikeSteps } from '../hooks/strike'
 import { render } from '../hooks/sprite/compose'
-import { ANIMATIONS, currentLook, layersOf } from '../hooks/sprite/registry'
+import { ANIMATIONS } from '../hooks/sprite/registry'
+import { currentLook, layersOf } from '../hooks/sprite/look-in-use'
 import { PANE, RECIPE, REFRESH_MS, RUN, addSet, answered, counting, failed, ticket, world } from './world'
 import type { Reply, World } from './world'
 
@@ -18,7 +19,7 @@ const WRITE_MS = ANIMATIONS.write.msPerFrame
 const SHRUG_STEP = ANIMATIONS.shrug.msPerFrame
 const ZAP_STEP = ANIMATIONS.zap.msPerFrame
 // The strike runs one step longer than the zap has frames; the sidekick rests for that last step.
-const STRIKE_MS = STRIKE_STEPS * ZAP_STEP
+const STRIKE_MS = strikeSteps(ANIMATIONS.zap) * ZAP_STEP
 
 type Mounted = Awaited<ReturnType<Engine['ui']['mount']>>
 
@@ -44,7 +45,7 @@ const REST = (): string => framesOf('idle')[0] ?? ''
 /** What each painted picture is, by name ("look3", "shrug7"), so that a failure reads as a sequence. Pictures that are the same frame have the same name. */
 const named = (painted: readonly string[]): string[] => {
   const names = new Map<string, string>()
-  for (const mode of ['idle', 'shrug', 'look', 'write', 'zap', 'cheer'] as const) {
+  for (const mode of Object.keys(ANIMATIONS) as (keyof typeof ANIMATIONS)[]) {
     framesOf(mode).forEach((cells, step) => {
       if (!names.has(cells)) names.set(cells, `${mode}${step}`)
     })

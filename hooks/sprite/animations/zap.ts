@@ -1,4 +1,5 @@
-import type { Animation, Dot, Point, Role } from '../types'
+import { defineAnimation } from '../compose'
+import type { Dot, Point, Role } from '../types'
 
 // The bolt's zigzag, from its top (the boltFrom anchor) down to where it strikes.
 const BOLT: readonly (readonly [number, number])[] = [
@@ -7,11 +8,13 @@ const BOLT: readonly (readonly [number, number])[] = [
 // The check mark, from the top-left of the paper spot.
 const CHECK: readonly (readonly [number, number])[] = [[4, 0], [3, 1], [0, 2], [2, 2], [1, 3]]
 
+// A point that may be missing: only the second tail tip, since a tail may have a single tip.
 const at = (point: Point | undefined, dx: number, dy: number, role: Role): Dot[] =>
   point === undefined ? [] : [[point.x + dx, point.y + dy, role]]
 
 /** A ticket is done: the cheeks charge, a bolt strikes the raised paw, sparks fall, and a check mark stays. */
-export const zap: Animation = {
+export const zap = defineAnimation({
+  needs: ['boltFrom', 'cheeks', 'ears', 'paw', 'reach', 'tail'],
   frames: 12,
   msPerFrame: 110,
   once: true,
@@ -64,4 +67,4 @@ export const zap: Animation = {
         return { dots: CHECK.map(([dx, dy]) => [paper.x + dx, paper.y + dy, 'check'] as const) }
     }
   },
-}
+})

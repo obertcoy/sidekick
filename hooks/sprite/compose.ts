@@ -1,4 +1,5 @@
-import type { Animation, Character, Layers, Point, PropRole, Role, Slot } from './types'
+import { LIST_ANCHORS, OPTIONAL_POINT_ANCHORS, REQUIRED_ANCHORS, REQUIRED_BODY_ROLES, SLOTS } from './types'
+import type { Animation, AnchorName, Anchors, Character, Layers, Needed, Point, PropRole, Role, Slot } from './types'
 
 /** The fixed stage every look is drawn on: 18 cells wide, 8 tall, two pixels stacked in each cell. */
 export const STAGE = { columns: 18, rows: 8, width: 18, height: 16 } as const
@@ -12,10 +13,16 @@ export const PROPS: Readonly<Record<PropRole, number>> = {
   check: 0x40c057,
 }
 
-const SLOT_NAMES = ['head', 'face', 'neck', 'held'] as const
-const ANCHOR_POINTS = ['head', 'paw', 'reach', 'boltFrom', 'feet'] as const
-const OPTIONAL_ANCHORS = ['face', 'neck', 'held'] as const
-const ANCHOR_LISTS = ['cheeks', 'tail', 'ears'] as const
+/**
+ * Makes an animation whose frames read only the anchors it names: `frame` is given those anchors as certain.
+ * Whether a character has them is checked where characters and animations meet (the registry), not here.
+ */
+export const defineAnimation = <N extends AnchorName>(
+  animation: Omit<Animation, 'needs' | 'frame'> & {
+    readonly needs: readonly N[]
+    readonly frame: (step: number, at: Needed<N>) => ReturnType<Animation['frame']>
+  },
+): Animation => animation as unknown as Animation
 
 const onStage = (point: Point | undefined): boolean =>
   point !== undefined &&
@@ -43,20 +50,22 @@ export const defineCharacter = (character: Character): Character => {
       else if (character.palette[role] === undefined) fail(`has no colour for the role "${role}"`)
     }
   })
-  for (const role of ['outline', 'base'] as const) {
+  for (const role of REQUIRED_BODY_ROLES) {
     if (character.palette[role] === undefined) fail(`has no colour for the role "${role}"`)
   }
+  // Only the stage frame (head, feet) is certain; the other anchors are checked against what the character plays, in the registry.
   const anchors = (character.anchors ?? {}) as Partial<Record<string, unknown>>
-  for (const name of ANCHOR_POINTS) {
+  for (const name of REQUIRED_ANCHORS) {
     if (!onStage(anchors[name] as Point | undefined)) fail(`is missing the anchor "${name}", or it is off the stage`)
   }
-  for (const name of OPTIONAL_ANCHORS) {
+  for (const name of OPTIONAL_POINT_ANCHORS) {
     if (anchors[name] !== undefined && !onStage(anchors[name] as Point)) fail(`has the anchor "${name}" off the stage`)
   }
-  for (const name of ANCHOR_LISTS) {
+  for (const name of LIST_ANCHORS) {
     const list = anchors[name]
+    if (list === undefined) continue
     if (!Array.isArray(list) || list.length === 0 || !list.every(point => onStage(point as Point))) {
-      fail(`is missing the anchor "${name}" (one or more points on the stage)`)
+      fail(`has the anchor "${name}" empty, or with a point off the stage`)
     }
   }
   const region = character.headRegion
@@ -71,11 +80,11 @@ export const defineCharacter = (character: Character): Character => {
   }
   const bobs = (character.bobs ?? {}) as Partial<Record<Slot, unknown>>
   for (const slot of Object.keys(bobs)) {
-    if (!(SLOT_NAMES as readonly string[]).includes(slot) || anchors[slot] === undefined) {
+    if (!(SLOTS as readonly string[]).includes(slot) || anchors[slot] === undefined) {
       fail(`declares whether the slot "${slot}" bobs, but has no anchor for it`)
     }
   }
-  for (const slot of SLOT_NAMES) {
+  for (const slot of SLOTS) {
     if (anchors[slot] === undefined) continue
     const moves = bobs[slot]
     if (typeof moves !== 'boolean') fail(`does not declare whether the slot "${slot}" bobs`)
@@ -104,15 +113,16 @@ const inRegion = (point: Point, character: Character): boolean => {
 }
 
 /** The order accessories are drawn in, back to front. */
-export const SLOT_ORDER: readonly Slot[] = ['neck', 'face', 'head', 'held']
+export const SLOT_ORDER = ['neck', 'face', 'head', 'held'] as const satisfies readonly Slot[]
 
 /**
  * One frame as stage pixels, in layer order: background, body (with the frame's head bob),
  * accessories (each on its slot's anchor, bobbing with it where the character declares the slot bobs;
  * a slot the animation hides is skipped),
  * then the animation's props and effects.
+ * The background has its own frame; by default it steps with the animation.
  */
-export const composePixels = (look: Layers, animation: Animation, step: number): Pixels => {
+export const composePixels = (look: Layers, animation: Animation, step: number, backgroundFrame: number = step): Pixels => {
   const { character } = look
   const plan = animation.frame(step, character.anchors)
   const bob = plan.bob ?? 0
@@ -120,7 +130,7 @@ export const composePixels = (look: Layers, animation: Animation, step: number):
 
   const background = look.background
   if (background) {
-    const grid = background.frames[step % background.frames.length] ?? []
+    const grid = background.frames[backgroundFrame % background.frames.length] ?? []
     grid.forEach((row, y) => [...row].forEach((letter, x) => put(pixels, x, y, background.palette[letter])))
   }
 
@@ -195,8 +205,8 @@ export const encodeCells = (pixels: Pixels): string => {
   return encode(new Uint8Array(words.buffer))
 }
 
-/** One frame of a look playing an animation, as a Raster's cells. The step wraps around the animation. */
-export const render = (look: Layers, animation: Animation, step: number): string => {
+/** One frame of a look playing an animation, as a Raster's cells. The step wraps around the animation; the background steps with it unless given its own frame. */
+export const render = (look: Layers, animation: Animation, step: number, backgroundFrame?: number): string => {
   const at = ((step % animation.frames) + animation.frames) % animation.frames
-  return encodeCells(composePixels(look, animation, at))
+  return encodeCells(composePixels(look, animation, at, backgroundFrame ?? at))
 }

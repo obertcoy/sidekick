@@ -3,12 +3,12 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { SetEntry, Summary, View } from '../types'
 import { createActivity } from './activity'
-import { STRIKE_STEPS } from './strike'
+import { BURNS, BURN_STEPS, HITS, LANDS, LEAVES, STRIKE_REST_STEPS, isStruck } from './strike'
 import type { Activity } from './activity'
 import { changeLook, lookReport, parseSaved, targetOf } from './look'
 import type { Target } from './look'
-import { SPRITE, cellsOf, leftOut, msPerFrame } from './sprite'
-import { STATES, projectRoot, setCurrentRoot, setProjectLook, setSavedLook } from './sprite/registry'
+import { SPRITE, cellsOf, leftOut, playsFor } from './sprite'
+import { projectRoot, setCurrentRoot, setProjectLook, setSavedLook } from './sprite/look-in-use'
 import type { SavedLook } from './sprite/types'
 import {
   addPlace,
@@ -102,18 +102,12 @@ const parsed = new Map<string, { mtimeMs: number; tickets: Ticket[] }>()
 type Dollar = EngineInterface
 
 // The strike: when tickets finish, the critter zaps and a bolt lands on their rows, which flash and
-// have the strike-through burn across them before they settle as done. One step per zap frame.
+// have the strike-through burn across them before they settle as done. One step per frame of the
+// animation that plays for the ticket-done state; the beats are in ./strike.
 type Was = 'active' | 'open'
-type Strike = { rows: Map<string, Was>; step: number }
-const STRIKE_MS = msPerFrame('zap')
+/** The steps are those the running entry has, told by the activity when the strike starts. */
+type Strike = { rows: Map<string, Was>; step: number; steps: number }
 const BOLT = '↯'
-// Steps: 0-1 the critter charges (the row still shows what it was), 2 the bolt leaves the critter,
-// 3 it lands on the row's glyph, 4 the row flashes as done, 5-10 the strike-through burns, 11-12 rest.
-const LEAVES = 2
-const LANDS = 3
-const HITS = 4
-const BURNS = 5
-const BURN_STEPS = 6
 
 /** What one pane keeps: what its sidekick is doing, the strike on show, and the batch of rows waiting to be struck. */
 type Scene = {
@@ -133,11 +127,12 @@ const sceneOf = ($: Dollar): Scene => {
     pending: undefined,
     activity: createActivity(
       { every: (ms, fn) => $.clock.every(ms, fn) },
-      (state, frame) => {
+      ({ animation, frame }) => {
         void $.ui
-          .blit({ requestId: PANE, key: BUDDY, cells: cellsOf(STATES[state], frame) })
+          .blit({ requestId: PANE, key: BUDDY, cells: cellsOf(animation, frame) })
           .catch(() => undefined)
       },
+      playsFor,
     ),
   }
   scenes.set(PANE, scene)
@@ -158,11 +153,11 @@ const strikeRows = ($: Dollar, rows: Map<string, Was>): void => {
   scene.pending = batch
   scene.activity.queue({
     state: 'ticket-done',
-    // The strike has one more step than the zap has frames; the sidekick rests for the last one.
-    holdMs: STRIKE_STEPS * STRIKE_MS,
-    onStart: () => {
+    // The strike has one more step than the animation has frames; the sidekick rests for the last one.
+    restSteps: STRIKE_REST_STEPS,
+    onStart: steps => {
       if (scene.pending === batch) scene.pending = undefined
-      scene.strike = { rows: batch, step: 0 }
+      scene.strike = { rows: batch, step: 0, steps }
       $.ui.invalidate('ui.render')
     },
     onStep: step => {
@@ -425,7 +420,7 @@ const show = async ($: Dollar, next: View): Promise<void> => {
       const before = was.rows.find(one => one.title === row.title)
       if (row.state === 'done' && before !== undefined && before.state !== 'done') finished.set(row.title, before.state)
     }
-    // The critter zaps either way; the rows it can name are struck in step with it.
+    // The sidekick animates the done ticket either way; the rows it can name are struck in step with it.
     if (finished.size > 0) strikeRows($, finished)
     else sceneOf($).activity.queue({ state: 'ticket-done' })
     // The set became all done: it was not at the previous refresh of this same set (`was` is that refresh, and a
@@ -909,9 +904,9 @@ export const register: Register = on => {
         ? (() => {
             const { Raster } = $.ui.resolve(e)
 
-            const { state, frame } = activity.shown()
+            const { animation, frame } = activity.shown()
 
-            return <Raster key={BUDDY} columns={SPRITE.columns} rows={SPRITE.rows} cells={cellsOf(STATES[state], frame)} />
+            return <Raster key={BUDDY} columns={SPRITE.columns} rows={SPRITE.rows} cells={cellsOf(animation, frame)} />
           })()
         : null
 
@@ -963,7 +958,7 @@ export const register: Register = on => {
             {rows.slice(start, end).map((row, index) => {
               const isNext = start + index === focus
               const was = step === -1 ? undefined : strike?.rows.get(row.title)
-              if (row.state === 'done' && was !== undefined && step < STRIKE_STEPS - 2) {
+              if (row.state === 'done' && was !== undefined && strike !== undefined && isStruck(step, strike.steps)) {
                 return struckRow(row.title, was, step, columns)
               }
 

@@ -1,10 +1,12 @@
-import type { Animation, Dot } from '../types'
+import { defineAnimation } from '../compose'
+import type { Dot } from '../types'
 
 const row = (x: number, y: number, length: number, role: Dot[2]): Dot[] =>
   Array.from({ length }, (_, step) => [x + step, y, role] as const)
 
 /** Writing on a sheet beside the paw: the head bobs and the paw moves every other frame while two lines of ink fill in. */
-export const write: Animation = {
+export const write = defineAnimation({
+  needs: ['paw'],
   frames: 6,
   msPerFrame: 220,
   once: false,
@@ -25,4 +27,4 @@ export const write: Animation = {
       ],
     }
   },
-}
+})

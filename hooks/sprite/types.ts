@@ -5,36 +5,52 @@
 export type Point = { readonly x: number; readonly y: number }
 
 /** Colours a character defines for its own body. */
-export type BodyRole = 'outline' | 'base' | 'shade' | 'highlight' | 'cheek' | 'eye' | 'belly'
+const BODY_ROLES =['outline', 'base', 'shade', 'highlight', 'cheek', 'eye', 'belly'] as const
+export type BodyRole = (typeof BODY_ROLES)[number]
+
+/** The body roles every character colours: the rest are for the legend to use or not. */
+export const REQUIRED_BODY_ROLES = ['outline', 'base'] as const satisfies readonly BodyRole[]
 
 /** Colours shared by every look, for props and effects. */
-export type PropRole = 'paper' | 'ink' | 'spark' | 'flash' | 'check'
+const PROP_ROLES =['paper', 'ink', 'spark', 'flash', 'check'] as const
+export type PropRole = (typeof PROP_ROLES)[number]
 
 export type Role = BodyRole | PropRole
 
-/** Where things attach to a character. Animations and accessories place everything relative to these. */
-export type Anchors = {
-  /** The top-centre pixel of the head; a hat sits on it. */
-  readonly head: Point
-  /** Where the face, neck and held slots attach, when the character has them. */
-  readonly face?: Point
-  readonly neck?: Point
-  readonly held?: Point
-  /** The paw that writes; the pen is one pixel to its right and the paper's top-left corner one pixel above that. */
-  readonly paw: Point
-  /** The paw raised to catch a bolt; the arm is drawn around it. */
-  readonly reach: Point
-  /** The top of the bolt; it zigzags down and two pixels left from here, ending near `reach`. */
-  readonly boltFrom: Point
-  /** The cheek pixels; the zap glows one pixel to the right of each. */
-  readonly cheeks: readonly Point[]
-  /** The tail tips, the first one the outermost; sparks crackle on and above them. */
-  readonly tail: readonly Point[]
-  /** The ear tips. */
-  readonly ears: readonly Point[]
-  /** The centre of the lowest body row. */
-  readonly feet: Point
+/**
+ * Where things attach to a character, by name. Animations and accessories place everything relative to these.
+ *  - head: the top-centre pixel of the head; a hat sits on it.
+ *  - face, neck, held: where those slots attach, when the character has them.
+ *  - paw: the paw that writes; the pen is one pixel to its right and the paper's top-left corner one pixel above that.
+ *  - reach: the paw raised to catch a bolt; the arm is drawn around it.
+ *  - boltFrom: the top of the bolt; it zigzags down and two pixels left from here, ending near `reach`.
+ *  - feet: the centre of the lowest body row.
+ * Lists (each at least one point):
+ *  - cheeks: the cheek pixels; the zap glows one pixel to the right of each.
+ *  - tail: the tail tips, the first one the outermost; sparks crackle on and above them.
+ *  - ears: the ear tips.
+ * Only `head` and `feet` are certain for every character; any other anchor is there when the animations the character plays need it.
+ */
+export const REQUIRED_ANCHORS = ['head', 'feet'] as const
+export const OPTIONAL_POINT_ANCHORS = ['face', 'neck', 'held', 'paw', 'reach', 'boltFrom'] as const
+export const LIST_ANCHORS = ['cheeks', 'tail', 'ears'] as const
+export const POINT_ANCHORS = [...REQUIRED_ANCHORS, ...OPTIONAL_POINT_ANCHORS] as const
+export const ANCHOR_NAMES = [...POINT_ANCHORS, ...LIST_ANCHORS] as const
+
+export type RequiredAnchor = (typeof REQUIRED_ANCHORS)[number]
+export type OptionalPointAnchor = (typeof OPTIONAL_POINT_ANCHORS)[number]
+export type ListAnchor = (typeof LIST_ANCHORS)[number]
+export type AnchorName = (typeof ANCHOR_NAMES)[number]
+
+/** One or more points on the stage. */
+export type Points = readonly [Point, ...Point[]]
+
+export type Anchors = { readonly [N in RequiredAnchor]: Point } & { readonly [N in OptionalPointAnchor]?: Point } & {
+  readonly [N in ListAnchor]?: Points
 }
+
+/** What an animation that needs the named anchors is given: the stage frame, those anchors certain to be there, and nothing else. */
+export type Needed<N extends AnchorName> = Pick<Anchors, RequiredAnchor> & { readonly [K in N]-?: NonNullable<Anchors[K]> }
 
 /** An inclusive rectangle of pixels. */
 export type Region = { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number }
@@ -64,6 +80,8 @@ export type Dot = readonly [x: number, y: number, role: Role]
 export type FramePlan = { readonly bob?: number; readonly dots?: readonly Dot[] }
 
 export type Animation = {
+  /** The anchors the frames read. A character that plays this animation and lacks one is refused at load (the registry checks). */
+  readonly needs: readonly AnchorName[]
   readonly frames: number
   /** How long each frame shows; register.tsx plays the animation at this pace. */
   readonly msPerFrame: number
@@ -75,8 +93,13 @@ export type Animation = {
   readonly frame: (step: number, at: Anchors) => FramePlan
 }
 
-/** The places an accessory can go. Every character has the head slot; the others are optional per character. */
-export type Slot = 'head' | 'face' | 'neck' | 'held'
+/** The places an accessory can go. Every character has the head slot; the others are optional per character. Each is also the name of its anchor. */
+export const SLOTS = ['head', 'face', 'neck', 'held'] as const satisfies readonly AnchorName[]
+export type Slot = (typeof SLOTS)[number]
+
+/** The parts of a look that can be set by name. */
+export const LOOK_PARTS = ['character', ...SLOTS, 'background'] as const
+export type LookPart = (typeof LOOK_PARTS)[number]
 
 /** One thing the sidekick wears, such as a cap; it belongs to exactly one slot and moves with the head bob when the character declares that slot as bobbing (`Character.bobs`). */
 export type Accessory = {

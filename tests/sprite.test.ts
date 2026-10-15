@@ -1,11 +1,16 @@
 import { expect, test } from 'claude-code/testing'
 
-import { SPRITE, cellsOf, frameCount } from '../hooks/sprite'
-import { STAGE, composePixels, defineCharacter, render } from '../hooks/sprite/compose'
+import { SPRITE, cellsOf, leftOut, playsFor } from '../hooks/sprite'
+import type { State } from '../hooks/sprite'
+import { changeLook } from '../hooks/look'
+import { isStruck, strikeSteps } from '../hooks/strike'
+import { SLOT_ORDER, STAGE, composePixels, defineAnimation, defineCharacter, render } from '../hooks/sprite/compose'
 import type { Pixels } from '../hooks/sprite/compose'
 import { foxkit } from '../hooks/sprite/characters/foxkit'
-import { ACCESSORIES, ANIMATIONS, BACKGROUNDS, CHARACTERS, DEFAULT_LOOK, STATES, currentLook, layersOf } from '../hooks/sprite/registry'
-import type { Animation, Background, Character, Layers } from '../hooks/sprite/types'
+import { ACCESSORIES, ANIMATIONS, BACKGROUNDS, CHARACTERS, DEFAULT_LOOK, STATES, animationOf, requireAnchors, slotRefusal } from '../hooks/sprite/registry'
+import { currentLook, drawable, droppedOf, layersOf, setSavedLook } from '../hooks/sprite/look-in-use'
+import { SLOTS } from '../hooks/sprite/types'
+import type { Accessory, Animation, Background, Character, Layers, Slot } from '../hooks/sprite/types'
 import { GOLDEN } from './sprite-golden'
 
 const MODES = ['idle', 'write', 'zap'] as const
@@ -24,12 +29,12 @@ test('the foxkit draws every frame of every mode exactly as the standalone sprit
   expect(DEFAULT_LOOK).toEqual(currentLook())
   expect(SPRITE).toEqual({ columns: STAGE.columns, rows: STAGE.rows })
   for (const mode of MODES) {
-    expect(frameCount(mode), mode).toBe(GOLDEN[mode].length)
+    expect(ANIMATIONS[mode].frames, mode).toBe(GOLDEN[mode].length)
     GOLDEN[mode].forEach((cells, frame) => {
-      expect(cellsOf(mode, frame), `${mode} frame ${frame}`).toBe(cells)
+      expect(cellsOf(ANIMATIONS[mode], frame), `${mode} frame ${frame}`).toBe(cells)
       expect(render(layersOf(currentLook()), ANIMATIONS[mode], frame), `${mode} frame ${frame}`).toBe(cells)
     })
-    expect(cellsOf(mode, frameCount(mode)), `${mode} wraps`).toBe(GOLDEN[mode][0])
+    expect(cellsOf(ANIMATIONS[mode], ANIMATIONS[mode].frames), `${mode} wraps`).toBe(GOLDEN[mode][0])
   }
 })
 
@@ -107,16 +112,17 @@ test('a character too big for the stage, or missing an anchor, is refused with a
   expect(() => defineCharacter(tooWide)).toThrow('character "wide" row 0 is 19 pixels wide; the stage is 18')
   const tooTall = { ...foxkit, name: 'tall', body: Array.from({ length: STAGE.height + 1 }, () => 'o') }
   expect(() => defineCharacter(tooTall)).toThrow('character "tall" is 17 pixels tall; the stage is 16')
-  const { paw: _paw, ...anchors } = foxkit.anchors
-  const pawless = { ...foxkit, name: 'pawless', anchors } as unknown as Character
-  expect(() => defineCharacter(pawless)).toThrow('character "pawless" is missing the anchor "paw"')
+  const { head: _head, ...headless } = foxkit.anchors
+  expect(() => defineCharacter({ ...foxkit, name: 'headless', anchors: headless } as unknown as Character)).toThrow(
+    'character "headless" is missing the anchor "head", or it is off the stage',
+  )
   const offStage = { ...foxkit, name: 'off', anchors: { ...foxkit.anchors, head: { x: 3, y: -1 } } }
   expect(() => defineCharacter(offStage)).toThrow('character "off" is missing the anchor "head", or it is off the stage')
   const unnamed = { ...foxkit, name: 'unnamed', body: ['oq'] }
   expect(() => defineCharacter(unnamed)).toThrow('uses "q" in row 0, which its legend does not name')
   expect(() => layersOf({ character: 'nobody', outfit: {}, background: null })).toThrow('no character named "nobody"')
   expect(() => layersOf({ character: 'foxkit', outfit: { neck: 'cap' }, background: null })).toThrow(
-    'accessory "cap" belongs in the head slot, not neck',
+    '"cap" is a head accessory and does not go in the neck slot',
   )
   expect(layersOf({ character: 'foxkit', outfit: { head: 'cap' }, background: null }).outfit.head).toBe(ACCESSORIES.cap)
 })
@@ -171,7 +177,7 @@ test('glasses bob with the head and a scarf stays put while writing', async () =
 })
 
 test('head, face and neck accessories are worn together, drawn neck first, then face, then head', async () => {
-  const dot = (slot: 'head' | 'face' | 'neck', colour: number) => ({ name: slot, slot, pixels: ['x'], origin: { x: 0, y: 0 }, palette: { x: colour } })
+  const dot = (slot: Slot, colour: number) => ({ name: slot, slot, pixels: ['x'], origin: { x: 0, y: 0 }, palette: { x: colour } })
   const spot = { x: 8, y: 8 }
   const piled = defineCharacter({ ...foxkit, name: 'piled', anchors: { ...foxkit.anchors, head: spot, face: spot, neck: spot } })
   const all = { head: dot('head', 1), face: dot('face', 2), neck: dot('neck', 3) }
@@ -210,7 +216,7 @@ test('layersOf takes glasses in the face slot and a scarf in the neck slot, and 
   const layers = layersOf({ character: 'classic', outfit: { head: 'cap', face: 'glasses', neck: 'scarf' }, background: null })
   expect(layers.outfit).toEqual({ head: cap, face: glasses, neck: scarf })
   expect(() => layersOf({ character: 'foxkit', outfit: { head: 'glasses' }, background: null })).toThrow(
-    'accessory "glasses" belongs in the face slot, not head',
+    '"glasses" is a face accessory and does not go in the head slot',
   )
 })
 
@@ -260,7 +266,7 @@ const withoutHeld = (character: Character): Layers['outfit'] => ({ head: cap, fa
 /** Expects every pixel of the four accessories to be in `frame` in its own colour, where its anchor, origin and the character's bob declaration put it. */
 const expectOwnPixels = (character: Character, frame: Pixels, bob: number, label: string): void => {
   const outfit = withAll(character)
-  for (const slot of ['head', 'face', 'neck', 'held'] as const) {
+  for (const slot of SLOTS) {
     const accessory = outfit[slot]
     const anchor = character.anchors[slot]
     if (accessory === undefined || anchor === undefined) throw new Error(`${label}: no ${slot}`)
@@ -320,7 +326,7 @@ test('writing and zapping hide the held slot in every frame, on both characters,
 test('an animation that hides no slot leaves every accessory drawn, and one that hides a slot hides only that slot', async () => {
   for (const character of Object.values(CHARACTERS)) {
     const layers = { character, outfit: withAll(character), background: null }
-    const hidesNone: Animation = { frames: 2, msPerFrame: 100, once: false, hides: [], frame: step => ({ bob: step }) }
+    const hidesNone: Animation = { needs: [], frames: 2, msPerFrame: 100, once: false, hides: [], frame: step => ({ bob: step }) }
     const hidesFace: Animation = { ...hidesNone, hides: ['face'] }
     const everything = (animation: Animation, step: number) => frameOf(layers, animation, step)
     for (const step of [0, 1]) {
@@ -337,7 +343,7 @@ test('an animation that hides no slot leaves every accessory drawn, and one that
 })
 
 test('all four slots are worn together and held is drawn above the other three', async () => {
-  const dot = (slot: 'head' | 'face' | 'neck' | 'held', colour: number) => ({ name: slot, slot, pixels: ['x'], origin: { x: 0, y: 0 }, palette: { x: colour } })
+  const dot = (slot: Slot, colour: number) => ({ name: slot, slot, pixels: ['x'], origin: { x: 0, y: 0 }, palette: { x: colour } })
   const spot = { x: 8, y: 8 }
   const piled = defineCharacter({ ...foxkit, name: 'piled', anchors: { ...foxkit.anchors, head: spot, face: spot, neck: spot, held: spot }, bobs: { head: true, face: true, neck: false, held: false } })
   const all = { head: dot('head', 1), face: dot('face', 2), neck: dot('neck', 3), held: dot('held', 4) }
@@ -359,8 +365,8 @@ test('all four slots are worn together and held is drawn above the other three',
 
 test('layersOf takes the flag in the held slot only, and a held anchor needs a bobs declaration inside the rules', async () => {
   expect(layersOf({ character: 'classic', outfit: { held: 'flag' }, background: null }).outfit).toEqual({ held: flag })
-  expect(() => layersOf({ character: 'foxkit', outfit: { head: 'flag' }, background: null })).toThrow('accessory "flag" belongs in the held slot, not head')
-  expect(() => layersOf({ character: 'foxkit', outfit: { held: 'cap' }, background: null })).toThrow('accessory "cap" belongs in the head slot, not held')
+  expect(() => layersOf({ character: 'foxkit', outfit: { head: 'flag' }, background: null })).toThrow('"flag" is a held accessory and does not go in the head slot')
+  expect(() => layersOf({ character: 'foxkit', outfit: { held: 'cap' }, background: null })).toThrow('"cap" is a head accessory and does not go in the held slot')
 
   const { held: _held, ...rest } = foxkit.bobs
   expect(() => defineCharacter({ ...foxkit, name: 'unsure', bobs: rest })).toThrow('character "unsure" does not declare whether the slot "held" bobs')
@@ -406,4 +412,156 @@ test('the cheer plays once for the set-done state, and every state still plays a
   expect(STATES['set-done']).toBe('cheer')
   expect(ANIMATIONS.cheer.once).toBe(true)
   for (const [state, mode] of Object.entries(STATES)) expect(ANIMATIONS[mode], state).toBeDefined()
+})
+
+// Animations declare the anchors they need; the registry refuses a character that lacks one.
+
+const stageFrame = (name: string): Character =>
+  defineCharacter({ ...foxkit, name, anchors: { head: foxkit.anchors.head, feet: foxkit.anchors.feet }, bobs: { head: true } })
+
+test('a character with only head and feet is a valid character, and plays an animation that needs nothing', async () => {
+  const owl = stageFrame('owl')
+  expect(Object.keys(owl.anchors).sort()).toEqual(['feet', 'head'])
+  expect(() => requireAnchors(owl, { idle: ANIMATIONS.idle })).not.toThrow()
+  expect(composePixels(bare(owl), ANIMATIONS.idle, 0)).toBeDefined()
+})
+
+test('a character missing an anchor a played animation needs is refused, naming the anchor and the animation', async () => {
+  const owl = stageFrame('owl')
+  expect(() => requireAnchors(owl, { write: ANIMATIONS.write })).toThrow('character "owl" is missing the anchor "paw", which the animation "write" needs')
+  expect(() => requireAnchors(owl, { zap: ANIMATIONS.zap })).toThrow('which the animation "zap" needs')
+  for (const [name, animation] of Object.entries(ANIMATIONS)) {
+    for (const need of animation.needs) {
+      const { [need]: _gone, ...rest } = foxkit.anchors
+      const lacking = defineCharacter({ ...foxkit, name: 'lacking', anchors: rest as Character['anchors'] })
+      expect(() => requireAnchors(lacking, { [name]: animation }), `${name} without ${need}`).toThrow(`missing the anchor "${need}"`)
+    }
+  }
+})
+
+test('a character may omit an anchor no animation it plays needs', async () => {
+  const { ears, face } = foxkit.anchors
+  if (ears === undefined || face === undefined) throw new Error('no ears or face')
+  const earsOnly = defineCharacter({ ...foxkit, name: 'ears-only', anchors: { head: foxkit.anchors.head, feet: foxkit.anchors.feet, ears, face }, bobs: { head: true, face: true } })
+  // No paw, reach, bolt, cheeks or tail: the animations that read them are not played, so they are not needed.
+  expect(() => requireAnchors(earsOnly, { idle: ANIMATIONS.idle, look: ANIMATIONS.look, shrug: ANIMATIONS.shrug, cheer: ANIMATIONS.cheer })).not.toThrow()
+})
+
+test('an animation reads only the anchors it declares', async () => {
+  for (const [name, animation] of Object.entries(ANIMATIONS)) {
+    const declared = Object.fromEntries(
+      ['head', 'feet', ...animation.needs].map(anchor => [anchor, foxkit.anchors[anchor as keyof typeof foxkit.anchors]]),
+    ) as Character['anchors']
+    for (let step = 0; step < animation.frames; step++) {
+      expect(animation.frame(step, declared), `${name} step ${step}`).toEqual(animation.frame(step, foxkit.anchors))
+    }
+  }
+})
+
+test('every shipped character has every anchor the shipped animations need', async () => {
+  for (const character of Object.values(CHARACTERS)) {
+    expect(() => requireAnchors(character, ANIMATIONS), character.name).not.toThrow()
+  }
+})
+
+// One lookup for what plays; the background's own frame; the closed sets; the slot rule.
+
+test('one lookup answers what plays for a state, for each shipped character, and every state has an animation', async () => {
+  for (const [state, name] of Object.entries(STATES)) {
+    for (const character of Object.values(CHARACTERS)) expect(animationOf(character, state as State), `${character.name} ${state}`).toBe(ANIMATIONS[name])
+    expect(playsFor(state as State), state).toBe(ANIMATIONS[name])
+  }
+})
+
+test('the background has its own frame: by default it steps with the animation, and it can be given another', async () => {
+  const two: Background = { name: 'two', frames: [['a'], ['b']], palette: { a: 0x111111, b: 0x222222 } }
+  const layers: Layers = { character: foxkit, outfit: {}, background: two }
+  // idle has one frame, so its step is always 0; the background defaults to that step.
+  expect(composePixels(layers, ANIMATIONS.idle, 0)[0]?.[0]).toBe(0x111111)
+  expect(composePixels(layers, ANIMATIONS.idle, 0, 0)).toEqual(composePixels(layers, ANIMATIONS.idle, 0))
+  expect(composePixels(layers, ANIMATIONS.idle, 0, 1)[0]?.[0]).toBe(0x222222)
+  expect(composePixels(layers, ANIMATIONS.idle, 0, 3)[0]?.[0]).toBe(0x222222)
+  // Only the background moves.
+  expect(render(layers, ANIMATIONS.idle, 0, 1)).not.toBe(render(layers, ANIMATIONS.idle, 0))
+  // Without a frame of its own the background steps with the animation, as before.
+  expect(render(layers, ANIMATIONS.write, 1)).toBe(render(layers, ANIMATIONS.write, 1, 1))
+})
+
+test('the strike has one step per frame of the ticket-done animation and one at rest, and its last two steps show the row plain', async () => {
+  const frames = playsFor('ticket-done').frames
+  expect(strikeSteps(playsFor('ticket-done'))).toBe(frames + 1)
+  expect(strikeSteps({ frames: 20 })).toBe(21)
+  const steps = strikeSteps(playsFor('ticket-done'))
+  expect([steps - 3, steps - 2, steps - 1].map(step => isStruck(step, steps))).toEqual([true, false, false])
+})
+
+test('the draw order is a permutation of the slots', async () => {
+  expect([...SLOT_ORDER].sort()).toEqual([...SLOTS].sort())
+})
+
+test('the slot rule has one message, for the look command, the resolver and layersOf', async () => {
+  const message = '"cap" is a head accessory and does not go in the neck slot'
+  expect(slotRefusal('cap', ACCESSORIES.cap as Accessory, 'neck')).toBe(message)
+  expect(slotRefusal('cap', ACCESSORIES.cap as Accessory, 'head')).toBeUndefined()
+  expect(droppedOf({ character: 'foxkit', outfit: { neck: 'cap' }, background: null }).map(one => one.why)).toEqual([message])
+  expect(() => layersOf({ character: 'foxkit', outfit: { neck: 'cap' }, background: null })).toThrow(message)
+  expect(changeLook('neck=cap', {}, 'global').text).toContain(message)
+})
+
+test('drawing a picture writes no state: the left-out line is worked out by the render that asks for it, not by paints in between', async () => {
+  const message = '"cap" is a head accessory and does not go in the neck slot'
+  try {
+    // Start from a settled pane, whatever earlier tests left behind.
+    setSavedLook({})
+    leftOut()
+    // Two changes of look, with pictures drawn in between and no render: the render that follows still shows what the second look leaves out.
+    setSavedLook({ outfit: { neck: 'cap' } })
+    cellsOf(ANIMATIONS.idle, 0)
+    drawable()
+    setSavedLook({ outfit: { neck: 'cap' }, background: 'dusk' })
+    cellsOf(ANIMATIONS.idle, 0)
+    expect(leftOut()).toBe(message)
+    // Asked again with nothing changed, the line stays; the next change of look clears it.
+    expect(leftOut()).toBe(message)
+    setSavedLook({ outfit: { neck: 'cap' } })
+    expect(leftOut()).toBe('')
+  } finally {
+    setSavedLook({})
+    leftOut()
+  }
+})
+
+// What a character must give to be drawn at all.
+
+test('a character is refused when an anchor it gives is empty or off the stage, or when it lacks the stage frame', async () => {
+  const give = (name: string, anchors: Record<string, unknown>): Character =>
+    ({ ...foxkit, name, anchors: { ...foxkit.anchors, ...anchors } }) as unknown as Character
+  for (const list of ['cheeks', 'tail', 'ears']) {
+    expect(() => defineCharacter(give('hollow', { [list]: [] })), `${list} empty`).toThrow(`character "hollow" has the anchor "${list}" empty, or with a point off the stage`)
+    expect(() => defineCharacter(give('wide', { [list]: [{ x: 1, y: 1 }, { x: STAGE.width, y: 1 }] })), `${list} off`).toThrow(
+      `character "wide" has the anchor "${list}" empty, or with a point off the stage`,
+    )
+  }
+  for (const point of ['paw', 'reach', 'boltFrom']) {
+    expect(() => defineCharacter(give('lost', { [point]: { x: -1, y: 0 } })), point).toThrow(`character "lost" has the anchor "${point}" off the stage`)
+  }
+  const { feet: _feet, ...noFeet } = foxkit.anchors
+  expect(() => defineCharacter({ ...foxkit, name: 'footless', anchors: noFeet } as unknown as Character)).toThrow(
+    'character "footless" is missing the anchor "feet", or it is off the stage',
+  )
+  expect(() => defineCharacter(give('floating', { feet: { x: 7, y: STAGE.height } }))).toThrow('character "floating" is missing the anchor "feet", or it is off the stage')
+})
+
+test('an animation is given the stage frame and the anchors it declared, and no others', async () => {
+  const quiet = defineAnimation({ needs: [], frames: 1, msPerFrame: 1, once: false, hides: [], frame: (_step, { head, feet }) => ({ bob: head.y - feet.y }) })
+  expect(quiet.needs).toEqual([])
+  defineAnimation({
+    needs: [],
+    frames: 1,
+    msPerFrame: 1,
+    once: false,
+    hides: [],
+    // @ts-expect-error paw is not declared in needs, so the frame cannot read it
+    frame: (_step, { paw }) => ({ bob: paw.x }),
+  })
 })

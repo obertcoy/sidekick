@@ -21,7 +21,8 @@ import {
   windowOf,
 } from '../hooks/tickets'
 import type { Place, Recipe } from '../hooks/tickets'
-import { SPRITE, cellsOf, frameCount } from '../hooks/sprite'
+import { SPRITE, cellsOf } from '../hooks/sprite'
+import { ANIMATIONS } from '../hooks/sprite/registry'
 
 const files = parsePlace(
   '{"kind":"files","glob":".scratch/*/issues/*.md","statusLabel":"Status","doneValues":["resolved"],"activeValues":["claimed"]}',
@@ -225,13 +226,13 @@ test('every frame of the character fills its grid, and the frames differ', async
   const bytes = SPRITE.columns * SPRITE.rows * 12
   const length = Math.ceil(bytes / 3) * 4
   for (const mode of ['idle', 'write', 'zap'] as const) {
-    for (let frame = 0; frame < frameCount(mode); frame++) {
-      expect(cellsOf(mode, frame).length).toBe(length)
+    for (let frame = 0; frame < ANIMATIONS[mode].frames; frame++) {
+      expect(cellsOf(ANIMATIONS[mode], frame).length).toBe(length)
     }
   }
-  expect(cellsOf('write', 0)).not.toBe(cellsOf('idle', 0))
-  expect(cellsOf('zap', 2)).not.toBe(cellsOf('zap', 0))
-  expect(cellsOf('zap', frameCount('zap'))).toBe(cellsOf('zap', 0))
+  expect(cellsOf(ANIMATIONS.write, 0)).not.toBe(cellsOf(ANIMATIONS.idle, 0))
+  expect(cellsOf(ANIMATIONS.zap, 2)).not.toBe(cellsOf(ANIMATIONS.zap, 0))
+  expect(cellsOf(ANIMATIONS.zap, ANIMATIONS.zap.frames)).toBe(cellsOf(ANIMATIONS.zap, 0))
 })
 
 test('sets are numbered most recently changed first, and a set is found by number, name or part of its id', () => {
