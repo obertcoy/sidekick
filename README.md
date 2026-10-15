@@ -34,6 +34,18 @@ The pane opens by itself in a wide terminal (144 columns or more). In a narrower
 
 ## Develop
 
+### First-time setup (once per clone)
+
+1. Turn on the pre-commit hook, which runs Biome on the staged files and then the type check, and refuses the commit if either fails:
+
+   ```
+   git config core.hooksPath .githooks
+   ```
+
+2. Open the repo once in a logged-in Claude Code session (for example with `claude --plugin-dir .`). Claude Code then writes the mod API types into `.claude-plugin/types/`, which the type check needs.
+
+### Run the mod
+
 Load the mod from a local folder for one session:
 
 ```
@@ -50,7 +62,9 @@ To load the local folder in every session, add it to the `env` block of your own
 
 Each new session loads the mod from that folder and reloads it when a file there is saved. To turn it off, remove that line and start a new session.
 
-Then, from the mod's folder:
+### Checks
+
+From the mod's folder:
 
 ```
 claude plugin validate .
@@ -61,11 +75,7 @@ npx -y @biomejs/biome@2.5.15 ci .
 
 The last line lints and checks the format with Biome; use `check --write .` to apply the fixes. The versions are pinned in these commands (and Biome's in `biome.json`), and the repo has no `package.json` or `node_modules`.
 
-CI runs Biome and the tests. Types are checked locally only: the mod API types in `.claude-plugin/types` are written by a logged-in Claude Code session and are gitignored, so a fresh clone cannot type-check. Enable the pre-commit hook (Biome on staged files, then the type check) once per clone:
-
-```
-git config core.hooksPath .githooks
-```
+CI runs Biome and the tests. Types are checked locally only, by the pre-commit hook: the mod API types in `.claude-plugin/types` are written by a logged-in Claude Code session and are gitignored, so a fresh clone cannot type-check.
 
 ### Sprite: characters, animations, accessories, backgrounds
 
