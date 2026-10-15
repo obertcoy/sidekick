@@ -24,11 +24,7 @@ export const cheer = defineAnimation({
     const dots: Dot[] =
       step >= climb.length - 1
         ? []
-        : [
-            ...above(first, 0, lead ?? 0, role),
-            ...above(last, 0, lead ?? 0, role),
-            ...(trail === undefined ? [] : above(last, 1, trail, 'spark')),
-          ]
+        : [...above(first, 0, lead ?? 0, role), ...above(last, 0, lead ?? 0, role), ...(trail === undefined ? [] : above(last, 1, trail, 'spark'))]
 
     // The last frame is the resting one, so the cheer ends where it began.
     return { bob: step < climb.length - 1 && (step % 4 === 1 || step % 4 === 2) ? 1 : 0, dots }

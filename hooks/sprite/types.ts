@@ -5,14 +5,14 @@
 export type Point = { readonly x: number; readonly y: number }
 
 /** Colours a character defines for its own body. */
-const BODY_ROLES =['outline', 'base', 'shade', 'highlight', 'cheek', 'eye', 'belly'] as const
+const BODY_ROLES = ['outline', 'base', 'shade', 'highlight', 'cheek', 'eye', 'belly'] as const
 export type BodyRole = (typeof BODY_ROLES)[number]
 
 /** The body roles every character colours: the rest are for the legend to use or not. */
 export const REQUIRED_BODY_ROLES = ['outline', 'base'] as const satisfies readonly BodyRole[]
 
 /** Colours shared by every look, for props and effects. */
-const PROP_ROLES =['paper', 'ink', 'spark', 'flash', 'check'] as const
+const PROP_ROLES = ['paper', 'ink', 'spark', 'flash', 'check'] as const
 export type PropRole = (typeof PROP_ROLES)[number]
 
 export type Role = BodyRole | PropRole

@@ -131,7 +131,10 @@ const begin = (m: Model, playsFor: Lookup, isShown: boolean): Result => {
     // A single frame does not move, so it needs no timer.
     const loop: Effect[] = animation.frames > 1 ? [{ do: 'every', ms: animation.msPerFrame }] : []
 
-    return { model: { ...m, waiting, phase: { kind: 'resting' }, shown }, effects: [{ do: 'stop' }, ...(isShown ? [] : [{ do: 'draw', shown } as const]), ...loop] }
+    return {
+      model: { ...m, waiting, phase: { kind: 'resting' }, shown },
+      effects: [{ do: 'stop' }, ...(isShown ? [] : [{ do: 'draw', shown } as const]), ...loop],
+    }
   }
   const animation = playsFor(entry.state)
   const steps = animation.frames + (entry.restSteps ?? 0)
@@ -157,9 +160,7 @@ const advance = (m: Model, p: Extract<Phase, { kind: 'playing' | 'holding' }>, p
       // The sidekick rests once the animation is over while the rest of the entry runs out; until then it shows the entry's frames.
       const phase: Phase = step < p.animation.frames ? { ...p, step } : { ...p, kind: 'holding', step }
       const drawn =
-        phase.kind === 'playing'
-          ? show({ ...m, phase }, { state: p.entry.state, animation: p.animation, frame: step })
-          : showRest({ ...m, phase }, playsFor)
+        phase.kind === 'playing' ? show({ ...m, phase }, { state: p.entry.state, animation: p.animation, frame: step }) : showRest({ ...m, phase }, playsFor)
 
       return { model: drawn.model, effects: [hook, ...drawn.effects] }
     }

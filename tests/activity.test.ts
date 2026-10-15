@@ -74,8 +74,7 @@ const open = async ($: Engine, on: On, tickets: Record<string, string> = TICKETS
   on('tool.call', () => ({ result: { ok: true } }))
   let release: ((reply: Reply) => void) | undefined
   // Only the search is held; a turn's summary is answered at once, as it is not what these tests are about.
-  w.answer = prompt =>
-    prompt.startsWith('Current status') ? answered('{"change":false}') : new Promise<Reply>(resolve => (release = resolve))
+  w.answer = prompt => (prompt.startsWith('Current status') ? answered('{"change":false}') : new Promise<Reply>(resolve => (release = resolve)))
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
   await clock.settle()
   const answerSearch = async (reply: Reply): Promise<void> => {
@@ -100,11 +99,7 @@ const settled = async ($: Engine, on: On, tickets: Record<string, string> = TICK
 // A subagent's run raises no turn.start, so only the main turn is started here.
 const startTurn = ($: Engine, id: string) => $.turn.start({ text: 'Build it.', turnId: id })
 
-const endTurn = (
-  $: Engine,
-  id: string,
-  agentId?: string,
-) =>
+const endTurn = ($: Engine, id: string, agentId?: string) =>
   $.turn.complete({
     answer: 'Done.',
     durationMs: 1,
@@ -431,7 +426,10 @@ test('the last ticket of the set finishing gives the zap and its whole strike, a
   const cheer = framesOf('cheer')
   expect(named(w.painted.slice(from))).toEqual(named([zap[0] ?? '']))
   await clock.advance(4 * ZAP_STEP)
-  expect((await flashing()).map(one => one.text), 'the strike lands on the row').toEqual(['✓ Shipping'])
+  expect(
+    (await flashing()).map(one => one.text),
+    'the strike lands on the row',
+  ).toEqual(['✓ Shipping'])
 
   // One tick short of the end of the strike: the zap is over, the strike is not, and no cheer has begun.
   await clock.advance(STRIKE_MS - 4 * ZAP_STEP - 1)
@@ -571,9 +569,7 @@ test('the last ticket finishing while an earlier strike still waits behind a shr
   await change($, w, clock, ALMOST, 9)
   await change($, w, clock, ALL, 12)
   await clock.advance(SHRUG_MS + STRIKE_MS + CHEER_MS * 2)
-  expect(named(w.painted.slice(from))).toEqual(
-    named([...framesOf('shrug'), ...framesOf('zap'), REST(), ...framesOf('cheer'), REST()]),
-  )
+  expect(named(w.painted.slice(from))).toEqual(named([...framesOf('shrug'), ...framesOf('zap'), REST(), ...framesOf('cheer'), REST()]))
   expect(await flashingOf(ui, clock)).toHaveLength(0)
   await ui.unmount()
 })

@@ -162,7 +162,11 @@ test('a hook that queues from onEnd is handled after the effects now running, ne
     every: (_ms: number, fn: () => void) => {
       const timer = { fn, isOn: true }
       timers.push(timer)
-      return { cancel: () => { timer.isOn = false } } as ReturnType<Parameters<typeof createActivity>[0]['every']>
+      return {
+        cancel: () => {
+          timer.isOn = false
+        },
+      } as ReturnType<Parameters<typeof createActivity>[0]['every']>
     },
   }
   const log: string[] = []
@@ -176,8 +180,14 @@ test('a hook that queues from onEnd is handled after the effects now running, ne
   }
   const activity = createActivity(clock, ({ state, frame }) => void log.push(`draw ${state} ${frame}`), playsFor)
   activity.queue(first)
-  timers.filter(timer => timer.isOn).at(-1)?.fn()
-  timers.filter(timer => timer.isOn).at(-1)?.fn()
+  timers
+    .filter(timer => timer.isOn)
+    .at(-1)
+    ?.fn()
+  timers
+    .filter(timer => timer.isOn)
+    .at(-1)
+    ?.fn()
   // The queue from onEnd returned before the next entry started: no re-entry.
   expect(log.indexOf('end returned')).toBeLessThan(log.indexOf('start after'))
   expect(log.filter(line => line === 'start after')).toEqual(['start after'])

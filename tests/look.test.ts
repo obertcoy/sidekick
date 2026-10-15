@@ -71,8 +71,7 @@ const started = async ($: Engine, on: On) => {
   return { clock, w }
 }
 
-const dressed = (character: string, outfit: Record<string, string> = {}, background: string | null = null) =>
-  layersOf({ character, outfit, background })
+const dressed = (character: string, outfit: Record<string, string> = {}, background: string | null = null) => layersOf({ character, outfit, background })
 
 test('a part set with the command shows on the very next paint, and several can be set at once', async ($, on) => {
   const { w } = await started($, on)
@@ -160,25 +159,26 @@ const REFUSALS: [string, string, string][] = [
   ['a word without a name', 'head', 'No accessory named "" for head; known: cap'],
 ]
 
-for (const [what, args, refusal] of REFUSALS) test(`${what} is refused with the valid choices, and the valid pairs beside it are not saved`, async ($, on) => {
-  const { w } = await started($, on)
-  await $.command.run({ ...LOOK, args: 'background=dusk' })
-  w.painted.length = 0
+for (const [what, args, refusal] of REFUSALS)
+  test(`${what} is refused with the valid choices, and the valid pairs beside it are not saved`, async ($, on) => {
+    const { w } = await started($, on)
+    await $.command.run({ ...LOOK, args: 'background=dusk' })
+    w.painted.length = 0
 
-  const ran = await $.command.run({ ...LOOK, args: `character=classic ${args} head=cap` })
-  expect(ran.text).toBe(`${refusal}\nNothing was changed.`)
-  expect(w.painted).toHaveLength(0)
+    const ran = await $.command.run({ ...LOOK, args: `character=classic ${args} head=cap` })
+    expect(ran.text).toBe(`${refusal}\nNothing was changed.`)
+    expect(w.painted).toHaveLength(0)
 
-  // Still what it was, in memory and in the store.
-  const shown = await $.command.run({ ...LOOK, args: '' })
-  expect(shown.text).toContain('  character: foxkit\n  head: -')
-  expect(shown.text).toContain('  background: dusk')
-  setSavedLook({})
-  await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
-  const reloaded = await $.command.run({ ...LOOK, args: '' })
-  expect(reloaded.text).toContain('  character: foxkit\n  head: -')
-  expect(reloaded.text).toContain('  background: dusk')
-})
+    // Still what it was, in memory and in the store.
+    const shown = await $.command.run({ ...LOOK, args: '' })
+    expect(shown.text).toContain('  character: foxkit\n  head: -')
+    expect(shown.text).toContain('  background: dusk')
+    setSavedLook({})
+    await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
+    const reloaded = await $.command.run({ ...LOOK, args: '' })
+    expect(reloaded.text).toContain('  character: foxkit\n  head: -')
+    expect(reloaded.text).toContain('  background: dusk')
+  })
 
 test('the look command is registered at session start beside the existing commands', async ($, on) => {
   mock.clock(on)
@@ -382,9 +382,7 @@ test('reset takes no parts, and here alone names nothing; both change nothing', 
   await $.command.run({ ...LOOK, args: 'head=cap' })
   expect((await $.command.run({ ...LOOK, args: 'reset head=cap' })).text).toBe('reset takes no parts.\nNothing was changed.')
   expect((await $.command.run({ ...LOOK, args: 'here' })).text).toContain('Nothing was changed.')
-  expect((await $.command.run({ ...LOOK, args: 'here head=crown' })).text).toBe(
-    'No accessory named "crown" for head; known: cap\nNothing was changed.',
-  )
+  expect((await $.command.run({ ...LOOK, args: 'here head=crown' })).text).toBe('No accessory named "crown" for head; known: cap\nNothing was changed.')
   expect((await $.command.run({ ...LOOK, args: '' })).text).toContain('  head: cap\n')
 })
 
@@ -441,7 +439,7 @@ test('an override that cannot be saved is reported, and the old override stays',
   expect((await $.command.run({ ...LOOK, args: '' })).text).toContain('  character: classic (this project)\n  head: -\n')
 })
 
-test('a session that moves to another project without a new session start paints that project\'s look, not the last one\'s', async ($, on) => {
+test("a session that moves to another project without a new session start paints that project's look, not the last one's", async ($, on) => {
   const { w } = await started($, on)
   await $.command.run({ ...LOOK, args: 'head=cap' })
   await $.command.run({ ...LOOK, args: 'here character=classic' })
@@ -529,49 +527,50 @@ const BAD: Bad[] = [
 /** The text of every Text in the mounted pane. */
 const texts = async (ui: { findAll: (query: { type: string }) => Promise<{ text: string }[]> }) => (await ui.findAll({ type: 'Text' })).map(one => one.text)
 
-for (const bad of BAD) for (const where of ['global', 'project'] as const) {
-  test(`${bad.what} in the ${where} look is left out: session start, turn animation and idle render all draw the rest, the line is in the pane once and not duplicated across refreshes, and the listing marks it`, async ($, on) => {
-    const clock = mock.clock(on)
-    const store = openStore(on)
-    store.data.set(where === 'global' ? 'look' : `look:${SHOP}`, bad.saved)
-    const w = world(on, SHOP)
-    on('turn.start', (_, e) => ({ turnId: e.turnId }))
-    setSavedLook({})
-    setProjectLook({}, undefined)
-    await $.session.start({ cwd: SHOP, surface: 'terminal', isInteractive: true })
-    await clock.advance(SETTLED)
-    const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-    const [character, outfit, background] = bad.drawn
+for (const bad of BAD)
+  for (const where of ['global', 'project'] as const) {
+    test(`${bad.what} in the ${where} look is left out: session start, turn animation and idle render all draw the rest, the line is in the pane once and not duplicated across refreshes, and the listing marks it`, async ($, on) => {
+      const clock = mock.clock(on)
+      const store = openStore(on)
+      store.data.set(where === 'global' ? 'look' : `look:${SHOP}`, bad.saved)
+      const w = world(on, SHOP)
+      on('turn.start', (_, e) => ({ turnId: e.turnId }))
+      setSavedLook({})
+      setProjectLook({}, undefined)
+      await $.session.start({ cwd: SHOP, surface: 'terminal', isInteractive: true })
+      await clock.advance(SETTLED)
+      const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+      const [character, outfit, background] = bad.drawn
 
-    // The idle render draws the Raster with the rest of the look.
-    const idle = (await ui.findAll({ type: 'Raster' })).at(0)
-    expect(idle?.props.cells).toBe(render(dressed(character, outfit, background), ANIMATIONS.idle, 0))
-    expect(await texts(ui)).toContain(bad.line)
+      // The idle render draws the Raster with the rest of the look.
+      const idle = (await ui.findAll({ type: 'Raster' })).at(0)
+      expect(idle?.props.cells).toBe(render(dressed(character, outfit, background), ANIMATIONS.idle, 0))
+      expect(await texts(ui)).toContain(bad.line)
 
-    // A turn starts and the animation plays on.
-    await $.turn.start({ text: 'Build it.', turnId: 't1' })
-    expect(w.painted.at(-1)).toBe(render(dressed(character, outfit, background), ANIMATIONS.write, 0))
-    await clock.advance(ANIMATIONS.write.msPerFrame * 2)
-    expect(w.painted.at(-1)).toBe(render(dressed(character, outfit, background), ANIMATIONS.write, 2))
+      // A turn starts and the animation plays on.
+      await $.turn.start({ text: 'Build it.', turnId: 't1' })
+      expect(w.painted.at(-1)).toBe(render(dressed(character, outfit, background), ANIMATIONS.write, 0))
+      await clock.advance(ANIMATIONS.write.msPerFrame * 2)
+      expect(w.painted.at(-1)).toBe(render(dressed(character, outfit, background), ANIMATIONS.write, 2))
 
-    // The line is there once: later refreshes do not add it again.
-    await ui.redraw()
-    await clock.advance(20_000)
-    await ui.redraw()
-    expect((await texts(ui)).filter(text => text.startsWith('Left out:'))).toEqual([bad.line])
+      // The line is there once: later refreshes do not add it again.
+      await ui.redraw()
+      await clock.advance(20_000)
+      await ui.redraw()
+      expect((await texts(ui)).filter(text => text.startsWith('Left out:'))).toEqual([bad.line])
 
-    // The listing marks the part and still names the saved name; nothing was rewritten.
-    const listing = (await $.command.run({ ...LOOK, args: '' })).text
-    expect(listing).toContain(bad.mark)
-    expect(store.data.get(where === 'global' ? 'look' : `look:${SHOP}`)).toEqual(bad.saved)
+      // The listing marks the part and still names the saved name; nothing was rewritten.
+      const listing = (await $.command.run({ ...LOOK, args: '' })).text
+      expect(listing).toContain(bad.mark)
+      expect(store.data.get(where === 'global' ? 'look' : `look:${SHOP}`)).toEqual(bad.saved)
 
-    // The line clears when the look next changes (here to the foxkit), even for a part still not drawable.
-    await $.command.run({ ...LOOK, args: where === 'global' ? 'character=foxkit' : 'here character=foxkit' })
-    await ui.redraw()
-    expect((await texts(ui)).filter(text => text.startsWith('Left out:'))).toEqual([])
-    await ui.unmount()
-  })
-}
+      // The line clears when the look next changes (here to the foxkit), even for a part still not drawable.
+      await $.command.run({ ...LOOK, args: where === 'global' ? 'character=foxkit' : 'here character=foxkit' })
+      await ui.redraw()
+      expect((await texts(ui)).filter(text => text.startsWith('Left out:'))).toEqual([])
+      await ui.unmount()
+    })
+  }
 
 test('a project override holding only a bad character over a good global look draws the foxkit with the global parts', async ($, on) => {
   const clock = mock.clock(on)
@@ -626,12 +625,7 @@ for (const where of ['global', 'project'] as const) {
 // Face and neck slots.
 
 /** Puts a test-only part in the registry for the length of `run`, then takes it out; nothing ships. */
-const withPart = async <T>(
-  registry: Record<string, T>,
-  name: string,
-  part: T,
-  run: () => Promise<void>,
-): Promise<void> => {
+const withPart = async <T>(registry: Record<string, T>, name: string, part: T, run: () => Promise<void>): Promise<void> => {
   registry[name] = part
   try {
     await run()
@@ -824,7 +818,9 @@ for (const character of ['foxkit', 'classic']) {
     const resting = render(dressed(character, FOUR), ANIMATIONS.idle, 0)
     expect(w.painted.at(-1)).toBe(resting)
     expect(resting).not.toBe(render(dressed(character, THREE), ANIMATIONS.idle, 0))
-    expect((await $.command.run({ ...LOOK, args: '' })).text).toContain(`  character: ${character}\n  head: cap\n  face: glasses\n  neck: scarf\n  held: flag\n`)
+    expect((await $.command.run({ ...LOOK, args: '' })).text).toContain(
+      `  character: ${character}\n  head: cap\n  face: glasses\n  neck: scarf\n  held: flag\n`,
+    )
 
     // Writing: every frame painted is the frame of the other three accessories, with no flag in it.
     const before = w.painted.length
@@ -866,7 +862,12 @@ for (const character of ['foxkit', 'classic']) {
 test('a flag set for a character without a held slot is saved with the usual reply, and drawn once a character with the slot is shown', async () => {
   clean()
   try {
-    const noHeld: Character = defineCharacter({ ...foxkit, name: 'plain', anchors: { ...foxkit.anchors, held: undefined }, bobs: { head: true, face: true, neck: false } })
+    const noHeld: Character = defineCharacter({
+      ...foxkit,
+      name: 'plain',
+      anchors: { ...foxkit.anchors, held: undefined },
+      bobs: { head: true, face: true, neck: false },
+    })
     await withPart(CHARACTERS as Record<string, Character>, 'plain', noHeld, async () => {
       expect(apply('character=plain held=flag').text).toBe(
         'Look set: character=plain held=flag.\nplain has no held slot, so flag is saved but not drawn until a character with that slot is shown.',

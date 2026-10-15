@@ -14,17 +14,14 @@ export const answered = (text: string): Reply => ({ isAnswered: true, text, usag
 
 export const failed: Reply = { isAnswered: false, reason: 'api-error', status: 529, error: 'overloaded', usage: USAGE }
 
-export const RECIPE =
-  '{"kind":"files","glob":".scratch/*/issues/*.md","statusLabel":"Status","doneValues":["done"],"activeValues":["in-progress"]}'
+export const RECIPE = '{"kind":"files","glob":".scratch/*/issues/*.md","statusLabel":"Status","doneValues":["done"],"activeValues":["in-progress"]}'
 
 // The engine hands a hook the path as this machine spells it (D:\work\shop on Windows). A POSIX
 // host running a Windows-rooted test resolves the drive path under its own working folder
 // (/here/C:/work/shop), so everything before the drive is dropped too.
-export const posix = (path: string): string =>
-  path.replace(/^.*?[A-Za-z]:(?=[\\/])/, '').replace(/\\/g, '/')
+export const posix = (path: string): string => path.replace(/^.*?[A-Za-z]:(?=[\\/])/, '').replace(/\\/g, '/')
 
-export const ticket = (title: string, status: string): string =>
-  `# ${title}\n\n**Status:** ${status}\n\n- [ ] a step\n`
+export const ticket = (title: string, status: string): string => `# ${title}\n\n**Status:** ${status}\n\n- [ ] a step\n`
 
 export type World = {
   /** The project root the session reports; a test can move it to stand in another project. */
@@ -133,18 +130,9 @@ export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}):
 }
 
 /** Lays out tickets as files in `<root>/.scratch/<set>/issues/`, each at `mtimeMs`. */
-export const addSet = (
-  w: World,
-  root: string,
-  set: string,
-  tickets: Record<string, string>,
-  mtimeMs: number,
-): void => {
+export const addSet = (w: World, root: string, set: string, tickets: Record<string, string>, mtimeMs: number): void => {
   const scratch = `${root}/.scratch`
-  w.tree[root] = [
-    ...(w.tree[root] ?? []).filter(one => one.name !== '.scratch'),
-    { name: '.scratch', kind: 'dir' },
-  ]
+  w.tree[root] = [...(w.tree[root] ?? []).filter(one => one.name !== '.scratch'), { name: '.scratch', kind: 'dir' }]
   w.tree[scratch] = [...(w.tree[scratch] ?? []).filter(one => one.name !== set), { name: set, kind: 'dir' }]
   w.tree[`${scratch}/${set}`] = [{ name: 'issues', kind: 'dir' }]
   w.tree[`${scratch}/${set}/issues`] = Object.keys(tickets).map(name => ({ name, kind: 'file', mtimeMs }))

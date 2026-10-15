@@ -42,9 +42,18 @@ export const foxkit = defineCharacter({
     paw: { x: 12, y: 10 },
     reach: { x: 13, y: 7 },
     boltFrom: { x: 17, y: 0 },
-    cheeks: [{ x: 3, y: 6 }, { x: 9, y: 6 }],
-    tail: [{ x: 0, y: 6 }, { x: 2, y: 6 }],
-    ears: [{ x: 0, y: 3 }, { x: 14, y: 3 }],
+    cheeks: [
+      { x: 3, y: 6 },
+      { x: 9, y: 6 },
+    ],
+    tail: [
+      { x: 0, y: 6 },
+      { x: 2, y: 6 },
+    ],
+    ears: [
+      { x: 0, y: 3 },
+      { x: 14, y: 3 },
+    ],
     feet: { x: 7, y: 14 },
   },
   // Columns 0-2 hold the ear tip and the tail, which stay put while the head bobs.

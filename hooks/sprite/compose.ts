@@ -156,9 +156,7 @@ export const composePixels = (look: Layers, animation: Animation, step: number, 
     if (accessory === undefined || anchor === undefined || animation.hides.includes(slot)) continue
     const lift = character.bobs[slot] ? bob : 0
     accessory.pixels.forEach((row, y) =>
-      [...row].forEach((letter, x) =>
-        put(pixels, anchor.x - accessory.origin.x + x, anchor.y - accessory.origin.y + y + lift, accessory.palette[letter]),
-      ),
+      [...row].forEach((letter, x) => put(pixels, anchor.x - accessory.origin.x + x, anchor.y - accessory.origin.y + y + lift, accessory.palette[letter])),
     )
   }
 

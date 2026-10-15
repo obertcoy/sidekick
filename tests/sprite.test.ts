@@ -52,7 +52,10 @@ test('every character fills the stage in every animation, write and zap leave re
     for (const mode of ['look', 'shrug', 'cheer'] as const) {
       const animation = ANIMATIONS[mode]
       const frames = Array.from({ length: animation.frames }, (_, step) => render(layers, animation, step))
-      expect(frames.some(frame => frame !== still), `${name} ${mode} leaves rest`).toBe(true)
+      expect(
+        frames.some(frame => frame !== still),
+        `${name} ${mode} leaves rest`,
+      ).toBe(true)
       expect(new Set(frames).size, `${name} ${mode} has different frames`).toBeGreaterThan(1)
     }
     expect(render(layers, ANIMATIONS.write, 1), name).not.toBe(render(layers, ANIMATIONS.write, 0))
@@ -153,10 +156,11 @@ test('both characters have a face and a neck anchor on the stage, and glasses an
     if (face === undefined || neck === undefined) throw new Error(`${name} lacks a face or neck anchor`)
     const dressed = composePixels({ character, outfit: { face: glasses }, background: null }, ANIMATIONS.idle, 0)
     const plain = composePixels(bare(character), ANIMATIONS.idle, 0)
-    const changed = (a: Pixels, b: Pixels): string[] => opaque(a).filter(at => {
-      const [x = 0, y = 0] = at.split(',').map(Number)
-      return a[y]?.[x] !== b[y]?.[x]
-    })
+    const changed = (a: Pixels, b: Pixels): string[] =>
+      opaque(a).filter(at => {
+        const [x = 0, y = 0] = at.split(',').map(Number)
+        return a[y]?.[x] !== b[y]?.[x]
+      })
     expect(changed(dressed, plain).sort(), `${name} glasses`).toEqual(placed(glasses, face).sort())
     expect(dressed[face.y]?.[face.x], `${name} glasses bridge on the anchor`).toBe(glasses.palette.L)
     const scarfed = composePixels({ character, outfit: { neck: scarf }, background: null }, ANIMATIONS.idle, 0)
@@ -205,7 +209,12 @@ test('a character is valid without face or neck anchors, but an anchor it gives 
   const worn = composePixels({ character: plain, outfit: { face: glasses, neck: scarf }, background: null }, ANIMATIONS.idle, 0)
   expect(worn).toEqual(composePixels(bare(plain), ANIMATIONS.idle, 0))
   for (const slot of ['face', 'neck'] as const) {
-    for (const off of [{ x: -1, y: 4 }, { x: 4, y: STAGE.height }, { x: STAGE.width, y: 4 }, { x: 1.5, y: 4 }]) {
+    for (const off of [
+      { x: -1, y: 4 },
+      { x: 4, y: STAGE.height },
+      { x: STAGE.width, y: 4 },
+      { x: 1.5, y: 4 },
+    ]) {
       const bad = { ...foxkit, name: 'off', anchors: { ...foxkit.anchors, [slot]: off } }
       expect(() => defineCharacter(bad), `${slot} ${JSON.stringify(off)}`).toThrow(`character "off" has the anchor "${slot}" off the stage`)
     }
@@ -295,7 +304,10 @@ test('both characters have a held anchor on the stage, and a flag stands on it, 
     expect(changed.sort(), `${name} flag`).toEqual(placed(flag, held).sort())
     expect(rest[held.y]?.[held.x], `${name} pole foot on the anchor`).toBe(flag.palette.p)
     // A flag drawn over empty stage only: it covers none of the body.
-    expect(opaque(plain).filter(at => changed.includes(at)), `${name} flag clear of the body`).toEqual([])
+    expect(
+      opaque(plain).filter(at => changed.includes(at)),
+      `${name} flag clear of the body`,
+    ).toEqual([])
     // And of the other accessories: worn together at rest, each keeps all of its own pixels.
     expectOwnPixels(character, composePixels({ character, outfit: withAll(character), background: null }, ANIMATIONS.idle, 0), 0, `${name} at rest`)
   }
@@ -345,7 +357,12 @@ test('an animation that hides no slot leaves every accessory drawn, and one that
 test('all four slots are worn together and held is drawn above the other three', async () => {
   const dot = (slot: Slot, colour: number) => ({ name: slot, slot, pixels: ['x'], origin: { x: 0, y: 0 }, palette: { x: colour } })
   const spot = { x: 8, y: 8 }
-  const piled = defineCharacter({ ...foxkit, name: 'piled', anchors: { ...foxkit.anchors, head: spot, face: spot, neck: spot, held: spot }, bobs: { head: true, face: true, neck: false, held: false } })
+  const piled = defineCharacter({
+    ...foxkit,
+    name: 'piled',
+    anchors: { ...foxkit.anchors, head: spot, face: spot, neck: spot, held: spot },
+    bobs: { head: true, face: true, neck: false, held: false },
+  })
   const all = { head: dot('head', 1), face: dot('face', 2), neck: dot('neck', 3), held: dot('held', 4) }
   const at = (outfit: Layers['outfit']) => composePixels({ character: piled, outfit, background: null }, ANIMATIONS.idle, 0)[spot.y]?.[spot.x]
   expect(at(all)).toBe(4)
@@ -365,8 +382,12 @@ test('all four slots are worn together and held is drawn above the other three',
 
 test('layersOf takes the flag in the held slot only, and a held anchor needs a bobs declaration inside the rules', async () => {
   expect(layersOf({ character: 'classic', outfit: { held: 'flag' }, background: null }).outfit).toEqual({ held: flag })
-  expect(() => layersOf({ character: 'foxkit', outfit: { head: 'flag' }, background: null })).toThrow('"flag" is a held accessory and does not go in the head slot')
-  expect(() => layersOf({ character: 'foxkit', outfit: { held: 'cap' }, background: null })).toThrow('"cap" is a head accessory and does not go in the held slot')
+  expect(() => layersOf({ character: 'foxkit', outfit: { head: 'flag' }, background: null })).toThrow(
+    '"flag" is a held accessory and does not go in the head slot',
+  )
+  expect(() => layersOf({ character: 'foxkit', outfit: { held: 'cap' }, background: null })).toThrow(
+    '"cap" is a head accessory and does not go in the held slot',
+  )
 
   const { held: _held, ...rest } = foxkit.bobs
   expect(() => defineCharacter({ ...foxkit, name: 'unsure', bobs: rest })).toThrow('character "unsure" does not declare whether the slot "held" bobs')
@@ -442,7 +463,12 @@ test('a character missing an anchor a played animation needs is refused, naming 
 test('a character may omit an anchor no animation it plays needs', async () => {
   const { ears, face } = foxkit.anchors
   if (ears === undefined || face === undefined) throw new Error('no ears or face')
-  const earsOnly = defineCharacter({ ...foxkit, name: 'ears-only', anchors: { head: foxkit.anchors.head, feet: foxkit.anchors.feet, ears, face }, bobs: { head: true, face: true } })
+  const earsOnly = defineCharacter({
+    ...foxkit,
+    name: 'ears-only',
+    anchors: { head: foxkit.anchors.head, feet: foxkit.anchors.feet, ears, face },
+    bobs: { head: true, face: true },
+  })
   // No paw, reach, bolt, cheeks or tail: the animations that read them are not played, so they are not needed.
   expect(() => requireAnchors(earsOnly, { idle: ANIMATIONS.idle, look: ANIMATIONS.look, shrug: ANIMATIONS.shrug, cheer: ANIMATIONS.cheer })).not.toThrow()
 })
@@ -537,10 +563,21 @@ test('a character is refused when an anchor it gives is empty or off the stage, 
   const give = (name: string, anchors: Record<string, unknown>): Character =>
     ({ ...foxkit, name, anchors: { ...foxkit.anchors, ...anchors } }) as unknown as Character
   for (const list of ['cheeks', 'tail', 'ears']) {
-    expect(() => defineCharacter(give('hollow', { [list]: [] })), `${list} empty`).toThrow(`character "hollow" has the anchor "${list}" empty, or with a point off the stage`)
-    expect(() => defineCharacter(give('wide', { [list]: [{ x: 1, y: 1 }, { x: STAGE.width, y: 1 }] })), `${list} off`).toThrow(
-      `character "wide" has the anchor "${list}" empty, or with a point off the stage`,
+    expect(() => defineCharacter(give('hollow', { [list]: [] })), `${list} empty`).toThrow(
+      `character "hollow" has the anchor "${list}" empty, or with a point off the stage`,
     )
+    expect(
+      () =>
+        defineCharacter(
+          give('wide', {
+            [list]: [
+              { x: 1, y: 1 },
+              { x: STAGE.width, y: 1 },
+            ],
+          }),
+        ),
+      `${list} off`,
+    ).toThrow(`character "wide" has the anchor "${list}" empty, or with a point off the stage`)
   }
   for (const point of ['paw', 'reach', 'boltFrom']) {
     expect(() => defineCharacter(give('lost', { [point]: { x: -1, y: 0 } })), point).toThrow(`character "lost" has the anchor "${point}" off the stage`)
@@ -549,7 +586,9 @@ test('a character is refused when an anchor it gives is empty or off the stage, 
   expect(() => defineCharacter({ ...foxkit, name: 'footless', anchors: noFeet } as unknown as Character)).toThrow(
     'character "footless" is missing the anchor "feet", or it is off the stage',
   )
-  expect(() => defineCharacter(give('floating', { feet: { x: 7, y: STAGE.height } }))).toThrow('character "floating" is missing the anchor "feet", or it is off the stage')
+  expect(() => defineCharacter(give('floating', { feet: { x: 7, y: STAGE.height } }))).toThrow(
+    'character "floating" is missing the anchor "feet", or it is off the stage',
+  )
 })
 
 test('an animation is given the stage frame and the anchors it declared, and no others', async () => {

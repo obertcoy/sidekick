@@ -19,5 +19,4 @@ export const playsFor = (state: State): Animation => animationOf(characterInUse(
  * One frame of an animation as a Raster's cells: each cell a half block coloured by its upper and lower pixel.
  * The look is resolved on each call, and a part that cannot be drawn is left out. The background steps with the animation unless given its own frame.
  */
-export const cellsOf = (animation: Animation, frame: number, backgroundFrame?: number): string =>
-  render(drawable(), animation, frame, backgroundFrame)
+export const cellsOf = (animation: Animation, frame: number, backgroundFrame?: number): string => render(drawable(), animation, frame, backgroundFrame)

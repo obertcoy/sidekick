@@ -12,8 +12,7 @@ const CHECKOUT = {
   '03-ship.md': ticket('03: Shipping', 'ready-for-agent'),
 }
 const KEPT = 'Found nothing new; still reading .scratch/checkout/issues: 1/3 done.'
-const TASKS_RECIPE =
-  '{"kind":"files","glob":"docs/tasks/*.md","statusLabel":"Status","doneValues":["done"],"activeValues":[]}'
+const TASKS_RECIPE = '{"kind":"files","glob":"docs/tasks/*.md","statusLabel":"Status","doneValues":["done"],"activeValues":[]}'
 
 const known = async ($: Engine, on: On): Promise<World> => {
   const w = world(on, ROOT)

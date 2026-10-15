@@ -162,14 +162,13 @@ export const changeLook = (args: string, held: SavedLook, target: Target): LookC
   const chosen = (target === 'project' ? character : (projectLook().character ?? character)) ?? savedLook().character ?? DEFAULT_LOOK.character
   const showing = known(CHARACTERS, chosen) ? chosen : DEFAULT_LOOK.character
   // From the final outfit, once per slot: a slot emptied again in the same command has nothing to report.
-  const lacking = SLOTS.filter(slot => touched.has(slot))
-    .flatMap(slot => {
-      const name = outfit[slot]
+  const lacking = SLOTS.filter(slot => touched.has(slot)).flatMap(slot => {
+    const name = outfit[slot]
 
-      return typeof name === 'string' && CHARACTERS[showing]?.anchors[slot] === undefined
-        ? [`${showing} has no ${slot} slot, so ${name} is saved but not drawn until a character with that slot is shown.`]
-        : []
-    })
+    return typeof name === 'string' && CHARACTERS[showing]?.anchors[slot] === undefined
+      ? [`${showing} has no ${slot} slot, so ${name} is saved but not drawn until a character with that slot is shown.`]
+      : []
+  })
 
   return { isSaved: true, saved: next, text: [`Look set${where}: ${done.join(' ')}.`, ...lacking].join('\n') }
 }

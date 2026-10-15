@@ -3,14 +3,29 @@ import type { Dot, Point, Role } from '../types'
 
 // The bolt's zigzag, from its top (the boltFrom anchor) down to where it strikes.
 const BOLT: readonly (readonly [number, number])[] = [
-  [0, 0], [-1, 1], [0, 1], [-1, 2], [-2, 3], [-1, 3], [0, 3], [-1, 4], [-2, 5], [-1, 5], [-2, 6],
+  [0, 0],
+  [-1, 1],
+  [0, 1],
+  [-1, 2],
+  [-2, 3],
+  [-1, 3],
+  [0, 3],
+  [-1, 4],
+  [-2, 5],
+  [-1, 5],
+  [-2, 6],
 ]
 // The check mark, from the top-left of the paper spot.
-const CHECK: readonly (readonly [number, number])[] = [[4, 0], [3, 1], [0, 2], [2, 2], [1, 3]]
+const CHECK: readonly (readonly [number, number])[] = [
+  [4, 0],
+  [3, 1],
+  [0, 2],
+  [2, 2],
+  [1, 3],
+]
 
 // A point that may be missing: only the second tail tip, since a tail may have a single tip.
-const at = (point: Point | undefined, dx: number, dy: number, role: Role): Dot[] =>
-  point === undefined ? [] : [[point.x + dx, point.y + dy, role]]
+const at = (point: Point | undefined, dx: number, dy: number, role: Role): Dot[] => (point === undefined ? [] : [[point.x + dx, point.y + dy, role]])
 
 /** A ticket is done: the cheeks charge, a bolt strikes the raised paw, sparks fall, and a check mark stays. */
 export const zap = defineAnimation({

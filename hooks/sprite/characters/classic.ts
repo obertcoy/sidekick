@@ -40,9 +40,18 @@ export const classic = defineCharacter({
     paw: { x: 9, y: 11 },
     reach: { x: 10, y: 9 },
     boltFrom: { x: 14, y: 2 },
-    cheeks: [{ x: 2, y: 9 }, { x: 9, y: 9 }],
-    tail: [{ x: 0, y: 9 }, { x: 0, y: 11 }],
-    ears: [{ x: 2, y: 3 }, { x: 9, y: 3 }],
+    cheeks: [
+      { x: 2, y: 9 },
+      { x: 9, y: 9 },
+    ],
+    tail: [
+      { x: 0, y: 9 },
+      { x: 0, y: 11 },
+    ],
+    ears: [
+      { x: 2, y: 3 },
+      { x: 9, y: 3 },
+    ],
     feet: { x: 6, y: 14 },
   },
   // Columns 0-1 hold the tail, which stays put while the head bobs.

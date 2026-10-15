@@ -52,7 +52,13 @@ const look = async ($: Engine): Promise<Pane> => {
 const SEARCH_SRC = '.scratch/search/issues'
 const BILLING_SRC = '.scratch/billing/issues'
 const PROBES: (string | RegExp)[] = [
-  SEARCH_SRC, BILLING_SRC, '.scratch/new-feature/issues', 'Pick a ticket set:', '2 sets · /sidekick-pick', '2 ticket sets · /sidekick-pick', /\d+\/\d+ done/,
+  SEARCH_SRC,
+  BILLING_SRC,
+  '.scratch/new-feature/issues',
+  'Pick a ticket set:',
+  '2 sets · /sidekick-pick',
+  '2 ticket sets · /sidekick-pick',
+  /\d+\/\d+ done/,
 ]
 
 // A new session in a project with two sets: nothing is active, so the pane offers the picker alone.

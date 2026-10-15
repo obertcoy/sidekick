@@ -20,8 +20,7 @@ const rowOf = (ui: Mounted, title: string) => ui.find({ type: 'Text', text: new 
 // Text queries match within a text; a piece of a row is found by its whole text.
 const piece = async (ui: Mounted, text: string) => (await ui.findAll({ type: 'Text' })).find(one => one.text === text)
 
-const flashing = async (ui: Mounted) =>
-  (await ui.findAll({ type: 'Text' })).filter(one => one.props.backgroundColor === 'warning')
+const flashing = async (ui: Mounted) => (await ui.findAll({ type: 'Text' })).filter(one => one.props.backgroundColor === 'warning')
 
 const bolts = async (ui: Mounted) => (await ui.findAll({ type: 'Text' })).filter(one => one.text.includes('↯'))
 
@@ -138,7 +137,13 @@ test('tickets that finish together are struck together, and one that finishes mi
   expect((await flashing(ui)).map(one => one.text)).toEqual(['✓ Payment', '✓ Shipping'])
 
   // Mail finishes while that strike is on show: it waits its turn.
-  await change($, w, clock, { ...many, '02-pay.md': ticket('02: Payment', 'done'), '03-ship.md': ticket('03: Shipping', 'done'), '04-mail.md': ticket('04: Mail', 'done') }, 12)
+  await change(
+    $,
+    w,
+    clock,
+    { ...many, '02-pay.md': ticket('02: Payment', 'done'), '03-ship.md': ticket('03: Shipping', 'done'), '04-mail.md': ticket('04: Mail', 'done') },
+    12,
+  )
   expect((await rowOf(ui, 'Mail'))?.props.strikethrough).toBe(true)
   expect((await rowOf(ui, 'Mail'))?.props.backgroundColor).toBeUndefined()
   await clock.advance(WHOLE - 4 * STEP)
@@ -161,10 +166,7 @@ test('a finished ticket scrolled out of view is brought into the window for its 
   const titles = ['Cart', 'Payment', 'Shipping', 'Mail', 'Refunds', 'Reports', 'Exports', 'Search']
   const files = (doneAt: number[]) =>
     Object.fromEntries(
-      titles.map((title, at) => [
-        `0${at + 1}-${title.toLowerCase()}.md`,
-        ticket(`0${at + 1}: ${title}`, doneAt.includes(at) ? 'done' : 'ready-for-agent'),
-      ]),
+      titles.map((title, at) => [`0${at + 1}-${title.toLowerCase()}.md`, ticket(`0${at + 1}: ${title}`, doneAt.includes(at) ? 'done' : 'ready-for-agent')]),
     )
   // bodyRows 19 leaves room for three rows, kept around the next ticket (Payment).
   const { w, clock, ui } = await start($, on, files([0]), 19)

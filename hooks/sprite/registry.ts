@@ -67,8 +67,7 @@ export const BACKGROUNDS: Readonly<Record<string, Background>> = { dusk }
 export const DEFAULT_LOOK: Look = { character: 'foxkit', outfit: {}, background: null }
 
 /** The part named `name` in a catalog map, or undefined; only its own names count. */
-export const found = <T>(registry: Readonly<Record<string, T>>, name: string): T | undefined =>
-  Object.hasOwn(registry, name) ? registry[name] : undefined
+export const found = <T>(registry: Readonly<Record<string, T>>, name: string): T | undefined => (Object.hasOwn(registry, name) ? registry[name] : undefined)
 
 /** The part named `name`; an unknown name throws, naming the ones that exist. */
 export const pick = <T>(kind: string, registry: Readonly<Record<string, T>>, name: string): T => {

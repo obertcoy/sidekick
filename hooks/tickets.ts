@@ -24,8 +24,7 @@ const DONE_VALUES = ['done', 'closed', 'resolved', 'complete', 'completed', 'mer
 const ACTIVE_VALUES = ['in-progress', 'in progress', 'claimed', 'doing', 'wip', 'started', 'active']
 const CHECKBOX = /^\s*[-*+]\s+\[(.)\]\s*(.*)$/
 
-export const normalize = (path: string): string =>
-  path.replace(/\\/g, '/').replace(/\/+$/, '')
+export const normalize = (path: string): string => path.replace(/\\/g, '/').replace(/\/+$/, '')
 
 export const toRelative = (root: string, path: string): string | undefined => {
   const base = normalize(root)
@@ -87,7 +86,10 @@ export const hintPaths = (root: string, hint: string): string[] => {
 /** Whether the folder ends with the path's segments, ignoring case and a leading dot ("scratch" is ".scratch"). */
 export const endsWithPath = (folder: string, path: string): boolean => {
   const plain = (value: string): string[] =>
-    value.split('/').filter(part => part !== '').map(part => part.replace(/^\./, '').toLowerCase())
+    value
+      .split('/')
+      .filter(part => part !== '')
+      .map(part => part.replace(/^\./, '').toLowerCase())
   const have = plain(folder)
   const want = plain(path)
   if (want.length === 0 || want.length > have.length) return false
@@ -96,13 +98,9 @@ export const endsWithPath = (folder: string, path: string): boolean => {
 }
 
 const words = (value: unknown, fallback: string[]): string[] => {
-  const given = Array.isArray(value)
-    ? value.filter((one): one is string => typeof one === 'string')
-    : []
+  const given = Array.isArray(value) ? value.filter((one): one is string => typeof one === 'string') : []
 
-  return [...new Set([...given, ...fallback].map(one => one.trim().toLowerCase()))]
-    .filter(one => one !== '' && one.length <= 40)
-    .slice(0, 24)
+  return [...new Set([...given, ...fallback].map(one => one.trim().toLowerCase()))].filter(one => one !== '' && one.length <= 40).slice(0, 24)
 }
 
 const jsonIn = (text: string): Record<string, unknown> | undefined => {
@@ -112,9 +110,7 @@ const jsonIn = (text: string): Record<string, unknown> | undefined => {
   try {
     const parsed: unknown = JSON.parse(text.slice(start, end + 1))
 
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : undefined
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : undefined
   } catch {
     return undefined
   }
@@ -175,8 +171,7 @@ export const addPlace = (recipe: Recipe, place: Place): Recipe => {
   return { places: recipe.places.map((one, index) => (index === at ? place : one)) }
 }
 
-const clip = (value: unknown): string =>
-  typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, 240) : ''
+const clip = (value: unknown): string => (typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, 240) : '')
 
 /** Reads the model's reply to a turn: a new summary, or undefined to keep the old one. */
 export const parseSummary = (text: string): Summary | undefined => {
@@ -214,7 +209,12 @@ const titleOf = (name: string, lines: string[]): string => {
 const NEGATIONS = new Set(['not', 'no', 'never', 'isnt', 'un'])
 
 // Lowercase words only: emoji, markdown, dashes and underscores all become one space.
-const wordsOf = (text: string): string[] => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ')
+const wordsOf = (text: string): string[] =>
+  text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .split(' ')
 
 /** True when a value stands in the status as whole words and no negation sits right before it. */
 const hasValue = (status: string, values: string[]): boolean => {
@@ -223,19 +223,12 @@ const hasValue = (status: string, values: string[]): boolean => {
   return values.some(value => {
     const wanted = wordsOf(value)
 
-    return words.some(
-      (_, at) =>
-        wanted.every((word, step) => words[at + step] === word) && !NEGATIONS.has(words[at - 1] ?? ''),
-    )
+    return words.some((_, at) => wanted.every((word, step) => words[at + step] === word) && !NEGATIONS.has(words[at - 1] ?? ''))
   })
 }
 
 /** One ticket per file: the status line decides when the format has one, else the checkboxes. */
-export const parseTicketFile = (
-  name: string,
-  text: string,
-  recipe: Extract<Place, { kind: 'files' }>,
-): Ticket => {
+export const parseTicketFile = (name: string, text: string, recipe: Extract<Place, { kind: 'files' }>): Ticket => {
   const lines = text.split(/\r?\n/)
   const title = titleOf(name, lines)
   const status = recipe.statusLabel === null ? undefined : statusOf(lines, recipe.statusLabel)
@@ -296,7 +289,11 @@ export const groupSets = (recipe: Recipe, files: FileInfo[]): TicketSet[] => {
 
 /** The one set a prompt names by its label or id, ignoring case and -, _ and spaces; none when it names no set or several. */
 export const namedIn = (sets: TicketSet[], text: string): TicketSet | undefined => {
-  const flat = (value: string): string => value.toLowerCase().replace(/[-_\s]+/g, ' ').trim()
+  const flat = (value: string): string =>
+    value
+      .toLowerCase()
+      .replace(/[-_\s]+/g, ' ')
+      .trim()
   const prompt = flat(text)
   const hits = sets.filter(set =>
     [labelOf(set.id), set.id].some(name => {
@@ -310,8 +307,7 @@ export const namedIn = (sets: TicketSet[], text: string): TicketSet | undefined 
 }
 
 /** Sets in the order the pane and /sidekick-pick number them: most recently changed first. */
-export const orderSets = (sets: TicketSet[]): TicketSet[] =>
-  [...sets].sort((a, b) => b.mtimeMs - a.mtimeMs || a.id.localeCompare(b.id))
+export const orderSets = (sets: TicketSet[]): TicketSet[] => [...sets].sort((a, b) => b.mtimeMs - a.mtimeMs || a.id.localeCompare(b.id))
 
 /** A short name for a set: ".scratch/search/issues" is "search". */
 export const labelOf = (id: string): string => {
@@ -352,15 +348,10 @@ export const progressOf = (tickets: Ticket[], source: string): Progress => {
 }
 
 /** A title without the number its file order already shows ("01: Cart" is "Cart"). */
-export const shortTitle = (title: string): string =>
-  title.replace(/^#?\d+\s*[:.)-]\s+/, '') || title
+export const shortTitle = (title: string): string => title.replace(/^#?\d+\s*[:.)-]\s+/, '') || title
 
 /** The stretch of a list that fits `room` rows, kept around the row at `focus`. */
-export const windowOf = (
-  length: number,
-  focus: number,
-  room: number,
-): { start: number; end: number } => {
+export const windowOf = (length: number, focus: number, room: number): { start: number; end: number } => {
   if (length <= room) return { start: 0, end: length }
   const start = Math.max(0, Math.min(focus - 1, length - room))
 

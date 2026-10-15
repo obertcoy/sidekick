@@ -4,10 +4,7 @@ import type { Accessory } from '../types'
 export const cap: Accessory = {
   name: 'cap',
   slot: 'head',
-  pixels: [
-    '.ccwccc...',
-    'dddddddbbb',
-  ],
+  pixels: ['.ccwccc...', 'dddddddbbb'],
   origin: { x: 3, y: 1 },
   palette: { c: 0xe5484d, d: 0xa83236, w: 0xfff3cf, b: 0x7a2228 },
 }

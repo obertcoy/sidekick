@@ -40,9 +40,26 @@ const LOOK = 'look'
 const BUDDY = 'buddy'
 const REFRESH_MS = 20_000
 const SKIPPED = new Set([
-  'node_modules', '.git', 'dist', 'build', 'out', 'target', 'vendor', '.next',
-  '.venv', 'venv', '__pycache__', '.idea', '.vscode', 'coverage', '.claude-plugin',
-  '.pytest_cache', '.ruff_cache', '.mypy_cache', '.tox', '.cache',
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  'out',
+  'target',
+  'vendor',
+  '.next',
+  '.venv',
+  'venv',
+  '__pycache__',
+  '.idea',
+  '.vscode',
+  'coverage',
+  '.claude-plugin',
+  '.pytest_cache',
+  '.ruff_cache',
+  '.mypy_cache',
+  '.tox',
+  '.cache',
 ])
 const isSkipped = (name: string): boolean => SKIPPED.has(name) || name.startsWith('.tmp')
 const LISTED = /(\.(md|mdx|markdown|txt|org|ya?ml|json|toml)|^[^.]+)$/i
@@ -74,15 +91,18 @@ Answer with one JSON object and nothing else:
 {"change":false}
 or {"change":true,"happened":"<what was done or decided, one short sentence>","next":"<the next step, one short sentence>","needsYou":"<what the developer must do or decide, or empty>"}`
 
-const view = atom({ plugin: 'sidekick', key: 'view' } as const, {
-  project: '',
-  isSearching: false,
-  summary: null,
-  progress: null,
-  sets: [],
-  current: '',
-  isChoosing: false,
-} satisfies View as View)
+const view = atom(
+  { plugin: 'sidekick', key: 'view' } as const,
+  {
+    project: '',
+    isSearching: false,
+    summary: null,
+    progress: null,
+    sets: [],
+    current: '',
+    isChoosing: false,
+  } satisfies View as View,
+)
 
 let isSearching = false
 // True when the last search added no place and the recipe was kept as it was.
@@ -128,9 +148,7 @@ const sceneOf = ($: Dollar): Scene => {
     activity: createActivity(
       { every: (ms, fn) => $.clock.every(ms, fn) },
       ({ animation, frame }) => {
-        void $.ui
-          .blit({ requestId: PANE, key: BUDDY, cells: cellsOf(animation, frame) })
-          .catch(() => undefined)
+        void $.ui.blit({ requestId: PANE, key: BUDDY, cells: cellsOf(animation, frame) }).catch(() => undefined)
       },
       playsFor,
     ),
@@ -180,26 +198,16 @@ const rootOf = async ($: Dollar): Promise<string> => {
 }
 
 // An old recipe was one glob; readRecipe wraps it as one place.
-const recipeOf = async ($: Dollar, root: string): Promise<Recipe | undefined> =>
-  readRecipe(await $.store.get(`recipe:${root}`))
+const recipeOf = async ($: Dollar, root: string): Promise<Recipe | undefined> => readRecipe(await $.store.get(`recipe:${root}`))
 
 const activeKey = (root: string, session: string): string => `active:${root}:${session}`
 
-const walk = async (
-  $: Dollar,
-  root: string,
-  dir: string,
-  depth: number,
-  cap: number,
-  found: FileInfo[] = [],
-  deeper = 0,
-): Promise<FileInfo[]> => {
+const walk = async ($: Dollar, root: string, dir: string, depth: number, cap: number, found: FileInfo[] = [], deeper = 0): Promise<FileInfo[]> => {
   if (found.length >= cap) return found
   const listed = await $.fs.list(dir === '' ? root : `${root}/${dir}`).catch(() => [])
   const pathOf = (name: string): string => (dir === '' ? name : `${dir}/${name}`)
   // Folders that look like ticket homes come first, so the cap spends itself elsewhere.
-  const isLikelyDir = (entry: (typeof listed)[number]): boolean =>
-    entry.kind === 'dir' && LIKELY.test(pathOf(entry.name))
+  const isLikelyDir = (entry: (typeof listed)[number]): boolean => entry.kind === 'dir' && LIKELY.test(pathOf(entry.name))
   const entries = [...listed].sort((a, b) => Number(isLikelyDir(b)) - Number(isLikelyDir(a)))
   for (const entry of entries) {
     if (found.length >= cap) break
@@ -298,8 +306,7 @@ const ticketsOf = async ($: Dollar, root: string, place: Place, file: FileInfo):
   return tickets
 }
 
-const head = (text: string, lines: number, chars: number): string =>
-  text.split(/\r?\n/).slice(0, lines).join('\n').slice(0, chars)
+const head = (text: string, lines: number, chars: number): string => text.split(/\r?\n/).slice(0, lines).join('\n').slice(0, chars)
 
 /** A search: looks at the project and adds the place the model finds to the recipe; nothing is ever removed. */
 const search = async (
@@ -334,8 +341,7 @@ const search = async (
 
     return all.filter((file, at) => isListed(file) && all.findIndex(one => one.path === file.path) === at)
   }
-  const listing =
-    pointed.length > 0 ? pointed : (await broad()).sort((a, b) => rank(a) - rank(b))
+  const listing = pointed.length > 0 ? pointed : (await broad()).sort((a, b) => rank(a) - rank(b))
   if (listing.length === 0) {
     if (previous === undefined) await $.store.set(`recipe:${root}`, known)
 
@@ -357,10 +363,11 @@ const search = async (
     worked
       ? `Tickets are already read from these places: ${known.places.map(place => `\`${place.glob}\``).join(', ')}. Answer with a place to add to them, not a replacement.`
       : '',
-    pointed.length > 0
-      ? `The developer pointed at the folder \`${at}\`; globs still start from the project root.`
-      : '',
-    `Files:\n${listing.slice(0, 600).map(file => file.path).join('\n')}`,
+    pointed.length > 0 ? `The developer pointed at the folder \`${at}\`; globs still start from the project root.` : '',
+    `Files:\n${listing
+      .slice(0, 600)
+      .map(file => file.path)
+      .join('\n')}`,
     shown.length === 0 ? '' : `Starts of some files:\n${shown.join('\n\n')}`,
   ]
     .filter(part => part !== '')
@@ -426,11 +433,7 @@ const show = async ($: Dollar, next: View): Promise<void> => {
     // The set became all done: it was not at the previous refresh of this same set (`was` is that refresh, and a
     // first load or another set never gets here). The cheer waits behind the zap and its strike.
     if (now.done === now.total && was.done < was.total) sceneOf($).activity.queue({ state: 'set-done' })
-    $.ui.toast(
-      now.next === null
-        ? `✓ All ${now.total} tickets done`
-        : `✓ ${now.done}/${now.total} done · next: ${shortTitle(now.next)}`,
-    )
+    $.ui.toast(now.next === null ? `✓ All ${now.total} tickets done` : `✓ ${now.done}/${now.total} done · next: ${shortTitle(now.next)}`)
   }
   const needsYou = next.summary?.needsYou ?? ''
   if (needsYou !== '' && needsYou !== (held.summary?.needsYou ?? '')) {
@@ -520,9 +523,7 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
 const summarize = async ($: Dollar, answer: string): Promise<void> => {
   const messages = await $.session.messages()
   if (!Array.isArray(messages)) return
-  const start = messages.findLastIndex(
-    one => one.role === 'user' && one.text.trim() !== '' && (one.toolResults ?? []).length === 0,
-  )
+  const start = messages.findLastIndex(one => one.role === 'user' && one.text.trim() !== '' && (one.toolResults ?? []).length === 0)
   const turn = messages.slice(Math.max(0, start))
   const tools = turn
     .flatMap(one => one.toolUses)
@@ -613,7 +614,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'sidekick',
-      description: 'Show this project\'s summary and ticket progress in a pane',
+      description: "Show this project's summary and ticket progress in a pane",
       argumentHint: '[close]',
     })
     await $.command.register({
@@ -628,7 +629,7 @@ export const register: Register = on => {
     })
     await $.command.register({
       name: 'sidekick-look',
-      description: 'Choose the sidekick\'s character, accessories and background',
+      description: "Choose the sidekick's character, accessories and background",
       argumentHint: '[character=classic head=cap background=dusk]',
     })
     // A session that ended mid-turn may never have raised turn.complete; the new one starts with no turn running.
@@ -663,16 +664,16 @@ export const register: Register = on => {
       progress !== null
         ? `${progress.source}: ${progress.done}/${progress.total} done`
         : sets.length > 1
-        ? `${sets.length} ticket sets. /sidekick-pick chooses one`
-        : undefined
+          ? `${sets.length} ticket sets. /sidekick-pick chooses one`
+          : undefined
 
     return {
       text:
         reading === undefined
           ? 'No tickets found. Try a hint: /sidekick-rescan tickets are in docs/tasks'
           : isKept
-          ? `Found nothing new; still reading ${reading}.`
-          : `Reading tickets from ${reading}.`,
+            ? `Found nothing new; still reading ${reading}.`
+            : `Reading tickets from ${reading}.`,
     }
   })
 
@@ -714,10 +715,7 @@ export const register: Register = on => {
     const entry = next.sets.find(one => one.id === chosen.id)
 
     return {
-      text:
-        entry === undefined
-          ? `Showing ${labelOf(chosen.id)}.`
-          : `Showing ${entry.label}: ${entry.done}/${entry.total} done.`,
+      text: entry === undefined ? `Showing ${labelOf(chosen.id)}.` : `Showing ${entry.label}: ${entry.done}/${entry.total} done.`,
     }
   })
 
@@ -820,7 +818,10 @@ export const register: Register = on => {
       quietly(refresh($), $)
     }
     if (e.agentId === undefined && e.reason === 'answer') {
-      quietly(summarize($, e.answer).then(() => refresh($)), $)
+      quietly(
+        summarize($, e.answer).then(() => refresh($)),
+        $,
+      )
     }
 
     return ended
@@ -943,9 +944,7 @@ export const register: Register = on => {
           </Text>
         )}
         {isLooking && <Text color="suggestion">◌ Looking for tickets…</Text>}
-        {!isLooking && progress === null && !isUndecided && (
-          <Text dimColor>○ No tickets here. /sidekick-rescan looks again.</Text>
-        )}
+        {!isLooking && progress === null && !isUndecided && <Text dimColor>○ No tickets here. /sidekick-rescan looks again.</Text>}
         {progress !== null && (
           <Box flexDirection="column" marginTop={trailOn(LANDS) ? 0 : 1}>
             {/* The bolt's second segment takes the blank line above the list, so nothing moves. */}
@@ -963,15 +962,8 @@ export const register: Register = on => {
               }
 
               return (
-                <Text
-                  wrap="truncate-end"
-                  dimColor={row.state === 'done'}
-                  strikethrough={row.state === 'done'}
-                  bold={isNext}
-                >
-                  <Text color={row.state === 'done' ? 'success' : isNext ? 'claude' : 'text'}>
-                    {GLYPH[row.state]}{' '}
-                  </Text>
+                <Text wrap="truncate-end" dimColor={row.state === 'done'} strikethrough={row.state === 'done'} bold={isNext}>
+                  <Text color={row.state === 'done' ? 'success' : isNext ? 'claude' : 'text'}>{GLYPH[row.state]} </Text>
                   {shortTitle(row.title)}
                 </Text>
               )
@@ -1013,9 +1005,7 @@ export const register: Register = on => {
         )}
         <Box flexDirection="column" marginTop={1}>
           <Text dimColor>{'─'.repeat(columns)}</Text>
-          {summary === null && (
-            <Text dimColor>The summary appears after a turn that moves something.</Text>
-          )}
+          {summary === null && <Text dimColor>The summary appears after a turn that moves something.</Text>}
           {summary !== null && (
             <Box flexDirection="row">
               <Box width={6} flexShrink={0}>

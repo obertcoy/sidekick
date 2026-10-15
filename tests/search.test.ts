@@ -21,36 +21,37 @@ const FAILURES: [string, () => Reply][] = [
   ],
 ]
 
-for (const [how, failure] of FAILURES) test(`a search whose model call ${how} is not remembered, and the next refresh searches again`, async ($, on) => {
-  const clock = mock.clock(on)
-  mock.store(on)
-  const w = world(on, ROOT)
-  addSet(w, ROOT, 'checkout', CHECKOUT, 5)
-  w.answer = failure
+for (const [how, failure] of FAILURES)
+  test(`a search whose model call ${how} is not remembered, and the next refresh searches again`, async ($, on) => {
+    const clock = mock.clock(on)
+    mock.store(on)
+    const w = world(on, ROOT)
+    addSet(w, ROOT, 'checkout', CHECKOUT, 5)
+    w.answer = failure
 
-  const ran = await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
-  expect(ran.text).toBe(NONE_FOUND)
-  expect(w.asked.length).toBe(1)
-  const looked = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await looked.find({ type: 'Text', text: /Looking for tickets/ })).toBeUndefined()
-  await looked.unmount()
+    const ran = await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
+    expect(ran.text).toBe(NONE_FOUND)
+    expect(w.asked.length).toBe(1)
+    const looked = await $.ui.mount({ ...PANE, surface: 'terminal' })
+    expect(await looked.find({ type: 'Text', text: /Looking for tickets/ })).toBeUndefined()
+    await looked.unmount()
 
-  w.answer = () => answered(RECIPE)
-  await $.command.run({ command: 'sidekick', args: '', ...RUN })
-  await clock.settle()
-  expect(w.asked.length).toBe(2)
-  for (const surface of SURFACES) {
-    const ui = await $.ui.mount({ ...PANE, surface })
-    expect(await ui.find({ type: 'Text', text: '1/3 done' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '.scratch/checkout/issues' })).toBeDefined()
-    await ui.unmount()
-  }
+    w.answer = () => answered(RECIPE)
+    await $.command.run({ command: 'sidekick', args: '', ...RUN })
+    await clock.settle()
+    expect(w.asked.length).toBe(2)
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ ...PANE, surface })
+      expect(await ui.find({ type: 'Text', text: '1/3 done' })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: '.scratch/checkout/issues' })).toBeDefined()
+      await ui.unmount()
+    }
 
-  // Answered now, so the next refresh reads the recipe and asks nothing.
-  await $.command.run({ command: 'sidekick', args: '', ...RUN })
-  await clock.settle()
-  expect(w.asked.length).toBe(2)
-})
+    // Answered now, so the next refresh reads the recipe and asks nothing.
+    await $.command.run({ command: 'sidekick', args: '', ...RUN })
+    await clock.settle()
+    expect(w.asked.length).toBe(2)
+  })
 
 test('a stored recipe that stops finding tickets leads to exactly one new search, whose result replaces it', async ($, on) => {
   const clock = mock.clock(on)
@@ -72,8 +73,7 @@ test('a stored recipe that stops finding tickets leads to exactly one new search
   ]
   w.files[`${ROOT}/docs/tasks/a.md`] = ticket('Alpha', 'done')
   w.files[`${ROOT}/docs/tasks/b.md`] = ticket('Beta', 'done')
-  w.answer = () =>
-    answered('{"kind":"files","glob":"docs/tasks/*.md","statusLabel":"Status","doneValues":["done"],"activeValues":[]}')
+  w.answer = () => answered('{"kind":"files","glob":"docs/tasks/*.md","statusLabel":"Status","doneValues":["done"],"activeValues":[]}')
 
   await $.command.run({ command: 'sidekick', args: '', ...RUN })
   await clock.settle()
@@ -162,13 +162,7 @@ test('a recipe that points outside the project is refused, and the project is tr
   w.tree['/work/other/issues'] = [{ name: '01.md', kind: 'file' }]
   w.files['/work/other/issues/01.md'] = ticket('Secret', 'done')
   w.tree['/etc'] = [{ name: 'passwd', kind: 'file' }]
-  const outside = [
-    '../other/issues/*.md',
-    '.scratch/../../other/issues/*.md',
-    '/etc/*',
-    'C:/work/other/issues/*.md',
-    '..\\\\other\\\\issues\\\\*.md',
-  ]
+  const outside = ['../other/issues/*.md', '.scratch/../../other/issues/*.md', '/etc/*', 'C:/work/other/issues/*.md', '..\\\\other\\\\issues\\\\*.md']
 
   for (const glob of outside) {
     w.answer = () => answered(`{"kind":"files","glob":"${glob}","statusLabel":"Status","doneValues":["done"],"activeValues":[]}`)

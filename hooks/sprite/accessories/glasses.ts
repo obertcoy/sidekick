@@ -4,10 +4,7 @@ import type { Accessory } from '../types'
 export const glasses: Accessory = {
   name: 'glasses',
   slot: 'face',
-  pixels: [
-    'gLLLgLL',
-    'LLL.LLL',
-  ],
+  pixels: ['gLLLgLL', 'LLL.LLL'],
   origin: { x: 3, y: 0 },
   palette: { L: 0x1f2430, g: 0x8fb4ff },
 }

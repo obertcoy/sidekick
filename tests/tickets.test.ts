@@ -69,8 +69,7 @@ test('the status line decides when a ticket has one, else its checkboxes do', as
   expect(parseTicketFile('06-no-heading.md', 'just text', files).title).toBe('06-no-heading')
 })
 
-const REAL =
-  '**Status:** resolved (commit `8b6d9702` on branch `worktree-agent-a2d462a49df30f41b`, not merged; flag `CHAT_LOOKUP_STOP`)'
+const REAL = '**Status:** resolved (commit `8b6d9702` on branch `worktree-agent-a2d462a49df30f41b`, not merged; flag `CHAT_LOOKUP_STOP`)'
 
 test('a status counts by whole words anywhere in it, unless a negation comes right before', async () => {
   const of = (status: string, boxes = '- [ ] a'): ReturnType<typeof parseTicketFile> =>
@@ -90,8 +89,7 @@ test('a status counts by whole words anywhere in it, unless a negation comes rig
 })
 
 test('an unknown status falls back to the checkboxes', async () => {
-  const of = (boxes: string): boolean =>
-    parseTicketFile('t.md', `# T\n**Status:** waiting on review\n${boxes}\n`, files).isDone
+  const of = (boxes: string): boolean => parseTicketFile('t.md', `# T\n**Status:** waiting on review\n${boxes}\n`, files).isDone
   expect(of('- [x] a\n- [x] b')).toBe(true)
   expect(of('- [x] a\n- [ ] b')).toBe(false)
   expect(parseTicketFile('t.md', '# T\n**Status:** \u{1F6A7} wip\n- [x] a', files).isActive).toBe(true)
@@ -194,9 +192,7 @@ test('progress counts done tickets and names the one in progress, else the first
 })
 
 test('a path is made relative to the project on Windows and POSIX alike', async () => {
-  expect(toRelative('D:/Work/app', 'D:\\Work\\app\\.scratch\\a\\issues\\01.md')).toBe(
-    '.scratch/a/issues/01.md',
-  )
+  expect(toRelative('D:/Work/app', 'D:\\Work\\app\\.scratch\\a\\issues\\01.md')).toBe('.scratch/a/issues/01.md')
   expect(toRelative('/home/me/app', '/home/me/app/TODO.md')).toBe('TODO.md')
   expect(toRelative('/home/me/app', '/home/me/other/TODO.md')).toBeUndefined()
   expect(toRelative('/home/me/app', './TODO.md')).toBe('TODO.md')

@@ -4,14 +4,7 @@ import type { Accessory } from '../types'
 export const flag: Accessory = {
   name: 'flag',
   slot: 'held',
-  pixels: [
-    'pfff',
-    'pffd',
-    'pd..',
-    'p...',
-    'p...',
-    'p...',
-  ],
+  pixels: ['pfff', 'pffd', 'pd..', 'p...', 'p...', 'p...'],
   origin: { x: 0, y: 5 },
   palette: { p: 0x8b6b4a, f: 0x3b82f6, d: 0x1e56b8 },
 }

@@ -34,8 +34,7 @@ const monorepo = (on: Parameters<typeof world>[0]): World => {
   })
   for (const [name, text] of Object.entries(TICKETS)) w.files[`${ROOT}/${ISSUES}/${name}`] = text
   // The model finds the folder only when the mod tells it where the developer pointed.
-  w.answer = prompt =>
-    answered(prompt.includes(`folder \`${ISSUES}\``) ? RECIPE_DEEP : '{"kind":"none"}')
+  w.answer = prompt => answered(prompt.includes(`folder \`${ISSUES}\``) ? RECIPE_DEEP : '{"kind":"none"}')
 
   return w
 }
@@ -46,15 +45,16 @@ const HINTS = [
   'tickets are in @../../../.scratch/qa-stop-when-answered/issues/',
 ]
 
-for (const hint of HINTS) test(`the hint "${hint}" resolves to the folder on disk`, async ($, on) => {
-  mock.clock(on)
-  mock.store(on)
-  const w = monorepo(on)
+for (const hint of HINTS)
+  test(`the hint "${hint}" resolves to the folder on disk`, async ($, on) => {
+    mock.clock(on)
+    mock.store(on)
+    const w = monorepo(on)
 
-  const ran = await $.command.run({ command: 'sidekick-rescan', args: hint, ...RUN })
-  expect(ran.text).toBe(`Reading tickets from ${ISSUES}: 1/2 done.`)
-  expect(w.asked[0]).toContain(`${ISSUES}/01-stop.md`)
-})
+    const ran = await $.command.run({ command: 'sidekick-rescan', args: hint, ...RUN })
+    expect(ran.text).toBe(`Reading tickets from ${ISSUES}: 1/2 done.`)
+    expect(w.asked[0]).toContain(`${ISSUES}/01-stop.md`)
+  })
 
 test('with no hint, files in a deep ticket folder are listed before a shallow todo.md', async ($, on) => {
   mock.clock(on)
@@ -85,13 +85,9 @@ test('cache folders are never listed or read', async ($, on) => {
 // Sibling projects with hundreds of files each, listed before the one that holds the tickets.
 const crowded = (on: Parameters<typeof world>[0], ext: string): World => {
   const w = monorepo(on)
-  const rows = (n: number): { name: string; kind: 'file' }[] =>
-    Array.from({ length: n }, (_, i) => ({ name: `mod_${i}.${ext}`, kind: 'file' as const }))
+  const rows = (n: number): { name: string; kind: 'file' }[] => Array.from({ length: n }, (_, i) => ({ name: `mod_${i}.${ext}`, kind: 'file' as const }))
   const names = ['aaa_api', 'aab_etl', 'aac_ml', 'aad_web']
-  w.tree[`${ROOT}/projects`] = [
-    ...names.map(name => ({ name, kind: 'dir' as const })),
-    ...(w.tree[`${ROOT}/projects`] ?? []),
-  ]
+  w.tree[`${ROOT}/projects`] = [...names.map(name => ({ name, kind: 'dir' as const })), ...(w.tree[`${ROOT}/projects`] ?? [])]
   for (const name of names) {
     w.tree[`${ROOT}/projects/${name}`] = [{ name: 'src', kind: 'dir' }, ...rows(300)]
     w.tree[`${ROOT}/projects/${name}/src`] = rows(300)

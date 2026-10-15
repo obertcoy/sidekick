@@ -38,6 +38,6 @@ export type View = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'sidekick': { view: View }
+    sidekick: { view: View }
   }
 }
