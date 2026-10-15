@@ -4,13 +4,13 @@
 
 **Blocked by:** 14: The type check is clean; 15: Lint and format with Biome
 
-**Status:** ready-for-agent
+**Status:** in-progress (left to the owner: the red-run proof on a throwaway branch, and branch protection)
 
-- [ ] It is confirmed, and written down, whether `claude plugin test .` runs with no credentials and a clean home folder
-- [ ] One workflow runs on pushes to `main` and on pull requests
-- [ ] CI runs Biome's check and the test suite, each at a pinned version, with no `package.json` added. The type check is not in CI: the mod API's types (`.claude-plugin/types`) are written only by a logged-in Claude Code session and are gitignored, so a fresh clone cannot type-check (owner's decision, option 3; move to committing the types if a type error ever slips through)
-- [ ] The local commands in this folder's README and the CI commands are the same, and the type check command no longer depends on `~/.pi-lens`
-- [ ] The first run on GitHub is green; a deliberate lint error or failing test on a throwaway branch turns it red (then the branch is deleted)
-- [ ] No secret is added without the owner's OK
-- [ ] A git pre-commit hook, committed in the repo (e.g. `.githooks/pre-commit`, enabled once per clone with `git config core.hooksPath .githooks`, no Husky or npm), runs Biome on the staged files and the pinned type check, and blocks the commit when either fails; it takes a few seconds
-- [ ] The hook is enabled in this clone, a commit with a lint error and a commit with a type error are each refused by it, and the enable command is written in the README and in this folder's README
+- [x] It is confirmed, and written down, whether `claude plugin test .` runs with no credentials and a clean home folder
+- [x] One workflow runs on pushes to `main` and on pull requests
+- [x] CI runs Biome's check and the test suite, each at a pinned version, with no `package.json` added. The type check is not in CI: the mod API's types (`.claude-plugin/types`) are written only by a logged-in Claude Code session and are gitignored, so a fresh clone cannot type-check (owner's decision, option 3; move to committing the types if a type error ever slips through)
+- [x] The local commands in this folder's README and the CI commands are the same, and the type check command no longer depends on `~/.pi-lens`
+- [ ] The first run on GitHub is green (done: run 38728047485); a deliberate lint error or failing test on a throwaway branch turns it red (then the branch is deleted)
+- [x] No secret is added without the owner's OK
+- [x] A git pre-commit hook, committed in the repo (e.g. `.githooks/pre-commit`, enabled once per clone with `git config core.hooksPath .githooks`, no Husky or npm), runs Biome on the staged files and the pinned type check, and blocks the commit when either fails; it takes a few seconds
+- [x] The hook is enabled in this clone, a commit with a lint error and a commit with a type error are each refused by it, and the enable command is written in the README and in this folder's README
