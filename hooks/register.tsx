@@ -1,15 +1,16 @@
-import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
+import { atom, read, update } from 'claude-code'
 
 import type { SetEntry, Summary, View } from '../types'
-import { createActivity } from './activity'
-import { BURNS, BURN_STEPS, HITS, LANDS, LEAVES, STRIKE_REST_STEPS, isStruck } from './strike'
 import type { Activity } from './activity'
-import { changeLook, lookReport, parseSaved, targetOf } from './look'
+import { createActivity } from './activity'
 import type { Target } from './look'
-import { SPRITE, cellsOf, leftOut, playsFor } from './sprite'
+import { changeLook, lookReport, parseSaved, targetOf } from './look'
+import { cellsOf, leftOut, playsFor, SPRITE } from './sprite'
 import { projectRoot, setCurrentRoot, setProjectLook, setSavedLook } from './sprite/look-in-use'
 import type { SavedLook } from './sprite/types'
+import { BURN_STEPS, BURNS, HITS, isStruck, LANDS, LEAVES, STRIKE_REST_STEPS } from './strike'
+import type { FileInfo, Place, Recipe, Ticket, TicketSet } from './tickets'
 import {
   addPlace,
   endsWithPath,
@@ -33,7 +34,6 @@ import {
   toRelative,
   windowOf,
 } from './tickets'
-import type { FileInfo, Place, Recipe, Ticket, TicketSet } from './tickets'
 
 const PANE = 'sidekick'
 const LOOK = 'look'
@@ -601,7 +601,7 @@ const choose = async ($: Dollar, id: string): Promise<void> => {
 }
 
 /** A new markdown file written in a folder that looks like a ticket home no place covers: a search adds its place. */
-const adopt = async ($: Dollar, root: string, tool: string, relative: string | undefined): Promise<void> => {
+const adopt = async ($: Dollar, _root: string, tool: string, relative: string | undefined): Promise<void> => {
   if (tool !== 'Write' || relative === undefined || !/\.md$/i.test(relative)) return
   const folder = relative.slice(0, Math.max(0, relative.lastIndexOf('/')))
   if (folder === '' || !LIKELY.test(folder) || isSearching || probed.has(folder)) return

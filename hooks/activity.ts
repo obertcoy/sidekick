@@ -230,7 +230,9 @@ export const createActivity = (clock: Clock, draw: (shown: Shown) => void, plays
   const run = (effect: Effect): void => {
     switch (effect.do) {
       case 'draw':
-        return draw(effect.shown)
+        draw(effect.shown)
+
+        return
       case 'stop':
         timer?.cancel()
         timer = undefined
@@ -242,13 +244,19 @@ export const createActivity = (clock: Clock, draw: (shown: Shown) => void, plays
 
         return
       case 'start':
-        return effect.entry.onStart?.(effect.steps)
+        effect.entry.onStart?.(effect.steps)
+
+        return
       case 'step':
-        return effect.entry.onStep?.(effect.step)
+        effect.entry.onStep?.(effect.step)
+
+        return
       case 'end':
-        return effect.entry.onEnd?.()
+        effect.entry.onEnd?.()
+
+        return
       default:
-        return unreachable(effect)
+        unreachable(effect)
     }
   }
   // One event at a time: a hook that calls set or queue is handled after the effects now running.

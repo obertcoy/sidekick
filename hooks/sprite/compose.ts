@@ -1,5 +1,5 @@
+import type { AnchorName, Animation, Character, Layers, Needed, Point, PropRole, Role, Slot } from './types'
 import { LIST_ANCHORS, OPTIONAL_POINT_ANCHORS, REQUIRED_ANCHORS, REQUIRED_BODY_ROLES, SLOTS } from './types'
-import type { Animation, AnchorName, Anchors, Character, Layers, Needed, Point, PropRole, Role, Slot } from './types'
 
 /** The fixed stage every look is drawn on: 18 cells wide, 8 tall, two pixels stacked in each cell. */
 export const STAGE = { columns: 18, rows: 8, width: 18, height: 16 } as const
@@ -131,7 +131,9 @@ export const composePixels = (look: Layers, animation: Animation, step: number, 
   const background = look.background
   if (background) {
     const grid = background.frames[backgroundFrame % background.frames.length] ?? []
-    grid.forEach((row, y) => [...row].forEach((letter, x) => put(pixels, x, y, background.palette[letter])))
+    grid.forEach((row, y) => {
+      for (const [x, letter] of [...row].entries()) put(pixels, x, y, background.palette[letter])
+    })
   }
 
   // The body, with the head region moved down by the bob; what it leaves behind is transparent.
@@ -155,9 +157,11 @@ export const composePixels = (look: Layers, animation: Animation, step: number, 
     const anchor = character.anchors[slot]
     if (accessory === undefined || anchor === undefined || animation.hides.includes(slot)) continue
     const lift = character.bobs[slot] ? bob : 0
-    accessory.pixels.forEach((row, y) =>
-      [...row].forEach((letter, x) => put(pixels, anchor.x - accessory.origin.x + x, anchor.y - accessory.origin.y + y + lift, accessory.palette[letter])),
-    )
+    accessory.pixels.forEach((row, y) => {
+      for (const [x, letter] of [...row].entries()) {
+        put(pixels, anchor.x - accessory.origin.x + x, anchor.y - accessory.origin.y + y + lift, accessory.palette[letter])
+      }
+    })
   }
 
   const colorOf = (role: Role): number | undefined =>

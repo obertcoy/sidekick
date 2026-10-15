@@ -1,7 +1,7 @@
-import { ACCESSORIES, BACKGROUNDS, CHARACTERS, DEFAULT_LOOK, found, slotRefusal } from './sprite/registry'
 import { currentLook, droppedOf, projectLook, savedLook } from './sprite/look-in-use'
-import { LOOK_PARTS, SLOTS } from './sprite/types'
+import { ACCESSORIES, BACKGROUNDS, CHARACTERS, DEFAULT_LOOK, found, slotRefusal } from './sprite/registry'
 import type { Look, LookPart, SavedLook, Slot } from './sprite/types'
+import { LOOK_PARTS, SLOTS } from './sprite/types'
 
 // The look command: reading what the store holds, turning `part=name` words into a new saved look
 // or a refusal, and describing the look. Pure; register.tsx does the storing and repainting.

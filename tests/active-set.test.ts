@@ -1,9 +1,8 @@
-import { expect, mock, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
-
-import { PANE, RECIPE, RUN, SURFACES, addSet, answered, ticket, world } from './world'
+import type { Engine } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 import type { World } from './world'
+import { addSet, answered, PANE, RECIPE, RUN, SURFACES, ticket, world } from './world'
 
 // Two ticket sets: "search" is older and half done, "billing" changed most recently.
 const OLDER = {

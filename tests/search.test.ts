@@ -1,7 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
-
-import { PANE, RECIPE, RUN, SURFACES, addSet, answered, failed, ticket, world } from './world'
 import type { Reply } from './world'
+import { addSet, answered, failed, PANE, RECIPE, RUN, SURFACES, ticket, world } from './world'
 
 const ROOT = '/work/shop'
 const NONE_FOUND = 'No tickets found. Try a hint: /sidekick-rescan tickets are in docs/tasks'

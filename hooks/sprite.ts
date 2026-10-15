@@ -1,13 +1,13 @@
 // The sidekick's sprite, as register.tsx draws it. The pieces live in ./sprite/: characters,
 // animations, accessories and backgrounds, each one file, put together by ./sprite/registry.ts;
 // ./sprite/look-in-use.ts resolves what is worn now.
-import { STAGE, render } from './sprite/compose'
-import { animationOf, type State } from './sprite/registry'
+import { render, STAGE } from './sprite/compose'
 import { characterInUse, drawable } from './sprite/look-in-use'
+import { animationOf, type State } from './sprite/registry'
 import type { Animation } from './sprite/types'
 
-export type { State }
 export { leftOut } from './sprite/look-in-use'
+export type { State }
 
 /** The fixed stage in cells, so the pane's layout never changes with the look. */
 export const SPRITE = { columns: STAGE.columns, rows: STAGE.rows } as const

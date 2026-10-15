@@ -55,7 +55,11 @@ Then, from the mod's folder:
 ```
 claude plugin validate .
 claude plugin test .
+node ~/.pi-lens/tools/node_modules/typescript/bin/tsc --noEmit -p .
+npx @biomejs/biome@2.5.15 check .
 ```
+
+The last line lints and checks the format with Biome; add `--write` to apply the fixes. The version is pinned in `biome.json` and in this command, and the repo has no `package.json` or `node_modules`.
 
 ### Sprite: characters, animations, accessories, backgrounds
 

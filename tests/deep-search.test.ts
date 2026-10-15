@@ -1,7 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
-
-import { RUN, answered, ticket, world } from './world'
 import type { World } from './world'
+import { answered, RUN, ticket, world } from './world'
 
 // A monorepo: the tickets sit seven levels down, in a sub-project, next to a shallow todo.md.
 const ROOT = '/work/npd'

@@ -1,28 +1,27 @@
 import { expect, test } from 'claude-code/testing'
-
+import { cellsOf, SPRITE } from '../hooks/sprite'
+import { ANIMATIONS } from '../hooks/sprite/registry'
+import type { Place, Recipe } from '../hooks/tickets'
 import {
-  globReach,
+  addPlace,
   findSet,
+  globReach,
   globToRegExp,
   groupSets,
   labelOf,
+  namedIn,
   orderSets,
   parseChecklist,
   parsePlace,
-  readRecipe,
-  addPlace,
-  namedIn,
   parseSummary,
   parseTicketFile,
   progressOf,
+  readRecipe,
   setIdOf,
   shortTitle,
   toRelative,
   windowOf,
 } from '../hooks/tickets'
-import type { Place, Recipe } from '../hooks/tickets'
-import { SPRITE, cellsOf } from '../hooks/sprite'
-import { ANIMATIONS } from '../hooks/sprite/registry'
 
 const files = parsePlace(
   '{"kind":"files","glob":".scratch/*/issues/*.md","statusLabel":"Status","doneValues":["resolved"],"activeValues":["claimed"]}',

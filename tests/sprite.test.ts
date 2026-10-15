@@ -1,16 +1,15 @@
 import { expect, test } from 'claude-code/testing'
-
-import { SPRITE, cellsOf, leftOut, playsFor } from '../hooks/sprite'
-import type { State } from '../hooks/sprite'
 import { changeLook } from '../hooks/look'
-import { isStruck, strikeSteps } from '../hooks/strike'
-import { SLOT_ORDER, STAGE, composePixels, defineAnimation, defineCharacter, render } from '../hooks/sprite/compose'
-import type { Pixels } from '../hooks/sprite/compose'
+import type { State } from '../hooks/sprite'
+import { cellsOf, leftOut, playsFor, SPRITE } from '../hooks/sprite'
 import { foxkit } from '../hooks/sprite/characters/foxkit'
-import { ACCESSORIES, ANIMATIONS, BACKGROUNDS, CHARACTERS, DEFAULT_LOOK, STATES, animationOf, requireAnchors, slotRefusal } from '../hooks/sprite/registry'
+import type { Pixels } from '../hooks/sprite/compose'
+import { composePixels, defineAnimation, defineCharacter, render, SLOT_ORDER, STAGE } from '../hooks/sprite/compose'
 import { currentLook, drawable, droppedOf, layersOf, setSavedLook } from '../hooks/sprite/look-in-use'
-import { SLOTS } from '../hooks/sprite/types'
+import { ACCESSORIES, ANIMATIONS, animationOf, BACKGROUNDS, CHARACTERS, DEFAULT_LOOK, requireAnchors, STATES, slotRefusal } from '../hooks/sprite/registry'
 import type { Accessory, Animation, Background, Character, Layers, Slot } from '../hooks/sprite/types'
+import { SLOTS } from '../hooks/sprite/types'
+import { isStruck, strikeSteps } from '../hooks/strike'
 import { GOLDEN } from './sprite-golden'
 
 const MODES = ['idle', 'write', 'zap'] as const
@@ -269,8 +268,8 @@ if (flag === undefined) throw new Error('no flag')
 
 /** Every pixel of a frame, so two frames can be compared whole. */
 const frameOf = (layers: Layers, animation: Animation, step: number): string => JSON.stringify(composePixels(layers, animation, step))
-const withAll = (character: Character): Layers['outfit'] => ({ head: cap, face: glasses, neck: scarf, held: flag })
-const withoutHeld = (character: Character): Layers['outfit'] => ({ head: cap, face: glasses, neck: scarf })
+const withAll = (_character: Character): Layers['outfit'] => ({ head: cap, face: glasses, neck: scarf, held: flag })
+const withoutHeld = (_character: Character): Layers['outfit'] => ({ head: cap, face: glasses, neck: scarf })
 
 /** Expects every pixel of the four accessories to be in `frame` in its own colour, where its anchor, origin and the character's bob declaration put it. */
 const expectOwnPixels = (character: Character, frame: Pixels, bob: number, label: string): void => {
@@ -280,13 +279,13 @@ const expectOwnPixels = (character: Character, frame: Pixels, bob: number, label
     const anchor = character.anchors[slot]
     if (accessory === undefined || anchor === undefined) throw new Error(`${label}: no ${slot}`)
     const lift = character.bobs[slot] ? bob : 0
-    accessory.pixels.forEach((row, y) =>
-      [...row].forEach((letter, x) => {
-        if (letter === '.') return
+    accessory.pixels.forEach((row, y) => {
+      for (const [x, letter] of [...row].entries()) {
+        if (letter === '.') continue
         const at = { x: anchor.x - accessory.origin.x + x, y: anchor.y - accessory.origin.y + y + lift }
         expect(frame[at.y]?.[at.x], `${label}: ${accessory.name} pixel ${at.x},${at.y}`).toBe(accessory.palette[letter])
-      }),
-    )
+      }
+    })
   }
 }
 

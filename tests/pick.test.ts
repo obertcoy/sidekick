@@ -1,9 +1,8 @@
-import { expect, mock, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
-
-import { PANE, RECIPE, RUN, SURFACES, addSet, answered, ticket, world } from './world'
+import type { Engine } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 import type { World } from './world'
+import { addSet, answered, PANE, RECIPE, RUN, SURFACES, ticket, world } from './world'
 
 const ROOT = '/work/shop'
 const SEARCH = { '01-index.md': ticket('01: Index', 'done'), '02-query.md': ticket('02: Query', 'open') }
@@ -15,7 +14,9 @@ const setup = async ($: Engine, on: On, names: string[]): Promise<World> => {
   on('session.end', (_, e) => ({ sessionId: e.sessionId }))
   on('tool.call', () => ({ result: { ok: true } }))
   const w = world(on, ROOT)
-  names.forEach((name, at) => addSet(w, ROOT, name, name === 'search' ? SEARCH : BILLING, 10 + at))
+  names.forEach((name, at) => {
+    addSet(w, ROOT, name, name === 'search' ? SEARCH : BILLING, 10 + at)
+  })
   w.answer = () => answered(RECIPE)
   await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
 
@@ -149,7 +150,7 @@ for (const text of ['continue search please', 'work on SEARCH']) {
 }
 
 test('a prompt with a hyphenated set name picks it from spaced words', async ($, on) => {
-  const { w, clock } = await fresh($, on, ['search', 'new-feature'])
+  const { clock } = await fresh($, on, ['search', 'new-feature'])
   await $.turn.start({ text: 'work on new feature', turnId: 't1' })
   await clock.settle()
   const pane = await look($)

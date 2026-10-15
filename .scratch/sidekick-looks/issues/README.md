@@ -24,6 +24,16 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 | 17 | 12 README and vocabulary match the new system | 06, 10, 11, 13 | ready (last) |
 | — | 08e A fuller raised arm | 08c | optional, needs the owner's decision |
 
+## Checks
+
+Run from the repo root before a commit; all three must pass (the type check still shows the errors that ticket 14 removes).
+
+```
+claude plugin test .
+node ~/.pi-lens/tools/node_modules/typescript/bin/tsc --noEmit -p .
+npx @biomejs/biome@2.5.15 check .
+```
+
 ## Decisions on record
 
 - A failed search shrugs every time, including the 20 s refresh retries (ticket 07).
