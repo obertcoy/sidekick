@@ -4,11 +4,11 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `biome.json` exists with an exact Biome version and the formatter set to the code's current style
-- [ ] The check command runs with no `package.json` and no `node_modules` in the repo, and is written in the README (and in this folder's README beside the type check command)
-- [ ] The engine's types and the `.scratch` Markdown are excluded from the check
-- [ ] The one-time reformat lands in its own commit, apart from lint fixes, so formatting noise stays out of later diffs
-- [ ] Every lint rule the code breaks is fixed in code or switched off with a reason; the check passes with zero errors and zero warnings
-- [ ] No behaviour change: all tests pass unchanged in meaning, the golden file is unchanged, and the type check has no new errors
+- [x] `biome.json` exists with an exact Biome version and the formatter set to the code's current style
+- [x] The check command runs with no `package.json` and no `node_modules` in the repo, and is written in the README (and in this folder's README beside the type check command)
+- [x] The engine's types and the `.scratch` Markdown are excluded from the check
+- [x] The one-time reformat lands in its own commit, apart from lint fixes, so formatting noise stays out of later diffs
+- [x] Every lint rule the code breaks is fixed in code or switched off with a reason; the check passes with zero errors and zero warnings
+- [x] No behaviour change: all tests pass unchanged in meaning, the golden file is unchanged, and the type check has no new errors

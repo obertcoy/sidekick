@@ -13,7 +13,7 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 | 7 | 07 The sidekick looks around during a search and shrugs when it fails | 01 | done |
 | 8 | 08 The sidekick cheers when the set is done | 07 | done |
 | 9 | 08b Refactor: parts declare what they need, activity is a state machine | 08 | done |
-| 9a | 15 Lint and format with Biome (do first; the owner asked for it before other work) | — | ready |
+| 9a | 15 Lint and format with Biome (do first; the owner asked for it before other work) | — | done |
 | 10 | 14 The type check is clean (independent; can also run alongside 08c) | — | ready |
 | 10b | 16 CI checks lint, types and tests | 14, 15 | ready |
 | 11 | 08c Zap raises its arm with a pose | 08b | ready |
