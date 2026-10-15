@@ -1,5 +1,5 @@
-import type { AnchorName, Animation, Character, Layers, Needed, Point, PropRole, Role, Slot } from './types'
-import { LIST_ANCHORS, OPTIONAL_POINT_ANCHORS, REQUIRED_ANCHORS, REQUIRED_BODY_ROLES, SLOTS } from './types'
+import type { AnchorName, Animation, Character, FramePlan, Layers, Needed, Patch, Point, PoseName, PropRole, Role, Slot } from './types'
+import { LIST_ANCHORS, OPTIONAL_POINT_ANCHORS, POSES, REQUIRED_ANCHORS, REQUIRED_BODY_ROLES, SLOTS } from './types'
 
 /** The fixed stage every look is drawn on: 18 cells wide, 8 tall, two pixels stacked in each cell. */
 export const STAGE = { columns: 18, rows: 8, width: 18, height: 16 } as const
@@ -17,10 +17,11 @@ export const PROPS: Readonly<Record<PropRole, number>> = {
  * Makes an animation whose frames read only the anchors it names: `frame` is given those anchors as certain.
  * Whether a character has them is checked where characters and animations meet (the registry), not here.
  */
-export const defineAnimation = <N extends AnchorName>(
-  animation: Omit<Animation, 'needs' | 'frame'> & {
+export const defineAnimation = <N extends AnchorName, P extends PoseName>(
+  animation: Omit<Animation, 'needs' | 'poses' | 'frame'> & {
     readonly needs: readonly N[]
-    readonly frame: (step: number, at: Needed<N>) => ReturnType<Animation['frame']>
+    readonly poses: readonly P[]
+    readonly frame: (step: number, at: Needed<N>) => Omit<FramePlan, 'poses'> & { readonly poses?: readonly NoInfer<P>[] }
   },
 ): Animation => animation as unknown as Animation
 
@@ -78,6 +79,23 @@ export const defineCharacter = (character: Character): Character => {
   ) {
     fail('has no headRegion on the stage')
   }
+  for (const [pose, patch] of Object.entries((character.poses ?? {}) as Readonly<Record<string, Patch | undefined>>)) {
+    if (!(POSES as readonly string[]).includes(pose)) fail(`has the pose "${pose}", which is not one of: ${POSES.join(', ')}`)
+    // A pose set to undefined is no patch at all, so the registry refuses it like a missing one.
+    if (patch === undefined) continue
+    const { at, rows } = patch
+    if (!onStage(at) || rows.length === 0 || at.y + rows.length > STAGE.height || rows.some(row => at.x + row.length > STAGE.width)) {
+      fail(`has the pose "${pose}" off the stage`)
+    }
+    for (const row of rows) {
+      for (const letter of row) {
+        if (letter === ' ' || letter === '.') continue
+        const role = character.legend[letter]
+        if (role === undefined) fail(`uses "${letter}" in the pose "${pose}", which its legend does not name`)
+        else if (character.palette[role] === undefined) fail(`uses "${letter}" in the pose "${pose}", whose role "${role}" has no colour`)
+      }
+    }
+  }
   const bobs = (character.bobs ?? {}) as Partial<Record<Slot, unknown>>
   for (const slot of Object.keys(bobs)) {
     if (!(SLOTS as readonly string[]).includes(slot) || anchors[slot] === undefined) {
@@ -94,6 +112,24 @@ export const defineCharacter = (character: Character): Character => {
   }
 
   return character
+}
+
+/** The body as letters on the whole stage: every row padded with transparent pixels, then each pose's patch laid over it, in the order given (a later pose wins). */
+export const posed = (character: Character, poses: readonly PoseName[]): string[] => {
+  const rows = Array.from({ length: STAGE.height }, (_, y) => [...(character.body[y] ?? '').padEnd(STAGE.width, '.')])
+  for (const pose of poses) {
+    const patch = character.poses?.[pose]
+    if (patch === undefined) continue
+    patch.rows.forEach((patchRow, dy) => {
+      for (const [dx, letter] of [...patchRow].entries()) {
+        if (letter === ' ') continue
+        const row = rows[patch.at.y + dy]
+        if (row !== undefined && patch.at.x + dx < STAGE.width) row[patch.at.x + dx] = letter
+      }
+    })
+  }
+
+  return rows.map(row => row.join(''))
 }
 
 /** A stage of colours, row by row; undefined is transparent. */
@@ -138,8 +174,9 @@ export const composePixels = (look: Layers, animation: Animation, step: number, 
 
   // The body, with the head region moved down by the bob; what it leaves behind is transparent.
   const region = character.headRegion
+  const body = posed(character, plan.poses ?? [])
   const colorAt = (x: number, y: number): number | undefined => {
-    const letter = character.body[y]?.[x]
+    const letter = body[y]?.[x]
     const role = letter === undefined ? undefined : character.legend[letter]
     return role === undefined ? undefined : character.palette[role]
   }

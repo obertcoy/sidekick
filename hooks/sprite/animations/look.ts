@@ -6,6 +6,7 @@ const above = (point: Point, dx: number, role: Dot[2]): Dot[] => [[point.x + dx,
 /** Looking around: the head dips and lifts while a glint passes from one ear tip to the other and back. Everything it draws is on the row above the ears, clear of what is worn. */
 export const look = defineAnimation({
   needs: ['ears'],
+  poses: [],
   frames: 6,
   msPerFrame: 220,
   once: false,

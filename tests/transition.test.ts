@@ -5,7 +5,7 @@ import type { Animation } from '../hooks/sprite/types'
 
 // The pure transition of the activity, with a made-up lookup so no test depends on the art.
 
-const fake = (frames: number, msPerFrame: number): Animation => ({ needs: [], frames, msPerFrame, once: false, hides: [], frame: () => ({}) })
+const fake = (frames: number, msPerFrame: number): Animation => ({ needs: [], poses: [], frames, msPerFrame, once: false, hides: [], frame: () => ({}) })
 const FAKE: Record<string, Animation> = {
   resting: fake(1, 200),
   working: fake(3, 100),

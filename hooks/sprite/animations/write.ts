@@ -6,6 +6,7 @@ const row = (x: number, y: number, length: number, role: Dot[2]): Dot[] => Array
 /** Writing on a sheet beside the paw: the head bobs and the paw moves every other frame while two lines of ink fill in. */
 export const write = defineAnimation({
   needs: ['paw'],
+  poses: [],
   frames: 6,
   msPerFrame: 220,
   once: false,

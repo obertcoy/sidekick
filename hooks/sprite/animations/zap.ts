@@ -30,17 +30,20 @@ const at = (point: Point | undefined, dx: number, dy: number, role: Role): Dot[]
 /** A ticket is done: the cheeks charge, a bolt strikes the raised paw, sparks fall, and a check mark stays. */
 export const zap = defineAnimation({
   needs: ['boltFrom', 'cheeks', 'ears', 'paw', 'reach', 'tail'],
+  // The raised arm is the character's own pose; the glowing paw in the last frame is a dot at `reach`.
+  poses: ['armUp'],
   frames: 12,
   msPerFrame: 110,
   once: true,
-  // The arm and the bolt are drawn at the paw, where a held accessory would be.
+  // The bolt is drawn at the paw, where a held accessory would be; the raised arm is the armUp pose.
   hides: ['held'],
   frame: (step, { boltFrom, cheeks, ears, paw, reach, tail }) => {
     const paper = { x: paw.x + 1, y: paw.y - 1 }
     const bolt = (role: Role): Dot[] => BOLT.map(([dx, dy]) => [boltFrom.x + dx, boltFrom.y + dy, role] as const)
     const strike = { x: boltFrom.x - 2, y: boltFrom.y + 6 }
     const glow = (role: Role): Dot[] => cheeks.flatMap(cheek => at(cheek, 1, 0, role))
-    const arm = (paw: Role): Dot[] => [...at(reach, 0, -1, 'outline'), ...at(reach, 0, 0, paw), ...at(reach, -1, 1, 'outline')]
+    // The raised arm is part of the body, so a dot would draw over it. Where a glow lands on the paw (the classic's right cheek), the arm stays on top, as it always was.
+    const glowBesideArm = (role: Role): Dot[] => glow(role).filter(([x, y]) => x !== reach.x || y !== reach.y)
     const near = (dx: number, dy: number, role: Role): Dot[] => at(paper, dx, dy, role)
 
     switch (step) {
@@ -57,15 +60,15 @@ export const zap = defineAnimation({
           ],
         }
       case 2:
-        return { dots: [...bolt('flash'), ...glow('flash'), ...arm('base')] }
+        return { poses: ['armUp'], dots: [...bolt('flash'), ...glowBesideArm('flash')] }
       case 3:
         return {
+          poses: ['armUp'],
           dots: [
             ...bolt('spark'),
             ...at(strike, 1, 0, 'flash'),
             ...at(tail[0], 1, -1, 'spark'),
-            ...glow('spark'),
-            ...arm('base'),
+            ...glowBesideArm('spark'),
             ...near(1, -1, 'spark'),
             ...near(3, 0, 'flash'),
             ...near(2, 2, 'spark'),
@@ -74,7 +77,8 @@ export const zap = defineAnimation({
         }
       case 4:
         return {
-          dots: [...at(tail[0], 0, -1, 'spark'), ...arm('spark'), ...near(4, -2, 'spark'), ...near(4, 0, 'spark'), ...near(1, 3, 'spark')],
+          poses: ['armUp'],
+          dots: [...at(tail[0], 0, -1, 'spark'), ...at(reach, 0, 0, 'spark'), ...near(4, -2, 'spark'), ...near(4, 0, 'spark'), ...near(1, 3, 'spark')],
         }
       case 5:
         return { dots: [...near(1, 0, 'spark'), ...near(4, 4, 'spark')] }

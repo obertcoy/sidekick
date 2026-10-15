@@ -9,6 +9,7 @@ const above = (point: Point, dx: number, dy: number, role: Dot[2]): Dot[] => [[p
  */
 export const cheer = defineAnimation({
   needs: ['ears'],
+  poses: [],
   frames: 10,
   msPerFrame: 130,
   once: true,

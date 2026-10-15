@@ -71,17 +71,38 @@ export type Character = {
    * Every anchored slot is declared. A slot declared to move needs its anchor inside `headRegion`, since nothing else moves there.
    */
   readonly bobs: Readonly<Partial<Record<Slot, boolean>>>
+  /**
+   * The poses this character draws, each a patch over `body`. Which ones it must have is checked against what it plays (the registry).
+   * Animations never read these pixels; they only ask for a pose by name.
+   */
+  readonly poses?: Readonly<Partial<Record<PoseName, Patch>>>
 }
+
+/**
+ * Body changes an animation can ask for by name; each character draws its own. One shared, fixed list.
+ * It grows only together with the animation that first uses a new name.
+ */
+export const POSES = ['armUp'] as const
+export type PoseName = (typeof POSES)[number]
+
+/** Letters laid over the body from `at`, row by row: ' ' keeps the body's pixel, '.' clears it, any other letter is from the legend. */
+export type Patch = { readonly at: Point; readonly rows: readonly string[] }
 
 /** A pixel an animation lays over the body; `role` is a body role (taken from the character) or a prop role. */
 export type Dot = readonly [x: number, y: number, role: Role]
 
-/** What one frame does: the head bob (in pixels, down) and the props and effects drawn on top. */
-export type FramePlan = { readonly bob?: number; readonly dots?: readonly Dot[] }
+/**
+ * What one frame does: the head bob (in pixels, down), the poses laid over the body in order (a later one wins),
+ * and the props and effects drawn on top. Accessories draw over posed pixels; anchors do not move with poses.
+ * A patch inside the character's `headRegion` bobs with the head.
+ */
+export type FramePlan = { readonly bob?: number; readonly poses?: readonly PoseName[]; readonly dots?: readonly Dot[] }
 
 export type Animation = {
   /** The anchors the frames read. A character that plays this animation and lacks one is refused at load (the registry checks). */
   readonly needs: readonly AnchorName[]
+  /** The poses the frames ask for. A character that plays this animation and lacks one is refused at load (the registry checks). */
+  readonly poses: readonly PoseName[]
   readonly frames: number
   /** How long each frame shows; register.tsx plays the animation at this pace. */
   readonly msPerFrame: number

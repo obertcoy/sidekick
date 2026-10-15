@@ -54,6 +54,10 @@ export const classic = defineCharacter({
     ],
     feet: { x: 6, y: 14 },
   },
+  poses: {
+    // The raised arm zap draws around the `reach` paw at (10,9): outline above it, base on it, outline to its lower left. The patch straddles the headRegion (bottom row 9): its pixels at y 8 and 9 bob with the head, the `k` at (9,10) does not. Zap has no bob, so nothing tears today; a bobbing animation using this pose would need the patch moved inside the region.
+    armUp: { at: { x: 9, y: 8 }, rows: [' k', ' y', 'k'] },
+  },
   // Columns 0-1 hold the tail, which stays put while the head bobs.
   headRegion: { left: 2, top: 3, right: 17, bottom: 9 },
   // The cap and glasses ride the head; the scarf and what is held stay on the body.

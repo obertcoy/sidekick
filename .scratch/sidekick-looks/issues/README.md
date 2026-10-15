@@ -16,7 +16,7 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 | 9a | 15 Lint and format with Biome (do first; the owner asked for it before other work) | — | done |
 | 10 | 14 The type check is clean (independent; can also run alongside 08c) | — | done |
 | 10b | 16 CI checks lint, types and tests | 14, 15 | in progress (owner: red-run proof, branch protection) |
-| 11 | 08c Zap raises its arm with a pose | 08b | ready |
+| 11 | 08c Zap raises its arm with a pose | 08b | done |
 | 12 | 08d The sidekick can blink | 08c | ready |
 | 13 | 09 Ambient motion with an off switch | 07, 08d | ready |
 | 14 | 10 A multi-frame background cycles at rest | 09 | ready |

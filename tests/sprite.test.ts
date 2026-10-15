@@ -2,13 +2,27 @@ import { expect, test } from 'claude-code/testing'
 import { changeLook } from '../hooks/look'
 import type { State } from '../hooks/sprite'
 import { cellsOf, leftOut, playsFor, SPRITE } from '../hooks/sprite'
+import { classic } from '../hooks/sprite/characters/classic'
 import { foxkit } from '../hooks/sprite/characters/foxkit'
 import type { Pixels } from '../hooks/sprite/compose'
-import { composePixels, defineAnimation, defineCharacter, render, SLOT_ORDER, STAGE } from '../hooks/sprite/compose'
+import { composePixels, defineAnimation, defineCharacter, posed, render, SLOT_ORDER, STAGE } from '../hooks/sprite/compose'
 import { currentLook, drawable, droppedOf, layersOf, setSavedLook } from '../hooks/sprite/look-in-use'
-import { ACCESSORIES, ANIMATIONS, animationOf, BACKGROUNDS, CHARACTERS, DEFAULT_LOOK, requireAnchors, STATES, slotRefusal } from '../hooks/sprite/registry'
-import type { Accessory, Animation, Background, Character, Layers, Slot } from '../hooks/sprite/types'
-import { SLOTS } from '../hooks/sprite/types'
+import {
+  ACCESSORIES,
+  ANIMATIONS,
+  animationOf,
+  BACKGROUNDS,
+  CHARACTERS,
+  DEFAULT_LOOK,
+  requireAnchors,
+  requireDeclaredPoses,
+  requirePlayed,
+  requirePoses,
+  STATES,
+  slotRefusal,
+} from '../hooks/sprite/registry'
+import type { Accessory, Animation, Background, Character, Layers, PoseName, Slot } from '../hooks/sprite/types'
+import { POSES, SLOTS } from '../hooks/sprite/types'
 import { isStruck, strikeSteps } from '../hooks/strike'
 import { GOLDEN } from './sprite-golden'
 
@@ -337,7 +351,7 @@ test('writing and zapping hide the held slot in every frame, on both characters,
 test('an animation that hides no slot leaves every accessory drawn, and one that hides a slot hides only that slot', async () => {
   for (const character of Object.values(CHARACTERS)) {
     const layers = { character, outfit: withAll(character), background: null }
-    const hidesNone: Animation = { needs: [], frames: 2, msPerFrame: 100, once: false, hides: [], frame: step => ({ bob: step }) }
+    const hidesNone: Animation = { needs: [], poses: [], frames: 2, msPerFrame: 100, once: false, hides: [], frame: step => ({ bob: step }) }
     const hidesFace: Animation = { ...hidesNone, hides: ['face'] }
     const everything = (animation: Animation, step: number) => frameOf(layers, animation, step)
     for (const step of [0, 1]) {
@@ -591,10 +605,19 @@ test('a character is refused when an anchor it gives is empty or off the stage, 
 })
 
 test('an animation is given the stage frame and the anchors it declared, and no others', async () => {
-  const quiet = defineAnimation({ needs: [], frames: 1, msPerFrame: 1, once: false, hides: [], frame: (_step, { head, feet }) => ({ bob: head.y - feet.y }) })
+  const quiet = defineAnimation({
+    needs: [],
+    poses: [],
+    frames: 1,
+    msPerFrame: 1,
+    once: false,
+    hides: [],
+    frame: (_step, { head, feet }) => ({ bob: head.y - feet.y }),
+  })
   expect(quiet.needs).toEqual([])
   defineAnimation({
     needs: [],
+    poses: [],
     frames: 1,
     msPerFrame: 1,
     once: false,
@@ -602,4 +625,193 @@ test('an animation is given the stage frame and the anchors it declared, and no 
     // @ts-expect-error paw is not declared in needs, so the frame cannot read it
     frame: (_step, { paw }) => ({ bob: paw.x }),
   })
+})
+
+// Poses: a named change to the body that each character draws for itself, as a patch over its body.
+
+const BODY_WIDTH = STAGE.width
+/** The body as the stage sees it: every row padded with transparent pixels, and missing rows empty. */
+const padded = (character: Character): string[] => Array.from({ length: STAGE.height }, (_, y) => (character.body[y] ?? '').padEnd(BODY_WIDTH, '.'))
+/** A character with the given pose patches, without going through the load check. */
+const withPoses = (name: string, poses: unknown): Character => ({ ...foxkit, name, poses }) as unknown as Character
+const armless = defineCharacter({ ...foxkit, name: 'armless', poses: {} })
+
+test('the pose names are one fixed list that holds armUp', async () => {
+  expect(POSES).toEqual(['armUp'])
+})
+
+test('posed lays each patch over the body: a space keeps the pixel, a dot clears it, a letter sets it', async () => {
+  const patched = withPoses('patched', { armUp: { at: { x: 1, y: 2 }, rows: ['s.', ' h'] } })
+  const rows = posed(patched, ['armUp'])
+  expect(rows).toHaveLength(STAGE.height)
+  expect(rows[2]).toBe('.s.oyhyyyyyooo....')
+  expect(rows[3]).toBe('oshyhyyyyyyyyso...')
+  // Nothing outside the patch changes.
+  expect(rows.filter((_, y) => y !== 2 && y !== 3)).toEqual(padded(foxkit).filter((_, y) => y !== 2 && y !== 3))
+  // No pose asked for: the body, padded to the stage.
+  expect(posed(patched, [])).toEqual(padded(foxkit))
+  expect(posed(classic, []).every(row => row.length === BODY_WIDTH)).toBe(true)
+})
+
+test('poses in one frame apply in the order given, so the later one wins', async () => {
+  // Only one pose name exists so far; a second, made-up name stands in to show the order, which is a property of posed itself.
+  const two = withPoses('two', {
+    armUp: { at: { x: 1, y: 2 }, rows: ['s'] },
+    nod: { at: { x: 1, y: 2 }, rows: ['h'] },
+  })
+  const order = (names: string[]): string | undefined => posed(two, names as unknown as PoseName[])[2]?.[1]
+  expect(order(['armUp', 'nod'])).toBe('h')
+  expect(order(['nod', 'armUp'])).toBe('s')
+})
+
+test('a character with a pose that is not a known name, is off the stage, or uses a letter without a legend entry or colour is refused, naming the character and the pose', async () => {
+  const load = (poses: unknown, extra: Partial<Character> = {}): Character =>
+    defineCharacter({ ...foxkit, name: 'odd', ...extra, poses } as unknown as Character)
+  expect(() => load({ nod: { at: { x: 0, y: 0 }, rows: ['o'] } })).toThrow('sprite: character "odd" has the pose "nod", which is not one of: armUp')
+  expect(() => load({ armUp: { at: { x: 17, y: 0 }, rows: ['oo'] } })).toThrow('character "odd" has the pose "armUp" off the stage')
+  expect(() => load({ armUp: { at: { x: 0, y: 15 }, rows: ['o', 'o'] } })).toThrow('character "odd" has the pose "armUp" off the stage')
+  expect(() => load({ armUp: { at: { x: -1, y: 0 }, rows: ['o'] } })).toThrow('character "odd" has the pose "armUp" off the stage')
+  expect(() => load({ armUp: { at: { x: 0, y: 0 }, rows: ['q'] } })).toThrow('character "odd" uses "q" in the pose "armUp", which its legend does not name')
+  // The classic colours no highlight, so a legend letter for it has no colour.
+  expect(() => load({ armUp: { at: { x: 0, y: 0 }, rows: ['h'] } }, { ...classic, name: 'dull', legend: { ...classic.legend, h: 'highlight' } })).toThrow(
+    'character "dull" uses "h" in the pose "armUp", whose role "highlight" has no colour',
+  )
+  // A space and a dot are always allowed, and a legend letter with a colour.
+  expect(() => load({ armUp: { at: { x: 16, y: 14 }, rows: [' o', '.y'] } })).not.toThrow()
+})
+
+test('a character lacking a pose that a played animation needs is refused, naming the pose and the animation', async () => {
+  expect(() => requirePoses(armless, { zap: ANIMATIONS.zap })).toThrow('sprite: character "armless" has no pose "armUp", which the animation "zap" needs')
+  expect(() => requirePoses(armless, { idle: ANIMATIONS.idle, write: ANIMATIONS.write })).not.toThrow()
+})
+
+test('the load check goes through the state to animation lookup: zap is found as the animation of ticket-done, and anchors are still checked', async () => {
+  expect(() => requirePlayed(armless)).toThrow('character "armless" has no pose "armUp", which the animation "zap (ticket-done)" needs')
+  expect(() => requirePlayed(stageFrame('owl'))).toThrow('is missing the anchor')
+  for (const character of Object.values(CHARACTERS)) expect(() => requirePlayed(character), character.name).not.toThrow()
+  // A state whose animation asks for an undeclared pose is refused through the same lookup.
+  const real = ANIMATIONS.zap
+  const bad = { ...real, poses: [] as PoseName[] }
+  expect(() => requireDeclaredPoses(foxkit, { 'zap (ticket-done)': bad })).toThrow('the animation "zap (ticket-done)" asks for the pose "armUp"')
+})
+
+test('every shipped character has every pose the shipped animations use, and every animation declares what its frames ask for', async () => {
+  for (const character of Object.values(CHARACTERS)) {
+    expect(() => requirePoses(character, ANIMATIONS), character.name).not.toThrow()
+    for (const [name, animation] of Object.entries(ANIMATIONS)) {
+      for (let step = 0; step < animation.frames; step++) {
+        for (const pose of animation.frame(step, character.anchors).poses ?? []) {
+          expect(animation.poses, `${character.name} ${name} ${step} asks for ${pose}`).toContain(pose)
+        }
+      }
+    }
+  }
+  expect(ANIMATIONS.zap.poses).toEqual(['armUp'])
+})
+
+test('compile-time fixture, checked by tsc: a frame can only ask for the poses its animation declared', async () => {
+  defineAnimation({ needs: [], poses: ['armUp'], frames: 1, msPerFrame: 1, once: false, hides: [], frame: () => ({ poses: ['armUp'] }) })
+  defineAnimation({
+    needs: [],
+    poses: [],
+    frames: 1,
+    msPerFrame: 1,
+    once: false,
+    hides: [],
+    // @ts-expect-error armUp is not declared in poses, so the frame cannot ask for it
+    frame: () => ({ poses: ['armUp'] }),
+  })
+})
+
+test('an animation whose frame asks for a pose it did not declare is refused at load, naming the character, animation, step and pose', async () => {
+  // Built without defineAnimation, as a cast would let through: frame 1 asks for armUp, but `poses` is empty.
+  const sneaky: Animation = { needs: [], poses: [], frames: 2, msPerFrame: 1, once: false, hides: [], frame: step => (step === 1 ? { poses: ['armUp'] } : {}) }
+  expect(() => requireDeclaredPoses(foxkit, { sneaky })).toThrow(
+    'the animation "sneaky" asks for the pose "armUp" at step 1 for character "foxkit", but does not declare it',
+  )
+  const honest: Animation = { ...sneaky, poses: ['armUp'] }
+  expect(() => requireDeclaredPoses(foxkit, { honest })).not.toThrow()
+})
+
+test('a pose set to undefined is no patch: the character loads, and the registry refuses it as lacking that pose', async () => {
+  const hollow = defineCharacter({ ...foxkit, name: 'hollow', poses: { armUp: undefined } })
+  expect(posed(hollow, ['armUp'])).toEqual(padded(foxkit))
+  expect(() => requirePoses(hollow, { zap: ANIMATIONS.zap })).toThrow('character "hollow" has no pose "armUp", which the animation "zap" needs')
+})
+
+test('zap draws every frame as it did when the arm was three painted dots (their old pixels written out here), on both characters wearing all four accessories', async () => {
+  // The deleted `arm` helper's three pixels, by character: the outline above the paw, the paw, the outline to its lower left.
+  const OLD_ARM: Record<string, readonly (readonly [number, number, 'outline' | 'base'])[]> = {
+    foxkit: [
+      [13, 6, 'outline'],
+      [13, 7, 'base'],
+      [12, 8, 'outline'],
+    ],
+    classic: [
+      [10, 8, 'outline'],
+      [10, 9, 'base'],
+      [9, 10, 'outline'],
+    ],
+  }
+  for (const character of Object.values(CHARACTERS)) {
+    const armDots = OLD_ARM[character.name]
+    if (armDots === undefined) throw new Error(`no old arm for ${character.name}`)
+    const cheeks = character.anchors.cheeks ?? []
+    // The old zap: the new plan with the pose taken out; in the arm frames the cheek glow is painted in full and the three arm dots over it, last.
+    const painted: Animation = {
+      ...ANIMATIONS.zap,
+      poses: [],
+      frame: (step, at) => {
+        const plan = ANIMATIONS.zap.frame(step, at)
+        if (!plan.poses?.includes('armUp')) return plan
+        const glowRole = step === 2 ? 'flash' : step === 3 ? 'spark' : undefined
+        const glow = glowRole === undefined ? [] : cheeks.map(cheek => [cheek.x + 1, cheek.y, glowRole] as const)
+        const arm = armDots.map(([x, y, role]) => [x, y, step === 4 && role === 'base' ? 'spark' : role] as const)
+        return { ...plan, poses: [], dots: [...(plan.dots ?? []), ...glow, ...arm] }
+      },
+    }
+    for (const outfit of [{}, withAll(character), withoutHeld(character)]) {
+      const layers = { character, outfit, background: null }
+      for (let step = 0; step < ANIMATIONS.zap.frames; step++) {
+        expect(frameOf(layers, ANIMATIONS.zap, step), `${character.name} ${step} ${Object.keys(outfit).length} accessories`).toBe(
+          frameOf(layers, painted, step),
+        )
+      }
+    }
+  }
+})
+
+test('accessories draw over posed pixels, in bobbed frames too, and the cap sits where it sits without the pose', async () => {
+  // A pose that paints over the whole crown of the head, where the cap sits.
+  const crowned = defineCharacter({ ...foxkit, name: 'crowned', poses: { armUp: { at: { x: 4, y: 0 }, rows: ['oooooooo', 'oooooooo', 'oooooooo'] } } })
+  const posedTo = (bob: number) =>
+    defineAnimation({ needs: [], poses: ['armUp'], frames: 1, msPerFrame: 1, once: false, hides: [], frame: () => ({ bob, poses: ['armUp'] }) })
+  const plainTo = (bob: number): Animation => ({ ...posedTo(bob), poses: [], frame: () => ({ bob }) })
+  for (const bob of [0, 1]) {
+    const bareLayers = bare(crowned)
+    const capLayers = { character: crowned, outfit: capped, background: null }
+    // The pixels the cap changes in the frame without the pose.
+    const capOverPose = opaque(composePixels(capLayers, plainTo(bob), 0)).filter(at => {
+      const [x = 0, y = 0] = at.split(',').map(Number)
+      return composePixels(capLayers, plainTo(bob), 0)[y]?.[x] !== composePixels(bareLayers, plainTo(bob), 0)[y]?.[x]
+    })
+    expect(capOverPose.length, `bob ${bob} the cap draws`).toBeGreaterThan(0)
+    const withPose = composePixels(capLayers, posedTo(bob), 0)
+    const without = composePixels(capLayers, plainTo(bob), 0)
+    // The pose changes the body...
+    expect(frameOf(bareLayers, posedTo(bob), 0), `bob ${bob} the pose shows without the cap`).not.toBe(frameOf(bareLayers, plainTo(bob), 0))
+    // ...but wherever the cap draws, the cap's own pixel is what shows, exactly as without the pose.
+    for (const at of capOverPose) {
+      const [x = 0, y = 0] = at.split(',').map(Number)
+      expect(withPose[y]?.[x], `bob ${bob} cap pixel ${at}`).toBe(without[y]?.[x])
+    }
+    // The cap covers part of the posed area, so the check above is not empty.
+    expect(
+      capOverPose.some(at => {
+        const [x = 0, y = 0] = at.split(',').map(Number)
+        return x >= 4 && x <= 11 && y <= 2 + bob
+      }),
+      `bob ${bob} cap overlaps the pose`,
+    ).toBe(true)
+  }
 })

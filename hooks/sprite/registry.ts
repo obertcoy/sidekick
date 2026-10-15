@@ -53,11 +53,44 @@ export const requireAnchors = (character: Character, played: Readonly<Record<str
   }
 }
 
+/** Refuses a character that lacks a pose one of the given animations asks for; the same shape of check as `requireAnchors`. */
+export const requirePoses = (character: Character, played: Readonly<Record<string, Animation>>): void => {
+  for (const [name, animation] of Object.entries(played)) {
+    for (const pose of animation.poses) {
+      if (character.poses?.[pose] === undefined) {
+        throw new Error(`sprite: character "${character.name}" has no pose "${pose}", which the animation "${name}" needs`)
+      }
+    }
+  }
+}
+
+/**
+ * Refuses an animation whose frames, played with this character's anchors, ask for a pose it did not declare.
+ * The compiler stops this for animations made with `defineAnimation`; this guards the ones that got past it.
+ */
+export const requireDeclaredPoses = (character: Character, played: Readonly<Record<string, Animation>>): void => {
+  for (const [name, animation] of Object.entries(played)) {
+    for (let step = 0; step < animation.frames; step++) {
+      for (const pose of animation.frame(step, character.anchors).poses ?? []) {
+        if (!animation.poses.includes(pose)) {
+          throw new Error(
+            `sprite: the animation "${name}" asks for the pose "${pose}" at step ${step} for character "${character.name}", but does not declare it`,
+          )
+        }
+      }
+    }
+  }
+}
+
 // Every character plays what the lookup gives it for every state, so each is checked against all of those at load.
 const STATE_NAMES = Object.keys(STATES) as State[]
-for (const character of Object.values(CHARACTERS)) {
-  requireAnchors(character, Object.fromEntries(STATE_NAMES.map(state => [`${STATES[state]} (${state})`, animationOf(character, state)])))
+export const requirePlayed = (character: Character): void => {
+  const played = Object.fromEntries(STATE_NAMES.map(state => [`${STATES[state]} (${state})`, animationOf(character, state)]))
+  requireAnchors(character, played)
+  requirePoses(character, played)
+  requireDeclaredPoses(character, played)
 }
+for (const character of Object.values(CHARACTERS)) requirePlayed(character)
 
 export const ACCESSORIES: Readonly<Record<string, Accessory>> = { cap, flag, glasses, scarf }
 

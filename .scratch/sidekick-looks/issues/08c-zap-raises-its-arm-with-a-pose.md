@@ -4,13 +4,13 @@
 
 **Blocked by:** 08b: Refactor — parts declare what they need
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Pose names are a single `as const` list with a derived type; it holds only `armUp` for now
-- [ ] A character may give a patch for any pose: rows laid over its body from a point, where a space keeps the body's pixel, `.` clears it, and any other letter comes from its legend
-- [ ] A pose that is not a known name, a patch off the stage, or a letter the legend does not name (or that has no colour) is refused at load with a message naming the character and the pose
-- [ ] An animation declares the poses it uses, and a frame can only ask for declared poses (checked by the compiler, with a `@ts-expect-error` fixture)
-- [ ] A character lacking a pose that an animation it plays needs is refused at load, naming the pose and the animation; the check runs through the one state → animation lookup, like the anchor check
-- [ ] Poses in one frame apply in order, later wins; accessories draw over posed pixels; anchors do not move with poses
-- [ ] Zap uses `armUp` instead of painted arm dots; every frame of every character and animation is pixel-identical (golden file unchanged)
-- [ ] Every shipped character has every pose the shipped animations use
+- [x] Pose names are a single `as const` list with a derived type; it holds only `armUp` for now
+- [x] A character may give a patch for any pose: rows laid over its body from a point, where a space keeps the body's pixel, `.` clears it, and any other letter comes from its legend
+- [x] A pose that is not a known name, a patch off the stage, or a letter the legend does not name (or that has no colour) is refused at load with a message naming the character and the pose
+- [x] An animation declares the poses it uses, and a frame can only ask for declared poses (checked by the compiler, with a `@ts-expect-error` fixture)
+- [x] A character lacking a pose that an animation it plays needs is refused at load, naming the pose and the animation; the check runs through the one state → animation lookup, like the anchor check
+- [x] Poses in one frame apply in order, later wins; accessories draw over posed pixels; anchors do not move with poses
+- [x] Zap uses `armUp` instead of painted arm dots; every frame of every character and animation is pixel-identical (golden file unchanged)
+- [x] Every shipped character has every pose the shipped animations use
