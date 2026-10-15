@@ -2,7 +2,7 @@
   "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    "includes": ["**", "!.claude-plugin/types", "!.scratch", "!tests/sprite-golden.ts"]
+    "includes": ["**", "!.claude-plugin/types", "!.scratch", "!!.claude/worktrees", "!tests/sprite-golden.ts"]
   },
   "formatter": {
     "enabled": true,
