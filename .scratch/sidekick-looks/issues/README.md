@@ -15,6 +15,7 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 | 9 | 08b Refactor: parts declare what they need, activity is a state machine | 08 | done |
 | 9a | 15 Lint and format with Biome (do first; the owner asked for it before other work) | — | ready |
 | 10 | 14 The type check is clean (independent; can also run alongside 08c) | — | ready |
+| 10b | 16 CI checks lint, types and tests | 14, 15 | ready |
 | 11 | 08c Zap raises its arm with a pose | 08b | ready |
 | 12 | 08d The sidekick can blink | 08c | ready |
 | 13 | 09 Ambient motion with an off switch | 07, 08d | ready |
@@ -26,7 +27,7 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 
 ## Checks
 
-Run from the repo root before a commit; all three must pass (the type check still shows the errors that ticket 14 removes).
+Run from the repo root before a commit. The tests and Biome must pass. The type check must show no errors beyond the old ones ticket 14 removes; after ticket 14 it must show zero, and ticket 16 replaces the borrowed TypeScript with a pinned one.
 
 ```
 claude plugin test .
