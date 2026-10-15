@@ -4,11 +4,11 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The type check reports zero errors
-- [ ] The picker's element and its callback are typed from the engine's own declarations; if the engine truly lacks a declaration for the element, the gap is recorded and the narrowest local declaration is used
-- [ ] Test fixtures are corrected to the real types (ticket sets carry a `place`; the strike helper accepts the mounted pane it is given; the possibly-undefined string is handled)
-- [ ] No compiler setting is loosened, and no `any`, `@ts-ignore` or blanket cast is added
-- [ ] All tests pass unchanged in meaning; the golden file is unchanged
-- [ ] The README of this folder states the type check command and that it must stay at zero errors
+- [x] The type check reports zero errors
+- [x] The picker's element and its callback are typed from the engine's own declarations; if the engine truly lacks a declaration for the element, the gap is recorded and the narrowest local declaration is used
+- [x] Test fixtures are corrected to the real types (ticket sets carry a `place`; the strike helper accepts the mounted pane it is given; the possibly-undefined string is handled)
+- [x] No compiler setting is loosened, and no `any`, `@ts-ignore` or blanket cast is added
+- [x] All tests pass unchanged in meaning; the golden file is unchanged
+- [x] The README of this folder states the type check command and that it must stay at zero errors
