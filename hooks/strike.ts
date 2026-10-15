@@ -21,5 +21,8 @@ export const HITS = 4
 export const BURNS = 5
 export const BURN_STEPS = 6
 
-/** The fewest frames an animation can have and still play for a finished ticket: the strike's fixed steps before the burn all need a frame of their own. */
-export const MIN_STRIKE_FRAMES = BURNS
+/**
+ * The fewest frames an animation can have and still play for a finished ticket: with the rest step the strike then has enough steps
+ * for the flash and for at least one step of the burn still drawn struck, before the last two steps show the row plain.
+ */
+export const MIN_STRIKE_FRAMES = BURNS + 2

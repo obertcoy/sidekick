@@ -62,6 +62,8 @@ const MIN_FRAMES = {
  */
 export const requireReplacements = (character: Character, catalog: Readonly<Record<string, Animation>> = ANIMATIONS): void => {
   for (const [state, name] of Object.entries(character.animations ?? {})) {
+    // A state left undefined names nothing, as one left out does.
+    if (name === undefined) continue
     const replaceable = REPLACEABLE_STATES.find(one => one === state)
     if (replaceable === undefined) {
       const why = (STATE_NAMES as readonly string[]).includes(state)

@@ -10,7 +10,7 @@
 - [x] A character that names an animation for a state plays it in place of the shared one, and the shared ones for the other states
 - [x] Switching character with the look command switches which animations play, from the next state on
 - [x] With a replacement for "ticket done", the strike on the ticket's row still runs from charge to plain done, in step with the replacement's frames
-- [x] A replacement for "ticket done" with fewer frames than the strike's fixed steps before the burn is refused at load
+- [x] A replacement for "ticket done" with too few frames for the strike to show the flash and at least one struck burn step (`MIN_STRIKE_FRAMES`) is refused at load
 - [x] A character that names an animation that doesn't exist is refused at load, naming the ones that exist
 - [x] The foxkit and the classic character behave as before
-- [ ] Covered by a whole-mod test using a test-only character that replaces "ticket done", and by character validation tests
+- [x] Covered at the pure level by `tests/replacement-lookup.test.ts` (lookup, switching character, the strike driven through the real activity with a replacement for "ticket done") and `tests/replacement.test.ts` (load validation). A whole-mod test with a test-only character is not possible: the mod runs its own copy of the sprite modules, so a character registered from a test never reaches it.
