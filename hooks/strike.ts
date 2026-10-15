@@ -20,3 +20,6 @@ export const LANDS = 3
 export const HITS = 4
 export const BURNS = 5
 export const BURN_STEPS = 6
+
+/** The fewest frames an animation can have and still play for a finished ticket: the strike's fixed steps before the burn all need a frame of their own. */
+export const MIN_STRIKE_FRAMES = BURNS

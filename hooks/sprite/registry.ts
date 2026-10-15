@@ -1,3 +1,4 @@
+import { MIN_STRIKE_FRAMES } from '../strike'
 import { cap } from './accessories/cap'
 import { flag } from './accessories/flag'
 import { glasses } from './accessories/glasses'
@@ -11,7 +12,8 @@ import { zap } from './animations/zap'
 import { dusk } from './backgrounds/dusk'
 import { classic } from './characters/classic'
 import { foxkit } from './characters/foxkit'
-import type { Accessory, Animation, Background, Character, Look, Slot } from './types'
+import type { Accessory, Animation, Background, Character, Look, Slot, State } from './types'
+import { REPLACEABLE_STATES, STATE_NAMES } from './types'
 
 // The part catalog: every part by name, and the rules that hold between parts. Immutable; the look in
 // use (what was chosen, what is drawn) is in ./look-in-use.ts. Adding a character, animation, accessory
@@ -29,15 +31,58 @@ export const STATES = {
   'ticket-done': 'zap',
   'set-done': 'cheer',
   resting: 'idle',
-} as const satisfies Record<string, keyof typeof ANIMATIONS>
+} as const satisfies Record<State, keyof typeof ANIMATIONS>
 
-export type State = keyof typeof STATES
+export type { State }
+
+/** The part named `name` in a catalog map, or undefined; only its own names count. */
+export const found = <T>(registry: Readonly<Record<string, T>>, name: string): T | undefined => (Object.hasOwn(registry, name) ? registry[name] : undefined)
+
+/** The name of the animation that plays for a state, for a character: its own replacement, else the shared one. */
+export const animationNameOf = (character: Character, state: State): string => character.animations?.[state] ?? STATES[state]
 
 /**
  * What plays for a state, for a character. The one lookup: the activity times by it and the pane draws by it.
- * Every character plays the shared animation of the state for now; a character's own replacement (ticket 11) is added here.
+ * A character that names an animation for the state plays that one; otherwise the shared one. The names are checked at load (`requireReplacements`).
  */
-export const animationOf = (_character: Character, state: State): Animation => ANIMATIONS[STATES[state]]
+export const animationOf = (character: Character, state: State): Animation => ANIMATIONS[animationNameOf(character, state) as keyof typeof ANIMATIONS]
+
+/** The fewest frames an animation needs to play for each replaceable state. */
+const MIN_FRAMES = {
+  working: 1,
+  searching: 1,
+  'search-failed': 1,
+  'ticket-done': MIN_STRIKE_FRAMES,
+  'set-done': 1,
+} as const satisfies Record<(typeof REPLACEABLE_STATES)[number], number>
+
+/**
+ * Refuses a character whose replacements cannot play: a state it cannot replace, an animation that does not exist
+ * (the message names the ones that do), or one with too few frames for its state. Checked against `catalog`, the shared animations unless given.
+ */
+export const requireReplacements = (character: Character, catalog: Readonly<Record<string, Animation>> = ANIMATIONS): void => {
+  for (const [state, name] of Object.entries(character.animations ?? {})) {
+    const replaceable = REPLACEABLE_STATES.find(one => one === state)
+    if (replaceable === undefined) {
+      const why = (STATE_NAMES as readonly string[]).includes(state)
+        ? `cannot replace "${state}"`
+        : `names the state "${state}"; there is no state named "${state}"`
+      throw new Error(`sprite: character "${character.name}" ${why}; replaceable: ${REPLACEABLE_STATES.join(', ')}`)
+    }
+    const animation = found(catalog, name)
+    if (animation === undefined) {
+      throw new Error(
+        `sprite: character "${character.name}" names the animation "${name}" for "${state}", which does not exist; known: ${Object.keys(catalog).join(', ')}`,
+      )
+    }
+    const least = MIN_FRAMES[replaceable]
+    if (animation.frames < least) {
+      throw new Error(
+        `sprite: character "${character.name}" replaces "${state}" with "${name}", which has ${animation.frames} frames; "${state}" needs at least ${least}`,
+      )
+    }
+  }
+}
 
 /**
  * Refuses a character that lacks an anchor one of the given animations needs; the animations are those it plays, by name.
@@ -82,10 +127,11 @@ export const requireDeclaredPoses = (character: Character, played: Readonly<Reco
   }
 }
 
-// Every character plays what the lookup gives it for every state, so each is checked against all of those at load.
-const STATE_NAMES = Object.keys(STATES) as State[]
+// Every character plays what the lookup gives it for every state, so each is checked at load: its replacements first,
+// then the anchors and poses of all it plays.
 export const requirePlayed = (character: Character): void => {
-  const played = Object.fromEntries(STATE_NAMES.map(state => [`${STATES[state]} (${state})`, animationOf(character, state)]))
+  requireReplacements(character)
+  const played = Object.fromEntries(STATE_NAMES.map(state => [`${animationNameOf(character, state)} (${state})`, animationOf(character, state)]))
   requireAnchors(character, played)
   requirePoses(character, played)
   requireDeclaredPoses(character, played)
@@ -98,9 +144,6 @@ export const BACKGROUNDS: Readonly<Record<string, Background>> = { dusk }
 
 /** The look nothing was chosen for: the bare foxkit. */
 export const DEFAULT_LOOK: Look = { character: 'foxkit', outfit: {}, background: null }
-
-/** The part named `name` in a catalog map, or undefined; only its own names count. */
-export const found = <T>(registry: Readonly<Record<string, T>>, name: string): T | undefined => (Object.hasOwn(registry, name) ? registry[name] : undefined)
 
 /** The part named `name`; an unknown name throws, naming the ones that exist. */
 export const pick = <T>(kind: string, registry: Readonly<Record<string, T>>, name: string): T => {

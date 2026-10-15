@@ -55,8 +55,20 @@ export type Needed<N extends AnchorName> = Pick<Anchors, RequiredAnchor> & { rea
 /** An inclusive rectangle of pixels. */
 export type Region = { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number }
 
+/** What the sidekick is shown doing. The registry says which shared animation plays for each. */
+export const STATE_NAMES = ['working', 'searching', 'search-failed', 'ticket-done', 'set-done', 'resting'] as const
+export type State = (typeof STATE_NAMES)[number]
+
+/** The states a character may play its own animation for: every one but resting, which stays the shared stillness. */
+export const REPLACEABLE_STATES = ['working', 'searching', 'search-failed', 'ticket-done', 'set-done'] as const satisfies readonly State[]
+
 export type Character = {
   readonly name: string
+  /**
+   * Per state, the name of the animation this character plays in place of the shared one; a state left out plays the shared one.
+   * The registry refuses, at load, a name that is not an animation or a replacement the strike cannot keep in step with.
+   */
+  readonly animations?: Readonly<Partial<Record<State, string>>>
   /** Rows of letters, at most the stage size; '.' (or anything past a short row) is transparent. */
   readonly body: readonly string[]
   /** What each body letter means. */
