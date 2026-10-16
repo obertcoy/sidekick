@@ -37,7 +37,7 @@ const TICKETS = {
 }
 
 // Drawing a frame costs real time, and `named` asks for every frame of every animation on each call, so a
-// frame is drawn once per look and animation. The key is the look's names, which is all that picks the picture.
+// frame is drawn once per look and animation. The key is the whole look as JSON (character, outfit and background), which is all that picks the picture.
 const drawn = new Map<string, string[]>()
 
 /** Every frame of an animation as the renderer draws it for the look now. */

@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import { cellsOf, SPRITE } from '../hooks/sprite'
 import { ANIMATIONS } from '../hooks/sprite/registry'
 import type { Place, Recipe } from '../hooks/tickets'
@@ -22,6 +22,7 @@ import {
   toRelative,
   windowOf,
 } from '../hooks/tickets'
+import { test } from './world'
 
 const files = parsePlace(
   '{"kind":"files","glob":".scratch/*/issues/*.md","statusLabel":"Status","doneValues":["resolved"],"activeValues":["claimed"]}',

@@ -1,7 +1,8 @@
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import type { Condition, Effect, Entry, Event, Lookup, Model, Phase, Shown } from '../hooks/activity'
 import { CONDITIONS, createActivity, initial, PHASES, transition } from '../hooks/activity'
 import type { Animation } from '../hooks/sprite/types'
+import { test } from './world'
 
 // The pure transition of the activity, with a made-up lookup so no test depends on the art.
 

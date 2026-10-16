@@ -6,14 +6,14 @@ import { test as harnessTest } from 'claude-code/testing'
  * How long one whole-mod test may run. The harness stops a test at 5000 ms. Each of these tests loads the
  * whole mod, and `claude plugin test` runs a file per process side by side, so on a busy machine (another
  * test run, a VM) a test that needs 0.1-1 s alone can wait several seconds for a turn on the processor.
- * The limit is only there to catch a test that hangs, so it is raised here, once, for every whole-mod file.
+ * The limit is only there to catch a test that hangs, so it is raised here, once, for every test file (each imports `test` from here, not from the harness).
  */
 export const TEST_TIMEOUT_MS = 30_000
 
 /** `test` of the harness with the limit above; a test that sets its own `timeoutMs` keeps it. */
 export const test = (name: string, ...rest: readonly [body: TestBody] | readonly [options: TestOptions, body: TestBody]): void => {
   const [options, body] = rest.length === 1 ? [{}, rest[0]] : rest
-  harnessTest(name, { timeoutMs: TEST_TIMEOUT_MS, ...options }, body)
+  harnessTest(name, { ...options, timeoutMs: options.timeoutMs ?? TEST_TIMEOUT_MS }, body)
 }
 
 // The world beneath the mod in the whole-mod tests: a project on disk, the small model and the session.

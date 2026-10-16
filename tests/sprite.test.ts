@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import { changeLook } from '../hooks/look'
 import type { State } from '../hooks/sprite'
 import { cellsOf, leftOut, playsFor, SPRITE } from '../hooks/sprite'
@@ -27,6 +27,7 @@ import type { Accessory, Animation, Background, Character, Layers, PoseName, Slo
 import { POSES, SLOTS, STATE_NAMES } from '../hooks/sprite/types'
 import { isStruck, strikeSteps } from '../hooks/strike'
 import { GOLDEN } from './sprite-golden'
+import { test } from './world'
 
 const MODES = ['idle', 'write', 'zap'] as const
 const cellsLength = Math.ceil((STAGE.columns * STAGE.rows * 12) / 3) * 4
