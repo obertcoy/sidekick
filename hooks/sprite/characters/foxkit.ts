@@ -61,7 +61,13 @@ export const foxkit = defineCharacter({
     armUp: { at: { x: 12, y: 6 }, rows: [' o', ' y', 'o'] },
     // Closed eyes: the two-pixel eyes at (5,4-5) and (9,4-5) become a lid. The top pixel goes to base, the bottom to the outline colour. Inside the headRegion, so it bobs with the head; glasses draw over it.
     blink: { at: { x: 5, y: 4 }, rows: ['y   y', 'o   o'] },
+    // The flame fork stands one row higher: tips at (0,5) and (2,5), the stem one row longer. Outside the headRegion (columns 0-2), so it stays put while the head bobs.
+    tailUp: { at: { x: 0, y: 5 }, rows: ['o.o', 'hoh', 'oyo'] },
+    // Each ear tip gains an outline pixel above it, at (0,2) and (14,2), so the ears look lifted. The left one is outside the headRegion, the right one inside it, so an animation that bobs would tear them apart; the ear flick has no bob.
+    earsUp: { at: { x: 0, y: 2 }, rows: ['o             o'] },
   },
+  // The ambient animations it plays while it rests; each needs anchors and poses it has.
+  ambient: ['blink', 'tailFlick', 'earFlick', 'cheekSpark'],
   // Columns 0-2 hold the ear tip and the tail, which stay put while the head bobs.
   headRegion: { left: 3, top: 1, right: 17, bottom: 8 },
   // The cap and glasses ride the head; the scarf and what is held stay on the body.

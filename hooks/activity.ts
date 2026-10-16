@@ -1,9 +1,10 @@
-// What the sidekick is doing: the conditions that hold now (a turn runs, a search runs) and a queue of
-// once-only animations. One small unit, one timer, no knowledge of the pane. register.tsx tells it what
-// happens; it tells register.tsx what to draw.
+// What the sidekick is doing: the conditions that hold now (a turn runs, a search runs), a queue of
+// once-only animations, and, while it rests with nothing going on, its ambient motion. One small unit,
+// one timer, no knowledge of the pane. register.tsx tells it what happens; it tells register.tsx what to draw.
 //
-// A pure `transition(model, event, playsFor)` is the only place anything changes: it returns the next model
-// and the effects to run, as data. `createActivity` is the shell: it owns the one timer and runs the effects in order.
+// A pure `transition(model, event, playsFor, ambientOf)` is the only place anything changes: it returns the next model
+// and the effects to run, as data. `createActivity` is the shell: it owns the one timer and runs the effects in order,
+// and it is the one place that draws a random number (the length of the gap between ambient animations, and which one plays).
 import type { Timer } from 'claude-code'
 
 import type { State } from './sprite/registry'
@@ -17,6 +18,14 @@ export type Condition = (typeof CONDITIONS)[number]
 
 /** Answers what plays for a state. Given, not imported, so the activity and the pane cannot disagree. Asked once when something starts; the answer is kept and never asked again for that run. */
 export type Lookup = (state: State) => Animation
+
+/** Answers which ambient animations the character in use plays on its own; empty for a character with none. Given, like `Lookup`, and asked again whenever the answer matters. */
+export type Ambient = () => readonly Animation[]
+const noAmbient: Ambient = () => []
+
+/** How long the sidekick rests, in milliseconds, between one ambient animation and the next: a whole number from `min` to `max`, both included. */
+export const AMBIENT_GAP_MS = { min: 5_000, max: 15_000 } as const
+const gapMs = (): number => AMBIENT_GAP_MS.min + Math.floor(Math.random() * (AMBIENT_GAP_MS.max - AMBIENT_GAP_MS.min + 1))
 
 /** A picture to show: the animation resolved when it began, and the frame of it. `state` says what the sidekick is doing. */
 export type Shown = { readonly state: State; readonly animation: Animation; readonly frame: number }
@@ -35,39 +44,49 @@ export type Entry = {
 }
 
 /** The part of the clock the activity needs; `$.clock` has it. */
-export type Clock = { every: (ms: number, fn: () => void) => Timer }
+export type Clock = { every: (ms: number, fn: () => void) => Timer; after: (ms: number, fn: () => void) => Timer }
 
 export type Activity = {
   /** Turns a condition on or off. */
   set: (condition: Condition, isOn: boolean) => void
+  /** Turns ambient motion on or off. It starts off; with it off no timer runs at rest. */
+  setMotion: (isOn: boolean) => void
   /** Whether the condition holds now. */
   has: (condition: Condition) => boolean
   /** Adds a once-only animation behind those already waiting. It plays at once when none is playing. */
   queue: (entry: Entry) => void
-  /** Draws what is shown now again, for a change that is not the activity's own (a new look). */
+  /** Tells the activity the look changed without drawing: it asks again what the character plays on its own, and drops an ambient animation of the old character. */
+  lookChanged: () => void
+  /** Draws what is shown now again, for a change that is not the activity's own (a new look), and asks again what ambient motion the character has. */
   repaint: () => void
   /** What is shown now: the state, the animation that was resolved for it and its frame. */
   shown: () => Shown
 }
 
-// The machine. `resting` loops what still goes on; `playing` runs an entry through its frames; `holding` is an
-// entry whose animation is over but whose rest steps are not, the sidekick resting meanwhile.
+// The machine. `resting` loops what still goes on; `between` is a rest with nothing going on and a gap pending, until the next ambient
+// animation; `ambient` plays that animation; `playing` runs an entry through its frames; `holding` is an entry whose animation is over
+// but whose rest steps are not, the sidekick resting meanwhile. An entry or a condition that arrives in `between` or `ambient` takes over at once.
 
-export const PHASES = ['resting', 'playing', 'holding'] as const
+export const PHASES = ['resting', 'between', 'ambient', 'playing', 'holding'] as const
 export type PhaseKind = (typeof PHASES)[number]
 
-/** An entry under way: the animation resolved when it began (never asked for again), the step it is at, and how many steps it has in all (rest steps included). */
-type Run = { readonly entry: Entry; readonly animation: Animation; readonly step: number; readonly steps: number }
+/** An animation under way: the one resolved when it began (never asked for again), the step it is at, and how many steps it has in all. */
+type Play = { readonly animation: Animation; readonly step: number; readonly steps: number }
+
+/** An entry under way: its animation, and how many steps it has in all (rest steps included). */
+type Run = Play & { readonly entry: Entry }
 
 /** What each kind carries; a kind missing here does not compile. */
-type Fields = { resting: Record<never, never>; playing: Run; holding: Run }
+type Fields = { resting: Record<never, never>; between: Record<never, never>; ambient: Play; playing: Run; holding: Run }
 export type Phase = { [K in PhaseKind]: { readonly kind: K } & Fields[K] }[PhaseKind]
 
 export type Model = {
   readonly conditions: Readonly<Record<Condition, boolean>>
+  /** Whether ambient motion is on. The model starts with it off; register.tsx turns it on from the saved setting. */
+  readonly isMotionOn: boolean
   readonly waiting: readonly Entry[]
   readonly phase: Phase
-  /** While holding this is always the resting state at frame 0, so leaving the hold for rest needs no draw. */
+  /** While holding or between this is always the resting state at frame 0, so leaving it for rest needs no draw. */
   readonly shown: Shown
 }
 
@@ -75,11 +94,19 @@ export type Event =
   | { readonly type: 'set'; readonly condition: Condition; readonly isOn: boolean }
   | { readonly type: 'queue'; readonly entry: Entry }
   | { readonly type: 'tick' }
+  /** Ambient motion is turned on or off. */
+  | { readonly type: 'motion'; readonly isOn: boolean }
+  /** The gap between ambient animations has passed. `roll` is a random number from 0 up to, not including, 1; it picks the animation. */
+  | { readonly type: 'gap'; readonly roll: number }
+  /** The look changed, so what the character plays on its own may have too. */
+  | { readonly type: 'look' }
 
 export type Effect =
   | { readonly do: 'draw'; readonly shown: Shown }
   | { readonly do: 'stop' }
   | { readonly do: 'every'; readonly ms: number }
+  /** Cancel the timer there is, and start the one gap: a random wait within `AMBIENT_GAP_MS`, chosen by the shell. */
+  | { readonly do: 'wait' }
   | { readonly do: 'start'; readonly entry: Entry; readonly steps: number }
   | { readonly do: 'step'; readonly entry: Entry; readonly step: number }
   | { readonly do: 'end'; readonly entry: Entry }
@@ -89,6 +116,7 @@ type Result = { readonly model: Model; readonly effects: readonly Effect[] }
 /** The model before anything happened. The resting animation is not resolved until something asks; the first picture is drawn when it is. */
 export const initial = (playsFor: Lookup): Model => ({
   conditions: Object.fromEntries(CONDITIONS.map(condition => [condition, false])) as Record<Condition, boolean>,
+  isMotionOn: false,
   waiting: [],
   phase: { kind: 'resting' },
   shown: { state: 'resting', animation: playsFor('resting'), frame: 0 },
@@ -112,8 +140,10 @@ const showRest = (model: Model, playsFor: Lookup): Result => {
 const showsRest = (phase: Phase): boolean => {
   switch (phase.kind) {
     case 'holding':
+    case 'between':
       return true
     case 'resting':
+    case 'ambient':
     case 'playing':
       return false
     default:
@@ -121,8 +151,15 @@ const showsRest = (phase: Phase): boolean => {
   }
 }
 
-/** Starts what comes next: the head of the queue, or the loop for what still goes on. `isShown` says the resting frame is on the screen already. */
-const begin = (m: Model, playsFor: Lookup, isShown: boolean): Result => {
+/**
+ * Whether the sidekick waits for its next ambient animation when it rests with `animation`: motion is on, nothing is going on,
+ * the rest does not move (the one timer is the gap's), and the character has something to play.
+ */
+const waitsAt = (m: Model, animation: Animation, ambientOf: Ambient): boolean =>
+  m.isMotionOn && restingOf(m.conditions) === 'resting' && animation.frames <= 1 && ambientOf().length > 0
+
+/** Starts what comes next: the head of the queue, or the loop for what still goes on (and the gap, when ambient motion is due). `isShown` says the resting frame is on the screen already. */
+const begin = (m: Model, playsFor: Lookup, ambientOf: Ambient, isShown: boolean): Result => {
   const [entry, ...waiting] = m.waiting
   if (entry === undefined) {
     const state = restingOf(m.conditions)
@@ -130,10 +167,11 @@ const begin = (m: Model, playsFor: Lookup, isShown: boolean): Result => {
     const shown: Shown = { state, animation, frame: 0 }
     // A single frame does not move, so it needs no timer.
     const loop: Effect[] = animation.frames > 1 ? [{ do: 'every', ms: animation.msPerFrame }] : []
+    const isWaiting = waitsAt(m, animation, ambientOf)
 
     return {
-      model: { ...m, waiting, phase: { kind: 'resting' }, shown },
-      effects: [{ do: 'stop' }, ...(isShown ? [] : [{ do: 'draw', shown } as const]), ...loop],
+      model: { ...m, waiting, phase: { kind: isWaiting ? 'between' : 'resting' }, shown },
+      effects: [{ do: 'stop' }, ...(isShown ? [] : [{ do: 'draw', shown } as const]), ...loop, ...(isWaiting ? [{ do: 'wait' } as const] : [])],
     }
   }
   const animation = playsFor(entry.state)
@@ -147,10 +185,10 @@ const begin = (m: Model, playsFor: Lookup, isShown: boolean): Result => {
 }
 
 /** One tick of an entry: the next frame, the start of the rest steps, or the end. Only the animation kept at its start is used. */
-const advance = (m: Model, p: Extract<Phase, { kind: 'playing' | 'holding' }>, playsFor: Lookup): Result => {
+const advance = (m: Model, p: Extract<Phase, { kind: 'playing' | 'holding' }>, playsFor: Lookup, ambientOf: Ambient): Result => {
   const step = p.step + 1
   if (step >= p.steps) {
-    const after = begin(m, playsFor, showsRest(p))
+    const after = begin(m, playsFor, ambientOf, showsRest(p))
 
     return { model: after.model, effects: [{ do: 'stop' }, { do: 'end', entry: p.entry }, ...after.effects] }
   }
@@ -158,9 +196,10 @@ const advance = (m: Model, p: Extract<Phase, { kind: 'playing' | 'holding' }>, p
   switch (p.kind) {
     case 'playing': {
       // The sidekick rests once the animation is over while the rest of the entry runs out; until then it shows the entry's frames.
-      const phase: Phase = step < p.animation.frames ? { ...p, step } : { ...p, kind: 'holding', step }
       const drawn =
-        phase.kind === 'playing' ? show({ ...m, phase }, { state: p.entry.state, animation: p.animation, frame: step }) : showRest({ ...m, phase }, playsFor)
+        step < p.animation.frames
+          ? show({ ...m, phase: { ...p, step } }, { state: p.entry.state, animation: p.animation, frame: step })
+          : showRest({ ...m, phase: { ...p, kind: 'holding', step } }, playsFor)
 
       return { model: drawn.model, effects: [hook, ...drawn.effects] }
     }
@@ -171,8 +210,49 @@ const advance = (m: Model, p: Extract<Phase, { kind: 'playing' | 'holding' }>, p
   }
 }
 
-/** The one place the model changes. Pure: it calls no clock, no draw and no hook. */
-export const transition = (m: Model, e: Event, playsFor: Lookup): Result => {
+/** The gap has passed: the animation the roll picks from what the character plays now, or back to a rest with nothing to wait for. */
+const startAmbient = (m: Model, roll: number, ambientOf: Ambient): Result => {
+  const choices = ambientOf()
+  const animation = choices[Math.min(choices.length - 1, Math.floor(roll * choices.length))]
+  if (animation === undefined) return { model: { ...m, phase: { kind: 'resting' } }, effects: [{ do: 'stop' }] }
+  const shown: Shown = { state: 'resting', animation, frame: 0 }
+
+  return {
+    model: { ...m, phase: { kind: 'ambient', animation, step: 0, steps: animation.frames }, shown },
+    effects: [{ do: 'stop' }, { do: 'draw', shown }, { do: 'every', ms: animation.msPerFrame }],
+  }
+}
+
+/** One tick of an ambient animation: the next frame, or the end, when the rest comes back and the next gap starts. */
+const advanceAmbient = (m: Model, p: Extract<Phase, { kind: 'ambient' }>, playsFor: Lookup, ambientOf: Ambient): Result => {
+  const step = p.step + 1
+  if (step >= p.steps) return begin(m, playsFor, ambientOf, false)
+
+  return show({ ...m, phase: { ...p, step } }, { state: 'resting', animation: p.animation, frame: step })
+}
+
+/**
+ * The rest with nothing to wait for becomes a rest with a gap pending, or the other way round, when motion or the character's list changed.
+ * An ambient animation under way is cut short (the rest is drawn) when `cutsAmbient` says it can no longer play on; an entry is never touched.
+ */
+const reconsider = (m: Model, playsFor: Lookup, ambientOf: Ambient, cutsAmbient: boolean): Result => {
+  switch (m.phase.kind) {
+    case 'resting':
+      return waitsAt(m, m.shown.animation, ambientOf) ? { model: { ...m, phase: { kind: 'between' } }, effects: [{ do: 'wait' }] } : same(m)
+    case 'between':
+      return waitsAt(m, m.shown.animation, ambientOf) ? same(m) : { model: { ...m, phase: { kind: 'resting' } }, effects: [{ do: 'stop' }] }
+    case 'ambient':
+      return cutsAmbient ? begin(m, playsFor, ambientOf, false) : same(m)
+    case 'playing':
+    case 'holding':
+      return same(m)
+    default:
+      return unreachable(m.phase)
+  }
+}
+
+/** The one place the model changes. Pure: it calls no clock, no draw, no hook and no random number. */
+export const transition = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient = noAmbient): Result => {
   switch (e.type) {
     case 'set': {
       if (m.conditions[e.condition] === e.isOn) return same(m)
@@ -182,7 +262,9 @@ export const transition = (m: Model, e: Event, playsFor: Lookup): Result => {
       if (rest === m.shown.state) return same(next)
       switch (m.phase.kind) {
         case 'resting':
-          return begin(next, playsFor, false)
+        case 'between':
+        case 'ambient':
+          return begin(next, playsFor, ambientOf, false)
         case 'playing':
           return same(next)
         case 'holding':
@@ -195,7 +277,9 @@ export const transition = (m: Model, e: Event, playsFor: Lookup): Result => {
       const next = { ...m, waiting: [...m.waiting, e.entry] }
       switch (m.phase.kind) {
         case 'resting':
-          return begin(next, playsFor, false)
+        case 'between':
+        case 'ambient':
+          return begin(next, playsFor, ambientOf, false)
         case 'playing':
         case 'holding':
           return same(next)
@@ -208,20 +292,47 @@ export const transition = (m: Model, e: Event, playsFor: Lookup): Result => {
       switch (p.kind) {
         case 'resting':
           return show(m, { ...m.shown, frame: (m.shown.frame + 1) % m.shown.animation.frames })
+        case 'between':
+          // The gap is the only timer, and it is not a tick.
+          return same(m)
+        case 'ambient':
+          return advanceAmbient(m, p, playsFor, ambientOf)
         case 'playing':
         case 'holding':
-          return advance(m, p, playsFor)
+          return advance(m, p, playsFor, ambientOf)
         default:
           return unreachable(p)
       }
     }
+    case 'motion': {
+      if (m.isMotionOn === e.isOn) return same(m)
+
+      // An ambient animation under way is cut short by turning motion off; it is not by turning it on.
+      return reconsider({ ...m, isMotionOn: e.isOn }, playsFor, ambientOf, !e.isOn)
+    }
+    case 'gap': {
+      switch (m.phase.kind) {
+        case 'between':
+          return startAmbient(m, e.roll, ambientOf)
+        case 'resting':
+        case 'ambient':
+        case 'playing':
+        case 'holding':
+          return same(m)
+        default:
+          return unreachable(m.phase)
+      }
+    }
+    case 'look':
+      // The old character's ambient animation may need anchors the new one lacks, so it does not play on.
+      return reconsider(m, playsFor, ambientOf, true)
     default:
       return unreachable(e)
   }
 }
 
 /** `draw` is called with every picture to show: when what is shown changes, and on `repaint`. */
-export const createActivity = (clock: Clock, draw: (shown: Shown) => void, playsFor: Lookup): Activity => {
+export const createActivity = (clock: Clock, draw: (shown: Shown) => void, playsFor: Lookup, ambientOf: Ambient = noAmbient): Activity => {
   let model = initial(playsFor)
   let timer: Timer | undefined
   const inbox: Event[] = []
@@ -241,6 +352,11 @@ export const createActivity = (clock: Clock, draw: (shown: Shown) => void, plays
       case 'every':
         timer?.cancel()
         timer = clock.every(effect.ms, () => dispatch({ type: 'tick' }))
+
+        return
+      case 'wait':
+        timer?.cancel()
+        timer = clock.after(gapMs(), () => dispatch({ type: 'gap', roll: Math.random() }))
 
         return
       case 'start':
@@ -266,7 +382,7 @@ export const createActivity = (clock: Clock, draw: (shown: Shown) => void, plays
     isBusy = true
     try {
       for (let next = inbox.shift(); next !== undefined; next = inbox.shift()) {
-        const result = transition(model, next, playsFor)
+        const result = transition(model, next, playsFor, ambientOf)
         model = result.model
         result.effects.forEach(run)
       }
@@ -277,9 +393,14 @@ export const createActivity = (clock: Clock, draw: (shown: Shown) => void, plays
 
   return {
     set: (condition, isOn) => dispatch({ type: 'set', condition, isOn }),
+    setMotion: isOn => dispatch({ type: 'motion', isOn }),
     has: condition => model.conditions[condition],
     queue: entry => dispatch({ type: 'queue', entry }),
-    repaint: () => draw(model.shown),
+    lookChanged: () => dispatch({ type: 'look' }),
+    repaint: () => {
+      dispatch({ type: 'look' })
+      draw(model.shown)
+    },
     shown: () => model.shown,
   }
 }

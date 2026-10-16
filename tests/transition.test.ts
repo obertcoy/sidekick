@@ -1,5 +1,5 @@
 import { expect } from 'claude-code/testing'
-import type { Condition, Effect, Entry, Event, Lookup, Model, Phase, Shown } from '../hooks/activity'
+import type { Ambient, Condition, Effect, Entry, Event, Lookup, Model, Phase, Shown } from '../hooks/activity'
 import { CONDITIONS, createActivity, initial, PHASES, transition } from '../hooks/activity'
 import type { Animation } from '../hooks/sprite/types'
 import { test } from './world'
@@ -24,11 +24,16 @@ const zap = entry('ticket-done')
 const draw = (state: Shown['state'], frame: number): Effect => ({ do: 'draw', shown: { state, animation: playsFor(state), frame } })
 
 /** Applies the events in order, collecting every effect. */
-const feed = (events: readonly Event[], from: Model = INITIAL, lookup: Lookup = playsFor): { model: Model; effects: Effect[] } => {
+const feed = (
+  events: readonly Event[],
+  from: Model = INITIAL,
+  lookup: Lookup = playsFor,
+  ambient: Ambient = noAmbient,
+): { model: Model; effects: Effect[] } => {
   let model = from
   const effects: Effect[] = []
   for (const event of events) {
-    const result = transition(model, event, lookup)
+    const result = transition(model, event, lookup, ambient)
     model = result.model
     effects.push(...result.effects)
   }
@@ -40,8 +45,10 @@ const on = (condition: Condition): Event => ({ type: 'set', condition, isOn: tru
 const off = (condition: Condition): Event => ({ type: 'set', condition, isOn: false })
 const queue = (e: Entry): Event => ({ type: 'queue', entry: e })
 
-test('the phases are the three kinds, and a model starts resting with nothing to do', async () => {
-  expect(PHASES).toEqual(['resting', 'playing', 'holding'])
+const noAmbient: Ambient = () => []
+test('the phases are the five kinds, and a model starts resting with nothing to do', async () => {
+  expect(PHASES).toEqual(['resting', 'between', 'ambient', 'playing', 'holding'])
+  expect(INITIAL.isMotionOn).toBe(false)
   expect(CONDITIONS).toEqual(['turn', 'search'])
   expect(INITIAL.phase).toEqual({ kind: 'resting' })
   expect(INITIAL.shown).toEqual({ state: 'resting', animation: playsFor('resting'), frame: 0 })
@@ -158,17 +165,16 @@ test('what is queued plays in order, each once, and the rest comes back after th
 
 test('a hook that queues from onEnd is handled after the effects now running, never inside them', async () => {
   const timers: { fn: () => void; isOn: boolean }[] = []
-  const clock = {
-    every: (_ms: number, fn: () => void) => {
-      const timer = { fn, isOn: true }
-      timers.push(timer)
-      return {
-        cancel: () => {
-          timer.isOn = false
-        },
-      } as ReturnType<Parameters<typeof createActivity>[0]['every']>
-    },
+  const every = (_ms: number, fn: () => void) => {
+    const timer = { fn, isOn: true }
+    timers.push(timer)
+    return {
+      cancel: () => {
+        timer.isOn = false
+      },
+    } as ReturnType<Parameters<typeof createActivity>[0]['every']>
   }
+  const clock = { every, after: every }
   const log: string[] = []
   const first: Entry = {
     state: 'ticket-done',
@@ -198,4 +204,149 @@ test('a phase cannot be written down without what it needs', async () => {
   // @ts-expect-error a holding phase needs its entry, animation, step and steps
   const bad: Phase = { kind: 'holding' }
   expect(bad.kind).toBe('holding')
+  // @ts-expect-error an ambient phase needs its animation, step and steps
+  const alsoBad: Phase = { kind: 'ambient' }
+  expect(alsoBad.kind).toBe('ambient')
+})
+
+// Ambient motion: with motion on, a rest with nothing going on waits a gap, plays one ambient animation, and waits again.
+const BLINK = fake(3, 90)
+const SPARK = fake(4, 80)
+const both: Ambient = () => [BLINK, SPARK]
+const motion = (isOn: boolean): Event => ({ type: 'motion', isOn })
+const gap = (roll: number): Event => ({ type: 'gap', roll })
+const look: Event = { type: 'look' }
+const WAIT: Effect = { do: 'wait' }
+const drawAmbient = (animation: Animation, frame: number): Effect => ({ do: 'draw', shown: { state: 'resting', animation, frame } })
+
+/** A model that rests with motion on, a gap pending. */
+const waiting = (): Model => feed([motion(true)], INITIAL, playsFor, both).model
+
+test('turning motion on at rest with ambient animations to play arms the gap; the rest is not drawn again', async () => {
+  const { model, effects } = feed([motion(true)], INITIAL, playsFor, both)
+  expect(model.phase).toEqual({ kind: 'between' })
+  expect(model.isMotionOn).toBe(true)
+  expect(effects).toEqual([WAIT])
+  // The same setting again is the same model.
+  expect(transition(model, motion(true), playsFor, both).model).toBe(model)
+})
+
+test('with no ambient animation to play, or with motion off, nothing waits: no timer is asked for', async () => {
+  const empty = feed([motion(true)], INITIAL, playsFor, noAmbient)
+  expect(empty.model.phase).toEqual({ kind: 'resting' })
+  expect(empty.model.isMotionOn).toBe(true)
+  expect(empty.effects).toEqual([])
+  // Motion off: everything that ends in rest ends without a gap.
+  const ended = feed([queue(zap), tick, tick], INITIAL, playsFor, both)
+  expect(ended.model.phase).toEqual({ kind: 'resting' })
+  expect(ended.effects).not.toContainEqual(WAIT)
+  expect(feed([on('turn'), off('turn')], INITIAL, playsFor, both).effects).not.toContainEqual(WAIT)
+})
+
+test('a gap that passes plays one ambient animation: the roll picks it, its first frame is drawn, and its own timer runs', async () => {
+  const first = transition(waiting(), gap(0), playsFor, both)
+  expect(first.model.phase).toEqual({ kind: 'ambient', animation: BLINK, step: 0, steps: BLINK.frames })
+  expect(first.effects).toEqual([{ do: 'stop' }, drawAmbient(BLINK, 0), { do: 'every', ms: 90 }])
+  const last = transition(waiting(), gap(0.999), playsFor, both)
+  expect(last.model.phase).toEqual({ kind: 'ambient', animation: SPARK, step: 0, steps: SPARK.frames })
+  expect(last.effects).toEqual([{ do: 'stop' }, drawAmbient(SPARK, 0), { do: 'every', ms: 80 }])
+  // Only what the character lists can play: the list is asked when the gap passes, not when it was armed.
+  const swapped = transition(waiting(), gap(0), playsFor, () => [SPARK])
+  expect(swapped.model.phase).toMatchObject({ kind: 'ambient', animation: SPARK })
+})
+
+test('an ambient animation plays each frame once, then the rest comes back and the next gap is armed', async () => {
+  const played = feed([gap(0)], waiting(), playsFor, both)
+  const frames = feed([tick, tick], played.model, playsFor, both)
+  expect(frames.effects).toEqual([drawAmbient(BLINK, 1), drawAmbient(BLINK, 2)])
+  const over = transition(frames.model, tick, playsFor, both)
+  expect(over.effects).toEqual([{ do: 'stop' }, draw('resting', 0), WAIT])
+  expect(over.model.phase).toEqual({ kind: 'between' })
+  expect(over.model.shown).toEqual({ state: 'resting', animation: playsFor('resting'), frame: 0 })
+})
+
+test('a gap that finds nothing to play (the character changed) goes back to rest and stops waiting', async () => {
+  const result = transition(waiting(), gap(0.5), playsFor, noAmbient)
+  expect(result.model.phase).toEqual({ kind: 'resting' })
+  expect(result.effects).toEqual([{ do: 'stop' }])
+})
+
+test('a state animation that arrives during an ambient one starts at once, and nothing of the ambient one is left', async () => {
+  const mid = feed([gap(0), tick], waiting(), playsFor, both).model
+  const result = transition(mid, queue(zap), playsFor, both)
+  expect(result.model.phase).toEqual({ kind: 'playing', entry: zap, animation: playsFor('ticket-done'), step: 0, steps: 2 })
+  expect(result.effects).toEqual([{ do: 'stop' }, { do: 'start', entry: zap, steps: 2 }, draw('ticket-done', 0), { do: 'every', ms: 50 }])
+  // A condition does the same: the turn writes at once.
+  const turn = transition(mid, on('turn'), playsFor, both)
+  expect(turn.model.phase).toEqual({ kind: 'resting' })
+  expect(turn.effects).toEqual([{ do: 'stop' }, draw('working', 0), { do: 'every', ms: 100 }])
+})
+
+test('a state animation that arrives while the gap is pending starts at once and cancels the gap; ambient motion comes back after the rest', async () => {
+  const queued = transition(waiting(), queue(zap), playsFor, both)
+  expect(queued.effects[0]).toEqual({ do: 'stop' })
+  expect(queued.model.phase.kind).toBe('playing')
+  const turn = transition(waiting(), on('turn'), playsFor, both)
+  expect(turn.effects).toEqual([{ do: 'stop' }, draw('working', 0), { do: 'every', ms: 100 }])
+  expect(turn.model.phase).toEqual({ kind: 'resting' })
+  // After the entry the gap is armed again.
+  const over = feed([tick, tick], queued.model, playsFor, both)
+  expect(over.model.phase).toEqual({ kind: 'between' })
+  expect(over.effects.at(-1)).toEqual(WAIT)
+})
+
+test('no gap is armed while a turn or a search goes on, or while an entry plays or holds', async () => {
+  const busy = feed([on('search')], waiting(), playsFor, both)
+  expect(busy.model.phase.kind).toBe('resting')
+  expect(busy.effects).not.toContainEqual(WAIT)
+  const playing = feed([queue(entry('ticket-done', 2))], waiting(), playsFor, both)
+  expect(playing.effects).not.toContainEqual(WAIT)
+  const holding = feed([tick, tick], playing.model, playsFor, both)
+  expect(holding.model.phase.kind).toBe('holding')
+  expect(holding.effects).not.toContainEqual(WAIT)
+  // Motion turned on during an entry only records; the gap is armed when the rest comes back.
+  const recorded = feed([queue(zap), motion(true)], INITIAL, playsFor, both)
+  expect(recorded.model.isMotionOn).toBe(true)
+  expect(recorded.effects).not.toContainEqual(WAIT)
+  expect(feed([tick, tick], recorded.model, playsFor, both).model.phase.kind).toBe('between')
+  // A turn that ends hands the rest back with the gap armed.
+  expect(feed([off('search')], busy.model, playsFor, both).effects.at(-1)).toEqual(WAIT)
+})
+
+test('turning motion off stops the gap, and cuts an ambient animation short with the rest drawn', async () => {
+  const off1 = transition(waiting(), motion(false), playsFor, both)
+  expect(off1.model.phase).toEqual({ kind: 'resting' })
+  expect(off1.effects).toEqual([{ do: 'stop' }])
+  const mid = feed([gap(0), tick], waiting(), playsFor, both).model
+  const off2 = transition(mid, motion(false), playsFor, both)
+  expect(off2.model.phase).toEqual({ kind: 'resting' })
+  expect(off2.effects).toEqual([{ do: 'stop' }, draw('resting', 0)])
+  // Off while an entry plays: it plays on, and the rest after it has no gap.
+  const playing = feed([queue(zap), motion(false), tick, tick], waiting(), playsFor, both)
+  expect(playing.model.phase).toEqual({ kind: 'resting' })
+  expect(playing.effects).not.toContainEqual(WAIT)
+})
+
+test('a new look re-asks what can play: it arms a gap that was not needed, drops one that is, and cuts short an ambient animation of the old character', async () => {
+  const none = feed([motion(true)], INITIAL, playsFor, noAmbient).model
+  const armed = transition(none, look, playsFor, both)
+  expect(armed.model.phase).toEqual({ kind: 'between' })
+  expect(armed.effects).toEqual([WAIT])
+  const dropped = transition(waiting(), look, playsFor, noAmbient)
+  expect(dropped.model.phase).toEqual({ kind: 'resting' })
+  expect(dropped.effects).toEqual([{ do: 'stop' }])
+  const mid = feed([gap(0), tick], waiting(), playsFor, both).model
+  const cut = transition(mid, look, playsFor, both)
+  expect(cut.model.phase).toEqual({ kind: 'between' })
+  expect(cut.effects).toEqual([{ do: 'stop' }, draw('resting', 0), WAIT])
+  // Nothing changes when the look changes with the gap already right, or while a turn writes.
+  expect(transition(waiting(), look, playsFor, both).effects).toEqual([])
+  expect(transition(feed([on('turn')], INITIAL, playsFor, both).model, look, playsFor, both).effects).toEqual([])
+})
+
+test('a gap that arrives in any phase but the pending one does nothing', async () => {
+  const mid = feed([gap(0), tick], waiting(), playsFor, both).model
+  for (const model of [INITIAL, feed([queue(zap)]).model, feed([queue(entry('ticket-done', 2)), tick, tick]).model, mid]) {
+    expect(transition(model, gap(0.9), playsFor, both), model.phase.kind).toEqual({ model, effects: [] })
+  }
 })

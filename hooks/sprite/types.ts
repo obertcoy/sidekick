@@ -69,6 +69,11 @@ export type Character = {
    * The registry refuses, at load, a name that is not an animation or a replacement the strike cannot keep in step with.
    */
   readonly animations?: Readonly<Partial<Record<State, string>>>
+  /**
+   * The ambient animations this character plays on its own while it rests, by name (the registry's `AMBIENT` catalog); left out or empty means none.
+   * The registry refuses, at load, a name that is not an ambient animation, and one whose anchors or poses the character lacks.
+   */
+  readonly ambient?: readonly string[]
   /** Rows of letters, at most the stage size; '.' (or anything past a short row) is transparent. */
   readonly body: readonly string[]
   /** What each body letter means. */
@@ -94,7 +99,7 @@ export type Character = {
  * Body changes an animation can ask for by name; each character draws its own. One shared, fixed list.
  * It grows only together with the animation that first uses a new name.
  */
-export const POSES = ['armUp', 'blink'] as const
+export const POSES = ['armUp', 'blink', 'tailUp', 'earsUp'] as const
 export type PoseName = (typeof POSES)[number]
 
 /** Letters laid over the body from `at`, row by row: ' ' keeps the body's pixel, '.' clears it, any other letter is from the legend. */

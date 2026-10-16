@@ -6,7 +6,8 @@ import type { Activity } from './activity'
 import { createActivity } from './activity'
 import type { Target } from './look'
 import { changeLook, lookReport, parseSaved, targetOf } from './look'
-import { cellsOf, leftOut, playsFor, SPRITE } from './sprite'
+import { changeMotion, MOTION, motionReport, parseMotion } from './motion'
+import { ambientFor, cellsOf, leftOut, playsFor, SPRITE } from './sprite'
 import { projectRoot, setCurrentRoot, setProjectLook, setSavedLook } from './sprite/look-in-use'
 import type { SavedLook } from './sprite/types'
 import { BURN_STEPS, BURNS, HITS, isStruck, LANDS, LEAVES, STRIKE_REST_STEPS } from './strike'
@@ -146,11 +147,12 @@ const sceneOf = ($: Dollar): Scene => {
     strike: undefined,
     pending: undefined,
     activity: createActivity(
-      { every: (ms, fn) => $.clock.every(ms, fn) },
+      { every: (ms, fn) => $.clock.every(ms, fn), after: (ms, fn) => $.clock.after(ms, fn) },
       ({ animation, frame }) => {
         void $.ui.blit({ requestId: PANE, key: BUDDY, cells: cellsOf(animation, frame) }).catch(() => undefined)
       },
       playsFor,
+      ambientFor,
     ),
   }
   scenes.set(PANE, scene)
@@ -581,11 +583,24 @@ const storedLook = async ($: Dollar, key: string | undefined): Promise<SavedLook
   }
 }
 
+/** Whether ambient motion is on, as the store holds it; on when nothing is saved, and on when the store cannot be read, so the sidekick keeps going without it. */
+const storedMotion = async ($: Dollar): Promise<boolean> => {
+  try {
+    return parseMotion(await $.store.get(MOTION))
+  } catch (error) {
+    $.ui.log(`sidekick: ${String(error)}`, { to: 'debug' })
+
+    return true
+  }
+}
+
 /** Reads the override of the project the session is in now, unless the one in memory is already for it. */
 const followProject = async ($: Dollar): Promise<void> => {
   const root = await rootOrNone($)
   if (root === undefined || projectRoot() === root) return
   setProjectLook((await storedLook($, lookKey('project', root))) ?? {}, root)
+  // The other project may show another character, with other things to do while it rests.
+  sceneOf($).activity.lookChanged()
 }
 
 const quietly = (work: Promise<unknown>, $: Dollar): void => {
@@ -632,11 +647,18 @@ export const register: Register = on => {
       description: "Choose the sidekick's character, accessories and background",
       argumentHint: '[character=classic head=cap background=dusk]',
     })
+    await $.command.register({
+      name: 'sidekick-motion',
+      description: "Turn the sidekick's ambient motion off or on, for all projects",
+      argumentHint: '[off|on]',
+    })
     // A session that ended mid-turn may never have raised turn.complete; the new one starts with no turn running.
     sceneOf($).activity.set('turn', false)
     setSavedLook((await storedLook($, LOOK)) ?? {})
     const root = await rootOrNone($)
     setProjectLook((await storedLook($, lookKey('project', root))) ?? {}, root)
+    // The look is in place before the activity asks what the character plays on its own.
+    sceneOf($).activity.setMotion(await storedMotion($))
     void $.ui.open({ id: PANE, title: 'Sidekick' })
     quietly(refresh($), $)
     $.clock.every(REFRESH_MS, () => quietly(refresh($), $))
@@ -746,6 +768,26 @@ export const register: Register = on => {
     // The sidekick repaints with the new look before the command returns.
     sceneOf($).activity.repaint()
     $.ui.invalidate('ui.render')
+
+    return { text: change.text }
+  })
+
+  on('command.run', { command: 'sidekick-motion' }, async ($, e) => {
+    // Another terminal may have changed the setting since this session read it, so the store is the truth.
+    const { activity } = sceneOf($)
+    const held = await storedMotion($)
+    activity.setMotion(held)
+    if (e.args.trim() === '') return { text: motionReport(held) }
+    const change = changeMotion(e.args)
+    if (!change.isSaved) return { text: change.text }
+    try {
+      await $.store.set(MOTION, change.isOn)
+    } catch (error) {
+      $.ui.log(`sidekick: ${String(error)}`, { to: 'debug' })
+
+      return { text: 'Could not save the setting. Nothing was changed.' }
+    }
+    activity.setMotion(change.isOn)
 
     return { text: change.text }
   })

@@ -57,13 +57,12 @@ test('a strike for a replacement of "ticket done" draws the replacement frames i
   const owl = withReplacements('owl', { 'ticket-done': 'cheer' })
   const expectedSteps = ANIMATIONS.cheer.frames + STRIKE_REST_STEPS
   const ticks: (() => void)[] = []
-  const clock = {
-    every: (_ms: number, fn: () => void) => {
-      ticks.push(fn)
+  const every = (_ms: number, fn: () => void) => {
+    ticks.push(fn)
 
-      return { cancel: () => ticks.pop() } as never
-    },
+    return { cancel: () => ticks.pop() } as never
   }
+  const clock = { every, after: every }
   const drawn: Shown[] = []
   const activity = createActivity(
     clock,

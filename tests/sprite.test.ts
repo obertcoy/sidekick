@@ -10,7 +10,9 @@ import { currentLook, drawable, droppedOf, layersOf, setSavedLook } from '../hoo
 import {
   ACCESSORIES,
   AMBIENT,
+  type AmbientName,
   ANIMATIONS,
+  ambientAnimationsOf,
   animationNameOf,
   animationOf,
   BACKGROUNDS,
@@ -639,8 +641,8 @@ const padded = (character: Character): string[] => Array.from({ length: STAGE.he
 const withPoses = (name: string, poses: unknown): Character => ({ ...foxkit, name, poses }) as unknown as Character
 const armless = defineCharacter({ ...foxkit, name: 'armless', poses: {} })
 
-test('the pose names are one fixed list that holds armUp and blink', async () => {
-  expect(POSES).toEqual(['armUp', 'blink'])
+test('the pose names are one fixed list that holds armUp, blink and the tail and ear flicks', async () => {
+  expect(POSES).toEqual(['armUp', 'blink', 'tailUp', 'earsUp'])
 })
 
 test('posed lays each patch over the body: a space keeps the pixel, a dot clears it, a letter sets it', async () => {
@@ -670,7 +672,9 @@ test('poses in one frame apply in the order given, so the later one wins', async
 test('a character with a pose that is not a known name, is off the stage, or uses a letter without a legend entry or colour is refused, naming the character and the pose', async () => {
   const load = (poses: unknown, extra: Partial<Character> = {}): Character =>
     defineCharacter({ ...foxkit, name: 'odd', ...extra, poses } as unknown as Character)
-  expect(() => load({ nod: { at: { x: 0, y: 0 }, rows: ['o'] } })).toThrow('sprite: character "odd" has the pose "nod", which is not one of: armUp')
+  expect(() => load({ nod: { at: { x: 0, y: 0 }, rows: ['o'] } })).toThrow(
+    'sprite: character "odd" has the pose "nod", which is not one of: armUp, blink, tailUp, earsUp',
+  )
   expect(() => load({ armUp: { at: { x: 17, y: 0 }, rows: ['oo'] } })).toThrow('character "odd" has the pose "armUp" off the stage')
   expect(() => load({ armUp: { at: { x: 0, y: 15 }, rows: ['o', 'o'] } })).toThrow('character "odd" has the pose "armUp" off the stage')
   expect(() => load({ armUp: { at: { x: -1, y: 0 }, rows: ['o'] } })).toThrow('character "odd" has the pose "armUp" off the stage')
@@ -904,8 +908,8 @@ test('no state plays the blink, for any character', async () => {
   }
 })
 
-test('the load check covers the animations a character plays: one per state, plus the ambient ones no state plays', async () => {
-  expect(AMBIENT).toEqual(['blink'])
+test('the load check covers the animations a character plays: one per state, plus the ambient ones it lists', async () => {
+  expect(AMBIENT).toEqual(['blink', 'tailFlick', 'earFlick', 'cheekSpark'])
   // A character that draws armUp but not blink is refused for the blink, which no state plays.
   const blinkless = defineCharacter({ ...foxkit, name: 'blinkless', poses: { armUp: foxkit.poses?.armUp } })
   expect(() => requirePlayed(blinkless)).toThrow('sprite: character "blinkless" has no pose "blink", which the animation "blink" needs')
@@ -914,12 +918,13 @@ test('the load check covers the animations a character plays: one per state, plu
   const { neck: _neck, ...withoutNeck } = foxkit.anchors
   const neckless = defineCharacter({ ...foxkit, name: 'neckless', anchors: withoutNeck, bobs: { head: true, face: true, held: false } })
   expect(() => requirePlayed(neckless)).not.toThrow()
-  expect(() => requirePlayed(neckless, { ...ANIMATIONS, needy }, [...AMBIENT, 'needy'])).toThrow(
+  // The animation is checked only for the character that lists it.
+  expect(() => requirePlayed({ ...neckless, ambient: [...(neckless.ambient ?? []), 'needy'] }, { ...ANIMATIONS, needy }, [...AMBIENT, 'needy'])).toThrow(
     'sprite: character "neckless" is missing the anchor "neck", which the animation "needy" needs',
   )
   // An ambient animation that asks for a pose it did not declare is refused.
   const sneaky: Animation = { needs: [], poses: [], frames: 1, msPerFrame: 1, once: false, hides: [], frame: () => ({ poses: ['blink'] }) }
-  expect(() => requirePlayed(foxkit, { ...ANIMATIONS, sneaky }, [...AMBIENT, 'sneaky'])).toThrow(
+  expect(() => requirePlayed({ ...foxkit, ambient: ['sneaky'] }, { ...ANIMATIONS, sneaky }, [...AMBIENT, 'sneaky'])).toThrow(
     'the animation "sneaky" asks for the pose "blink" at step 0 for character "foxkit"',
   )
   // The state-labelled names stay where a state plays the animation.
@@ -929,7 +934,7 @@ test('the load check covers the animations a character plays: one per state, plu
 
 test('a character that replaces ticket-done never plays zap, so it needs no armUp; an animation only some character replaces with is not checked against the rest', async () => {
   const { armUp: _armUp, ...blinkOnly } = foxkit.poses ?? {}
-  const owl = defineCharacter({ ...foxkit, name: 'owl', poses: blinkOnly, animations: { 'ticket-done': 'cheer' } })
+  const owl = defineCharacter({ ...foxkit, name: 'owl', poses: blinkOnly, animations: { 'ticket-done': 'cheer' }, ambient: ['blink'] })
   expect(() => requirePlayed(owl)).not.toThrow()
   // Without the replacement it would play zap and be refused.
   expect(() => requirePlayed({ ...owl, animations: {} })).toThrow('has no pose "armUp", which the animation "zap (ticket-done)" needs')
@@ -942,4 +947,205 @@ test('a character that replaces ticket-done never plays zap, so it needs no armU
   expect(() => requirePlayed({ ...neckless, animations: { working: 'hoot' } }, { ...ANIMATIONS, hoot })).toThrow(
     'sprite: character "neckless" is missing the anchor "neck", which the animation "hoot (working)" needs',
   )
+})
+
+// Ambient motion: the four shared animations (blink, tail flick, ear flick, cheek spark), each character naming the ones it uses.
+
+/** The pixels where two frames differ, as "x,y", clear pixels included (`differing` skips a pixel that is clear in the first frame). */
+const changedPixels = (a: Pixels, b: Pixels): string[] =>
+  Array.from({ length: STAGE.height }, (_, y) => y).flatMap(y =>
+    Array.from({ length: STAGE.width }, (_, x) => x).flatMap(x => (a[y]?.[x] !== b[y]?.[x] ? [`${x},${y}`] : [])),
+  )
+/** The ambient animations a shipped character lists, by name. */
+const listedBy = (character: Character): readonly AmbientName[] => AMBIENT.filter(name => (character.ambient ?? []).includes(name))
+/** The colour of a body letter on a character, or undefined for a clear pixel. */
+const letterColor = (character: Character, letter: string | undefined): number | undefined => {
+  const role = letter === undefined ? undefined : character.legend[letter]
+  return role === undefined ? undefined : character.palette[role]
+}
+/** The pixels a pose changes in the body (its colour differs from the plain body), as "x,y". */
+const poseChanges = (character: Character, pose: PoseName): string[] => {
+  const plain = posed(character, [])
+  const with_ = posed(character, [pose])
+  return plain.flatMap((row, y) =>
+    [...row].flatMap((letter, x) => (letterColor(character, letter) !== letterColor(character, with_[y]?.[x]) ? [`${x},${y}`] : [])),
+  )
+}
+const frameCount = (animation: Animation): number[] => Array.from({ length: animation.frames }, (_, step) => step)
+
+test('the catalog holds four ambient animations, each in the animation catalog, once-only, and mapped to no state', async () => {
+  expect(AMBIENT).toHaveLength(4)
+  for (const name of AMBIENT) {
+    expect(ANIMATIONS[name], name).toBeDefined()
+    expect(ANIMATIONS[name].once, name).toBe(true)
+    expect(Object.values(STATES), name).not.toContain(name)
+  }
+})
+
+test('the foxkit and the classic each list the blink, and every name they list is in the ambient catalog', async () => {
+  for (const character of Object.values(CHARACTERS)) {
+    expect(character.ambient, character.name).toContain('blink')
+    for (const name of character.ambient ?? []) expect(AMBIENT as readonly string[], `${character.name} ${name}`).toContain(name)
+    expect(ambientAnimationsOf(character), character.name).toEqual((character.ambient ?? []).map(name => ANIMATIONS[name as AmbientName]))
+  }
+})
+
+test('every ambient animation starts at rest, ends at rest and leaves it in between, for each character that lists it', async () => {
+  for (const character of Object.values(CHARACTERS)) {
+    const layers = bare(character)
+    const rest = restPixels(layers)
+    for (const name of listedBy(character)) {
+      const animation = ANIMATIONS[name]
+      const frames = frameCount(animation).map(step => composePixels(layers, animation, step))
+      const label = `${character.name} ${name}`
+      expect(changedPixels(frames[0] ?? [], rest), `${label} first`).toEqual([])
+      expect(changedPixels(frames.at(-1) ?? [], rest), `${label} last`).toEqual([])
+      expect(
+        frames.some(frame => changedPixels(frame, rest).length > 0),
+        `${label} leaves rest`,
+      ).toBe(true)
+    }
+  }
+})
+
+test('the tail and ear flicks change exactly the pixels their pose patches change, also with all four accessories on', async () => {
+  const flicks = [
+    ['tailFlick', 'tailUp'],
+    ['earFlick', 'earsUp'],
+  ] as const
+  for (const character of Object.values(CHARACTERS)) {
+    for (const [name, pose] of flicks) {
+      const expected = poseChanges(character, pose).sort()
+      expect(expected.length, `${character.name} ${pose} changes something`).toBeGreaterThan(0)
+      for (const outfit of [{}, withAll()]) {
+        const layers = { character, outfit, background: null }
+        const rest = restPixels(layers)
+        const changed = new Set(frameCount(ANIMATIONS[name]).flatMap(step => changedPixels(composePixels(layers, ANIMATIONS[name], step), rest)))
+        expect([...changed].sort(), `${character.name} ${name} with ${Object.keys(outfit).length} accessories`).toEqual(expected)
+      }
+    }
+  }
+})
+
+test('a flick pose in a bobbed frame draws each patch pixel one pixel down when it is inside the head region, and where the patch put it when it is outside', async () => {
+  for (const character of Object.values(CHARACTERS)) {
+    for (const pose of ['tailUp', 'earsUp'] as const) {
+      const bobbing = defineAnimation({ needs: [], poses: [pose], frames: 1, msPerFrame: 1, once: false, hides: [], frame: () => ({ bob: 1, poses: [pose] }) })
+      const steady: Animation = { ...bobbing, poses: [], frame: () => ({ bob: 1 }) }
+      const patch = poseChanges(character, pose)
+      for (const outfit of [{}, withAll()]) {
+        const layers = { character, outfit, background: null }
+        const changed = changedPixels(composePixels(layers, bobbing, 0), composePixels(layers, steady, 0))
+        const label = `${character.name} ${pose} with ${Object.keys(outfit).length} accessories`
+        // A pixel inside the head region moves down with the head; one outside it stays where the patch put it.
+        const region = character.headRegion
+        const expected = patch.map(at => {
+          const [x = 0, y = 0] = at.split(',').map(Number)
+          const isInside = x >= region.left && x <= region.right && y >= region.top && y <= region.bottom
+
+          return `${x},${isInside ? y + 1 : y}`
+        })
+        expect(changed.sort(), label).toEqual(expected.sort())
+      }
+    }
+  }
+})
+
+/** The letter of a body grid at a point, or '.' off the grid. */
+const letterAt = (rows: readonly string[], x: number, y: number): string => rows[y]?.[x] ?? '.'
+
+test('the ear tips of the earsUp pose sit directly above the ear tip pixels of the body, and are the same colour', async () => {
+  for (const character of Object.values(CHARACTERS)) {
+    const body = posed(character, [])
+    const up = posed(character, ['earsUp'])
+    const ears = character.anchors.ears ?? []
+    expect(poseChanges(character, 'earsUp').sort(), character.name).toEqual(ears.map(({ x, y }) => `${x},${y - 1}`).sort())
+    for (const { x, y } of ears) {
+      expect(letterAt(body, x, y), `${character.name} ear tip (${x},${y}) is body`).not.toBe('.')
+      expect(letterAt(body, x, y - 1), `${character.name} above the ear tip is clear`).toBe('.')
+      expect(letterAt(up, x, y - 1), `${character.name} lifted tip repeats the tip`).toBe(letterAt(body, x, y))
+    }
+  }
+})
+
+test('the tailUp pose changes the tail and only the tail: the tips are raised directly above their body pixels, and the classic leans by clearing its upper tip', async () => {
+  const foxBody = posed(foxkit, [])
+  const foxUp = posed(foxkit, ['tailUp'])
+  // The fork moves up one row: each tip's letter is drawn directly above it, and the row it left takes the letter that was below it.
+  for (const { x, y } of foxkit.anchors.tail ?? []) {
+    expect(letterAt(foxBody, x, y), `foxkit tip (${x},${y}) is body`).not.toBe('.')
+    expect(letterAt(foxBody, x, y - 1), `foxkit above tip (${x},${y}) is clear`).toBe('.')
+    expect(letterAt(foxUp, x, y - 1), `foxkit raised tip above (${x},${y})`).toBe(letterAt(foxBody, x, y))
+    expect(letterAt(foxUp, x, y), `foxkit row of tip (${x},${y}) takes the row below`).toBe(letterAt(foxBody, x, y + 1))
+  }
+  // Nothing outside the tail columns (0-2) changes.
+  for (const at of poseChanges(foxkit, 'tailUp')) expect(Number(at.split(',')[0]), `foxkit change ${at} is in the tail`).toBeLessThanOrEqual(2)
+
+  const body = posed(classic, [])
+  const up = posed(classic, ['tailUp'])
+  const [upper] = classic.anchors.tail ?? []
+  expect(upper, 'classic upper tail tip').toEqual({ x: 0, y: 9 })
+  // The upper tip (0,9) is a tail pixel in the body; it is cleared and drawn one row up and the zigzag beside it stays.
+  expect(letterAt(body, 0, 9), 'classic upper tip is body').not.toBe('.')
+  expect(letterAt(body, 0, 8), 'classic above the upper tip is clear').toBe('.')
+  expect(letterAt(up, 0, 9), 'classic upper tip cleared').toBe('.')
+  expect(letterAt(up, 0, 8), 'classic leaning tip').toBe(letterAt(body, 0, 9))
+  expect(letterAt(up, 1, 9), 'classic zigzag stays').toBe(letterAt(body, 1, 9))
+  expect(poseChanges(classic, 'tailUp').sort()).toEqual(['0,8', '0,9'])
+})
+
+test('the cheek spark lights the cheek anchors and nothing else, also with all four accessories on', async () => {
+  for (const character of Object.values(CHARACTERS)) {
+    const cheeks = (character.anchors.cheeks ?? []).map(({ x, y }) => `${x},${y}`).sort()
+    expect(cheeks.length, character.name).toBeGreaterThan(0)
+    for (const outfit of [{}, withAll()]) {
+      const layers = { character, outfit, background: null }
+      const rest = restPixels(layers)
+      const lit = new Set(frameCount(ANIMATIONS.cheekSpark).flatMap(step => changedPixels(composePixels(layers, ANIMATIONS.cheekSpark, step), rest)))
+      expect([...lit].sort(), `${character.name} with ${Object.keys(outfit).length} accessories`).toEqual(cheeks)
+    }
+  }
+})
+
+test('a character that lists an animation that does not exist, or one that is not ambient, is refused, naming the ones that are', async () => {
+  expect(() => requirePlayed({ ...foxkit, name: 'owl', ambient: ['hoot'] })).toThrow(
+    `sprite: character "owl" lists "hoot", which is not an ambient animation; ambient: ${AMBIENT.join(', ')}`,
+  )
+  // zap exists, but it is a state animation, not an ambient one.
+  expect(() => requirePlayed({ ...foxkit, name: 'owl', ambient: ['zap'] })).toThrow(
+    `sprite: character "owl" lists "zap", which is not an ambient animation; ambient: ${AMBIENT.join(', ')}`,
+  )
+  // A name on the object prototype is not an animation either.
+  expect(() => requirePlayed({ ...foxkit, name: 'owl', ambient: ['constructor'] })).toThrow('lists "constructor", which is not an ambient animation')
+})
+
+test('a character that lists an ambient animation without an anchor or a pose it needs is refused, naming what is missing', async () => {
+  const { cheeks: _cheeks, ...withoutCheeks } = foxkit.anchors
+  // The cheer needs no cheeks and no tail, so these characters play no zap and the only thing in question is the ambient animation.
+  const cheerful = { 'ticket-done': 'cheer' } as const
+  const cheekless = defineCharacter({ ...foxkit, name: 'cheekless', anchors: withoutCheeks, animations: cheerful })
+  expect(() => requirePlayed({ ...cheekless, ambient: ['cheekSpark'] })).toThrow(
+    'sprite: character "cheekless" is missing the anchor "cheeks", which the animation "cheekSpark" needs',
+  )
+  const { tailUp: _tailUp, ...withoutTailUp } = foxkit.poses ?? {}
+  const flat = defineCharacter({ ...foxkit, name: 'flat', poses: withoutTailUp, animations: cheerful })
+  expect(() => requirePlayed({ ...flat, ambient: ['tailFlick'] })).toThrow(
+    'sprite: character "flat" has no pose "tailUp", which the animation "tailFlick" needs',
+  )
+  const { tail: _tail, ...withoutTail } = foxkit.anchors
+  const tailless = defineCharacter({ ...foxkit, name: 'tailless', anchors: withoutTail, animations: cheerful })
+  expect(() => requirePlayed({ ...tailless, ambient: ['tailFlick'] })).toThrow('is missing the anchor "tail", which the animation "tailFlick" needs')
+})
+
+test('a character that does not list an animation needs none of its anchors or poses; a character with an empty or no list has no ambient motion', async () => {
+  const { cheeks: _cheeks, ...withoutCheeks } = foxkit.anchors
+  const cheekless = defineCharacter({ ...foxkit, name: 'cheekless', anchors: withoutCheeks, animations: { 'ticket-done': 'cheer' }, ambient: ['blink'] })
+  expect(() => requirePlayed(cheekless)).not.toThrow()
+  expect(ambientAnimationsOf(cheekless)).toEqual([ANIMATIONS.blink])
+  // The state animations still need their anchors: the shared zap needs the cheeks.
+  expect(() => requirePlayed({ ...cheekless, animations: {} })).toThrow('is missing the anchor "cheeks", which the animation "zap (ticket-done)" needs')
+  expect(ambientAnimationsOf({ ...foxkit, ambient: [] })).toEqual([])
+  const { ambient: _ambient, ...unlisted } = foxkit
+  expect(ambientAnimationsOf(unlisted)).toEqual([])
+  expect(() => requirePlayed({ ...foxkit, ambient: [] })).not.toThrow()
 })

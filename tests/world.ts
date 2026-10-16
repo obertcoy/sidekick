@@ -16,6 +16,12 @@ export const test = (name: string, ...rest: readonly [body: TestBody] | readonly
   harnessTest(name, { ...options, timeoutMs: options.timeoutMs ?? TEST_TIMEOUT_MS }, body)
 }
 
+/**
+ * A store that holds the motion setting off. Whole-mod tests that read what the sidekick painted over a stretch of mock time at rest
+ * start from it, so an ambient animation cannot land in the middle of what they are about; tests/ambient.test.ts covers motion on.
+ */
+export const QUIET = { motion: false }
+
 // The world beneath the mod in the whole-mod tests: a project on disk, the small model and the session.
 
 export type Entry = { name: string; kind: 'file' | 'dir'; mtimeMs?: number }
@@ -184,19 +190,37 @@ export const REFRESH_MS = 20_000
  * Hand `counting(on).on` to `mock.clock` in place of `on`, and `running()` says how many `clock.every` and
  * `clock.after` waits are in flight now, those of `ignored` lengths left out. A timer the mod cancels is not counted.
  */
-export const counting = (on: On, ignored: readonly number[] = [REFRESH_MS]): { on: On; running: () => number } => {
+export const counting = (
+  on: On,
+  ignored: readonly number[] = [REFRESH_MS],
+): {
+  on: On
+  running: () => number
+  /** How many one-time waits (`clock.after`) are in flight now: the sidekick's gaps between ambient animations. */
+  gaps: () => number
+  /** The length in milliseconds of every one-time wait the mod started, in order. */
+  gapLengths: number[]
+} => {
   let waits = 0
+  let pendingGaps = 0
+  const gapLengths: number[] = []
   const hooked = (event: string, ...rest: unknown[]): unknown => {
     const hook = rest[rest.length - 1] as (...args: unknown[]) => unknown
     if (event === 'clock.every' || event === 'clock.after') {
       rest[rest.length - 1] = async (...args: unknown[]) => {
         const { ms } = args[1] as { ms: number }
         const isCounted = !ignored.includes(ms)
+        const isGap = event === 'clock.after'
         if (isCounted) waits += 1
+        if (isGap) {
+          pendingGaps += 1
+          gapLengths.push(ms)
+        }
         try {
           return await hook(...args)
         } finally {
           if (isCounted) waits -= 1
+          if (isGap) pendingGaps -= 1
         }
       }
     }
@@ -204,5 +228,5 @@ export const counting = (on: On, ignored: readonly number[] = [REFRESH_MS]): { o
     return (on as unknown as (...args: unknown[]) => unknown)(event, ...rest)
   }
 
-  return { on: hooked as unknown as On, running: () => waits }
+  return { on: hooked as unknown as On, running: () => waits, gaps: () => pendingGaps, gapLengths }
 }

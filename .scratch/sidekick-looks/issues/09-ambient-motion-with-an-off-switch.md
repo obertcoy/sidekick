@@ -4,20 +4,20 @@
 
 **Blocked by:** 07: The sidekick looks around during a search and shrugs when it fails; 08d: The sidekick can blink
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Four shared ambient animations exist: blink, tail flick, ear flick and cheek spark; each plays once and is drawn from anchors and poses only (tail and ear flicks add their own poses here)
-- [ ] Each character lists the ambient animations it uses; the foxkit and the classic character each list at least the blink
-- [ ] The blink uses the `blink` pose (from 08d), drawn by the foxkit and the classic character
-- [ ] A character that lists an animation that doesn't exist, or lists an ambient animation without an anchor or pose it needs, is refused at load
-- [ ] A character with an empty list has no ambient motion
-- [ ] At rest nothing is painted in the first 5 seconds, and at least one ambient animation has played by 15 seconds plus its length
-- [ ] Only animations from the current character's list play
-- [ ] No ambient animation plays while a turn runs, a search runs or a once-only animation plays
-- [ ] A state animation that arrives during an ambient animation starts at once
-- [ ] The motion command is registered at session start; `off` and `on` set it, and no argument reports it
-- [ ] Ambient motion is on for a developer who never ran the command
-- [ ] The setting applies in every project and survives a fresh session start
-- [ ] With motion off no ambient animation plays, no timer is pending at rest, and writing, looking, shrugging, zapping and cheering still play
-- [ ] The bare foxkit's golden frames are unchanged
-- [ ] Covered by whole-mod tests that advance the mock clock; the random gap is tested by its bounds, with no random source injected
+- [x] Four shared ambient animations exist: blink, tail flick, ear flick and cheek spark; each plays once and is drawn from anchors and poses only (tail and ear flicks add their own poses here)
+- [x] Each character lists the ambient animations it uses; the foxkit and the classic character each list at least the blink
+- [x] The blink uses the `blink` pose (from 08d), drawn by the foxkit and the classic character
+- [x] A character that lists an animation that doesn't exist, or lists an ambient animation without an anchor or pose it needs, is refused at load
+- [x] A character with an empty list has no ambient motion
+- [x] At rest nothing is painted in the first 5 seconds, and at least one ambient animation has played by 15 seconds plus its length
+- [x] Only animations from the current character's list play
+- [x] No ambient animation plays while a turn runs, a search runs or a once-only animation plays
+- [x] A state animation that arrives during an ambient animation starts at once
+- [x] The motion command is registered at session start; `off` and `on` set it, and no argument reports it
+- [x] Ambient motion is on for a developer who never ran the command
+- [x] The setting applies in every project and survives a fresh session start
+- [x] With motion off no ambient animation plays, no timer is pending at rest, and writing, looking, shrugging, zapping and cheering still play
+- [x] The bare foxkit's golden frames are unchanged
+- [x] Covered by whole-mod tests that advance the mock clock; the random gap is tested by its bounds, with no random source injected

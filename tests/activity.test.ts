@@ -6,7 +6,7 @@ import { currentLook, layersOf } from '../hooks/sprite/look-in-use'
 import { ANIMATIONS } from '../hooks/sprite/registry'
 import { strikeSteps } from '../hooks/strike'
 import type { Reply, World } from './world'
-import { addSet, answered, counting, failed, PANE, RECIPE, REFRESH_MS, RUN, test, ticket, world } from './world'
+import { addSet, answered, counting, failed, PANE, QUIET, RECIPE, REFRESH_MS, RUN, test, ticket, world } from './world'
 
 // What the sidekick does while a search runs, when one fails, and how that mixes with turns and
 // zaps. Each test drives the mod as the engine does and reads the cells the mod painted.
@@ -79,7 +79,8 @@ type Open = {
 const open = async ($: Engine, on: On, tickets: Record<string, string> = TICKETS): Promise<Open> => {
   const timers = counting(on)
   const clock = mock.clock(timers.on)
-  mock.store(on)
+  // These tests are about what happens in the project, so ambient motion is off, as it was before it existed (tests/ambient.test.ts covers it on).
+  mock.store(on, QUIET)
   const w = world(on, ROOT)
   addSet(w, ROOT, 'checkout', tickets, 5)
   on('turn.start', (_, e) => ({ turnId: e.turnId }))

@@ -4,10 +4,13 @@ import { flag } from './accessories/flag'
 import { glasses } from './accessories/glasses'
 import { scarf } from './accessories/scarf'
 import { blink } from './animations/blink'
+import { cheekSpark } from './animations/cheekSpark'
 import { cheer } from './animations/cheer'
+import { earFlick } from './animations/earFlick'
 import { idle } from './animations/idle'
 import { look } from './animations/look'
 import { shrug } from './animations/shrug'
+import { tailFlick } from './animations/tailFlick'
 import { write } from './animations/write'
 import { zap } from './animations/zap'
 import { dusk } from './backgrounds/dusk'
@@ -22,7 +25,7 @@ import { REPLACEABLE_STATES, STATE_NAMES } from './types'
 
 export const CHARACTERS: Readonly<Record<string, Character>> = { foxkit, classic }
 
-export const ANIMATIONS = { idle, write, zap, look, shrug, cheer, blink } as const satisfies Record<string, Animation>
+export const ANIMATIONS = { idle, write, zap, look, shrug, cheer, blink, tailFlick, earFlick, cheekSpark } as const satisfies Record<string, Animation>
 
 /** What the sidekick is shown doing, and the animation that plays for each. */
 export const STATES = {
@@ -131,15 +134,23 @@ export const requireDeclaredPoses = (character: Character, played: Readonly<Reco
 }
 
 /**
- * The animations every character plays outside any state, as ambient motion. Ticket 09 schedules from this list, and the load check
- * covers each of them for every character. A new ambient animation is its file, its catalog line and a name here.
+ * The shared catalog of ambient animations: the ones a character may play on its own while it rests. Each character lists the subset it
+ * uses (`Character.ambient`), and the load check covers exactly those. A new ambient animation is its file, its catalog line and a name here.
  */
-export const AMBIENT = ['blink'] as const satisfies readonly (keyof typeof ANIMATIONS)[]
+export const AMBIENT = ['blink', 'tailFlick', 'earFlick', 'cheekSpark'] as const satisfies readonly (keyof typeof ANIMATIONS)[]
 export type AmbientName = (typeof AMBIENT)[number]
 
+/** The ambient animations a character plays, in the order it lists them; none for a character that lists none. The names are checked at load (`requirePlayed`). */
+export const ambientAnimationsOf = (character: Character): Animation[] =>
+  (character.ambient ?? []).flatMap(name => {
+    const animation = found<Animation>(ANIMATIONS, name)
+    return animation === undefined || !(AMBIENT as readonly string[]).includes(name) ? [] : [animation]
+  })
+
 // Checked at load for each character: its replacements first, then the anchors and poses of exactly what it plays. That is the animation
-// of each state through the lookup (named with its state, "zap (ticket-done)"), plus each ambient one (by plain name). An animation
-// that the character displaces (the shared zap, for a character with its own ticket-done) is not played, so it is not checked.
+// of each state through the lookup (named with its state, "zap (ticket-done)"), plus each ambient one the character lists (by plain name).
+// An animation that the character displaces (the shared zap, for a character with its own ticket-done) or does not list is not played, so it is not checked.
+// `ambient` is the names that count as ambient animations; the characters list only from it.
 export const requirePlayed = (character: Character, catalog: Readonly<Record<string, Animation>> = ANIMATIONS, ambient: readonly string[] = AMBIENT): void => {
   requireReplacements(character, catalog)
   const byState = STATE_NAMES.flatMap(state => {
@@ -147,9 +158,11 @@ export const requirePlayed = (character: Character, catalog: Readonly<Record<str
     const animation = found(catalog, name)
     return animation === undefined ? [] : [[`${name} (${state})`, animation] as const]
   })
-  const byAmbient = ambient.map(name => {
-    const animation = found(catalog, name)
-    if (animation === undefined) throw new Error(`sprite: the ambient animation "${name}" does not exist; known: ${Object.keys(catalog).join(', ')}`)
+  const byAmbient = (character.ambient ?? []).map(name => {
+    const animation = ambient.includes(name) ? found(catalog, name) : undefined
+    if (animation === undefined) {
+      throw new Error(`sprite: character "${character.name}" lists "${name}", which is not an ambient animation; ambient: ${ambient.join(', ')}`)
+    }
     return [name, animation] as const
   })
   const played = Object.fromEntries([...byState, ...byAmbient])

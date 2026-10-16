@@ -10,7 +10,7 @@ import { ACCESSORIES, ANIMATIONS, CHARACTERS } from '../hooks/sprite/registry'
 import type { Accessory, Character } from '../hooks/sprite/types'
 import { strikeSteps } from '../hooks/strike'
 import { GOLDEN } from './sprite-golden'
-import { addSet, answered, PANE, RECIPE, RUN, test, ticket, world } from './world'
+import { addSet, answered, PANE, QUIET, RECIPE, RUN, test, ticket, world } from './world'
 
 // The pane draws the look resolved at each refresh, and the test world keeps what was painted.
 const ROOT = '/work/shop'
@@ -20,7 +20,7 @@ const SETTLED = ANIMATIONS.shrug.frames * ANIMATIONS.shrug.msPerFrame
 
 test('with nothing saved the pane paints the bare foxkit: writing in a turn, idle after it, zapping on a done ticket', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, QUIET)
   const w = world(on, ROOT)
   addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'in-progress') }, 5)
   w.answer = () => answered(RECIPE)
@@ -59,7 +59,7 @@ const LOOK = { command: 'sidekick-look', ...RUN }
 /** A session with the pane mounted and nothing painted yet. */
 const started = async ($: Engine, on: On) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, QUIET)
   const w = world(on, ROOT)
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
@@ -180,15 +180,15 @@ for (const [what, args, refusal] of REFUSALS)
 
 test('the look command is registered at session start beside the existing commands', async ($, on) => {
   mock.clock(on)
-  mock.store(on)
+  mock.store(on, QUIET)
   const w = world(on, ROOT)
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
-  expect(w.registered).toEqual(['sidekick', 'sidekick-rescan', 'sidekick-pick', 'sidekick-look'])
+  expect(w.registered).toEqual(['sidekick', 'sidekick-rescan', 'sidekick-pick', 'sidekick-look', 'sidekick-motion'])
 })
 
 /** A store the test can reach into: `data` is what the mod saved, the flags make a read or a write fail. */
 const openStore = (on: On) => {
-  const store = { data: new Map<string, unknown>(), failsGet: false, failsProjectGet: false, failsSet: false }
+  const store = { data: new Map<string, unknown>(Object.entries(QUIET)), failsGet: false, failsProjectGet: false, failsSet: false }
   on('store.get', (_, e) => {
     if ((store.failsGet && e.key === 'look') || (store.failsProjectGet && e.key.startsWith('look:'))) throw new Error('store down')
 
@@ -275,7 +275,7 @@ const lookOf = async ($: Engine, root: string, w: { root: string }) => {
 
 test('here changes the sidekick in this project and not in another, and survives a fresh session start', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, QUIET)
   const w = world(on, SHOP)
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   await $.session.start({ cwd: SHOP, surface: 'terminal', isInteractive: true })
@@ -796,7 +796,7 @@ const THREE = { head: 'cap', face: 'glasses', neck: 'scarf' }
 for (const character of ['foxkit', 'classic']) {
   test(`held=flag shows on the ${character} at rest, vanishes in every frame of a turn and of a zap, and returns after each`, async ($, on) => {
     const clock = mock.clock(on)
-    mock.store(on)
+    mock.store(on, QUIET)
     const w = world(on, ROOT)
     // A second ticket stays open, so finishing the first is a zap and not the end of the set.
     addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'in-progress'), '02-pay.md': ticket('02: Pay', 'in-progress') }, 5)
@@ -886,7 +886,7 @@ test('a flag set for a character without a held slot is saved with the usual rep
 /** A pane with the four accessories on, a ticket in progress, and nothing painted yet. */
 const flagged = async ($: Engine, on: On) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, QUIET)
   const w = world(on, ROOT)
   // A second ticket stays open, so finishing the first is a zap and not the end of the set.
   addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'in-progress'), '02-pay.md': ticket('02: Pay', 'in-progress') }, 5)

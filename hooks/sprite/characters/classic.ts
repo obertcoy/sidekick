@@ -59,7 +59,13 @@ export const classic = defineCharacter({
     armUp: { at: { x: 9, y: 8 }, rows: [' k', ' y', 'k'] },
     // Closed eyes: the one-pixel eyes at (4,8) and (7,8) become shade, the lid; the eye and the outline are nearly the same colour, so shade reads better. Inside the headRegion, so it bobs with the head; glasses draw over it.
     blink: { at: { x: 4, y: 8 }, rows: ['n  n'] },
+    // The zigzag's upper tip moves up and left: (0,8) is drawn and (0,9) cleared, so the tail leans. Columns 0-1 are outside the headRegion, so it stays put while the head bobs.
+    tailUp: { at: { x: 0, y: 8 }, rows: ['y', '.y'] },
+    // Each ear tip gains an outline pixel above it, at (2,2) and (9,2), so the ears look lifted. Both are above the headRegion (top row 3); the ear flick has no bob.
+    earsUp: { at: { x: 2, y: 2 }, rows: ['k      k'] },
   },
+  // The ambient animations it plays while it rests; each needs anchors and poses it has.
+  ambient: ['blink', 'tailFlick', 'earFlick', 'cheekSpark'],
   // Columns 0-1 hold the tail, which stays put while the head bobs.
   headRegion: { left: 2, top: 3, right: 17, bottom: 9 },
   // The cap and glasses ride the head; the scarf and what is held stay on the body.
