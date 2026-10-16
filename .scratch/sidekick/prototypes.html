@@ -48,6 +48,7 @@ nav.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--
 .bar { position: sticky; top: 0; z-index: 3; background: var(--bg); display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
   padding: 10px 0; border-bottom: 1px solid var(--rule); margin-bottom: 18px; }
 .group { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.group[hidden] { display: none; }
 .group > .lbl { font: .72rem var(--mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-right: 4px; }
 .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 5px; overflow: hidden; }
 .seg button { border: 0; border-right: 1px solid var(--rule); border-radius: 0; }
@@ -95,6 +96,13 @@ body { overflow-wrap: anywhere; }
 
 /* Critter lineup */
 .cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 480px), 1fr)); }
+#family-trio .cards, #family-knights .cards, #family-armored .cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr)); }
+.lineup { margin-top: 28px; scroll-margin-top: 80px; }
+.lineup > h3 { font: 600 1.1rem var(--sans); margin-bottom: 4px; }
+.lineup > p { color: var(--muted); margin-bottom: 14px; font-size: .9rem; }
+.lineup-nav { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--rule); }
+.lineup-nav a { color: var(--muted); font: .82rem var(--mono); text-decoration: none; padding: 10px; border-bottom: 2px solid transparent; }
+.lineup-nav a[aria-selected="true"] { color: var(--ink); border-color: var(--ink); font-weight: 700; }
 .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .card.chosen { border: 2px solid var(--ok); padding: 11px; }
 .card .head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
@@ -210,8 +218,9 @@ body { overflow-wrap: anywhere; }
 
   <!-- 2. Critter -->
   <section id="sec-critter" aria-labelledby="h-critter" hidden>
-    <h2 id="h-critter">Critter: V0–V8</h2>
-    <p class="lede">The lineup from the sprite gallery. Idle, write (220 ms a frame) and zap (110 ms a frame, then a rest) play as the mod plays them. Each stage shows an enlarged view and the terminal-size Raster. V3 Foxkit is in <code>hooks/sprite.ts</code>; V0 is what <code>HEAD</code> ships.</p>
+    <h2 id="h-critter">Characters & animations</h2>
+    <p class="lede">Choose a family tab to compare its characters. Each has enlarged and terminal-cell views. Knight concepts use 24×24 pixels, larger than the plugin’s 18×16 stage; they are preview-only.</p>
+    <nav class="lineup-nav" role="tablist" aria-label="Character families"><a id="tab-trio" role="tab" aria-controls="family-trio" href="#trio">Knight concepts · 5</a><a id="tab-knights" role="tab" aria-controls="family-knights" href="#knights">Unlikely knights · 3</a><a id="tab-armored" role="tab" aria-controls="family-armored" href="#armored">Armored knights · 3</a><a id="tab-creatures" role="tab" aria-controls="family-creatures" href="#creatures">Creatures · 8</a><a id="tab-archive" role="tab" aria-controls="family-archive" href="#archive">Original · 1</a></nav>
     <div class="ctl">
       <button id="c-play" aria-pressed="true">Pause</button>
       <button id="c-step">Step one tick</button>
@@ -348,7 +357,7 @@ body { overflow-wrap: anywhere; }
       at(g => { z.burst.filter((_, i) => i % 3 === 0).forEach(([x, y]) => put(g, x, y + 1, 'z')); z.extra?.(g, 5, put) }),
       ...Array.from({ length: 6 }, () => at(g => { stamp(g, z.check[0], z.check[1], CHECK, 'g'); z.extra?.(g, 6, put) })),
     ]
-    return { id: v.id, name: v.name, note: v.note, columns: W, rows: v.rows, palette: v.palette, body, frames: { idle: [[]], write, zap } }
+    return { id: v.id, name: v.name, note: v.note, group: 'creatures', columns: W, rows: v.rows, palette: v.palette, body, frames: { idle: [[]], write, zap } }
   }
 
   // Shared prop colours, kept the same across variations.
@@ -364,7 +373,7 @@ body { overflow-wrap: anywhere; }
     const write = [0, 1, 2, 3, 4, 5].map(s => [...PAPER, ...line(12, 8, 1, 0, Math.min(3, s + 1), 'i'), ...line(12, 9, 1, 0, Math.max(0, s - 2), 'i'), [9, 8, 'y'], [10, 8, 'y'], [11, 8 + (s % 2), 'r']])
     const zap = [CHARGE, CHARGE, [...CHARGE, ...bolt('w')], [...bolt('y'), [10, 9, 'y'], [13, 9, 'y'], [12, 10, 'w'], [14, 8, 'y']], [[11, 10, 'y'], [14, 6, 'y'], [13, 2, 'y']], ...Array.from({ length: 8 }, () => CHECKD)]
     return {
-      id: 'V0', name: 'Current', note: 'What ships today: 16×12, flat yellow, no outline or shading.',
+      id: 'V0', name: 'Current', group: 'archive', note: 'Original 16×12 prototype: flat yellow, no outline or shading.',
       columns: 16, rows: 6,
       palette: { y: 0xffd43b, k: 0x2b2b3a, e: 0x1a1a24, r: 0xe5484d, n: 0x8b5a2b, w: 0xfffbe6, g: 0x40c057, p: 0xf1f3f5, i: 0x495057 },
       body: ['..k......k......', '..yy....yy......', '...yy..yy.......', '...yyyyyy.......', '..yyyyyyyy......', '..yyeyyeyy......', 'yyryyyyyyr......', '.y.yyyyyy.......', 'yy.yyyyyy.......', '.nnyyyyyy.......', '...yyyyyy.......', '...yy..yy.......'],
@@ -625,7 +634,356 @@ body { overflow-wrap: anywhere; }
     },
   ]
 
-  const VARIANTS = [V0, ...SPECS.map(build)]
+  // Three separate silhouettes and choreographies. Shared tools place pixels, not anatomy.
+  const emptyStage = () => toGrid(pad([], 24, 24))
+  function stroke(g, x, y, endX, endY, color) {
+    const dx = Math.abs(endX - x), dy = -Math.abs(endY - y)
+    const sx = x < endX ? 1 : -1, sy = y < endY ? 1 : -1
+    let error = dx + dy
+    while (true) {
+      put(g, x, y, color)
+      if (x === endX && y === endY) break
+      const twice = 2 * error
+      if (twice >= dy) { error += dy; x += sx }
+      if (twice <= dx) { error += dx; y += sy }
+    }
+  }
+  function drawMouse(mode, step) {
+    const g = emptyStage()
+    const swinging = mode === 'zap' && step >= 2 && step < 6
+    const crouch = mode === 'zap' && step < 2 ? 1 : 0
+    // Curled naked tail, little cloak, feet, then the giant ears behind the thimble.
+    stamp(g, 1, 16, ['.ppp..', 'p...p.', 'p...p.', '.pp.p.', '...ppp'], 'p')
+    stamp(g, 7, 14 + crouch, ['..rrrrrr.', '.rrhhrrdd', 'rrhhhhrrd', 'rrhhrrrdd', 'rddrrrddd', '.odddooo.', '..ff.ff..', '.off.off.'], 'r')
+    stamp(g, 3, 4 + crouch, ['.ooo.', 'ofpfo', 'ofpfo', '.ofo.'], 'f')
+    stamp(g, 16, 4 + crouch, ['.ooo.', 'ofpfo', 'ofpfo', '.ofo.'], 'f')
+    stamp(g, 7, 7 + crouch, ['.fffffff.', 'ffhhhhhff', 'fhhhhhfff', 'fhhehheff', 'ffhehheff', '.ffhhfffp', '..fffffp.', '...oooo..'], 'f')
+    // An unmistakable inverted thimble: domed top, punched dimples and rolled rim.
+    stamp(g, 7, 1 + crouch, ['..oooooo..', '.ohhhhhmo.', '.ohmhmhmo.', '.ommhmmmo.', '.ohmhmhmo.', '.ommmmsmo.', 'ohhhhhmmmo', '.oooooooo.'], 'm')
+    put(g, 16, 12 + crouch, 'h'); put(g, 17, 12 + crouch, 'p')
+    if (mode === 'idle' && step === 2) stamp(g, 10, 10, ['fhhfh', 'fohfo'], 'f')
+    // Oversized button shield, including all four thread holes.
+    stamp(g, 3, 14 + crouch, ['.gggg.', 'gccccg', 'gcocog', 'gccccg', 'gcocog', '.gccg.', '..gg..'], 'c')
+    if (mode === 'write') {
+      stamp(g, 17, 15, ['pppppp', 'piiiip', 'pppppp', 'pppppp', 'pppppp'], 'p')
+      for (let x = 18; x < 18 + Math.min(step + 1, 4); x++) put(g, x, 18, 'i')
+      stamp(g, 15, 15 + step % 2, ['fffg', '..g.'], 'f')
+    } else {
+      stamp(g, 15, 15 + crouch, ['offfo', '.fffg', '...g.'], 'f')
+      if (swinging) {
+        // Whole-body lunge: the needle ends well beyond the nose, not a generic bolt.
+        stroke(g, 18, 16, 23, 11 + (step - 2) * 2, 'h')
+        if (step === 2) stamp(g, 20, 9, ['.h.', '..h', '..h'], 'h')
+        stamp(g, 12, 20, ['fffoo', '.oooo'], 'f')
+      } else {
+        stamp(g, 19, 7, ['.h.', 'hmh', '.h.', '.m.', '.h.', '.m.', '.h.', '.m.', 'ggg', '.g.'], 'h')
+      }
+    }
+    return g
+  }
+
+  function drawCandle(mode, step) {
+    const g = emptyStage()
+    const flare = mode === 'zap' && step < 4
+    // The body is a puddle-bottomed candle, with drips instead of armor or legs.
+    stamp(g, 4, 8, ['....ssssss...', '..syyyyyyyys.', '..syhyyyyyys.', '..syhyyyyyys.', '..syhyyyyyys.', '..syhyyyyyys.', '.ssyhyyyyyyss', 'syyyhyyyyyyyys', 'syyhhhhyyyyyys', '.syyhhyyyyyys.', '..syyyyyyyys..', '..syyyyyyyys..', '.syyyysyyyyys.', 'syyyyyyyyyyyys', '.ssssssssssss.'], 'y')
+    // Wax rim, tall drip on the right, tiny bright face and blush.
+    stamp(g, 6, 8, ['.hhhhhhhh.', 'hyyyyyyyhh', 'hyhyyhyyhh', '.yhyyhyyyh', '..h......h', '.........h'], 'h')
+    stamp(g, 8, 13, ['e...e', 'e...e', '.r.r.', '..e..'], 'e')
+    if (mode === 'idle' && step === 2) {
+      put(g, 8, 14, 'y'); put(g, 12, 14, 'y')
+    }
+    const flameX = mode === 'idle' && step % 2 ? 10 : 9
+    stamp(g, flare ? 7 : flameX, flare ? 0 : 1, flare
+      ? ['.....r...', '....rr...', '..rrrrr..', '.rrfffrr.', 'rrffhffrr', 'rrfhhhffr', '.rfhhffr.', '..rfffr..', '...rrr...']
+      : ['...r..', '..rr..', '.rrfr.', '.rfhfr', 'rfhhfr', '.rffr.', '..rr..'], 'r')
+    put(g, 11, 8, 'e')
+    if (mode === 'write') {
+      stamp(g, 17, 15, ['pppppp', 'piiiip', 'pppppp', 'pppppp', 'pppppp'], 'p')
+      for (let x = 18; x < 18 + Math.min(step + 1, 4); x++) put(g, x, 18, 'i')
+      stamp(g, 15, 15 + step % 2, ['yhhy', '..h.'], 'y')
+    } else if (mode === 'zap' && step >= 2 && step < 7) {
+      stamp(g, 15, 15, ['..g.....', 'ggyyyyys', '.yhhhhhh', '..ysyyys', '..s..s..'], 'y')
+      if (step > 3) { put(g, 21, 21, 'h'); put(g, 19, 20, 'y') }
+    } else {
+      // A soft, crooked wax blade; the hilt is a bent matchstick.
+      stamp(g, 17, 8, ['...h.', '..hy.', '..hy.', '..hy.', '.hy..', '.hy..', '.hys.', 'ggggg', '..d..', '.yh..', '..s..'], 'y')
+    }
+    return g
+  }
+
+  function drawGlove(mode, step) {
+    const g = emptyStage()
+    const lift = mode === 'idle' && step % 2 ? -1 : 0
+    // No torso, head, feet or shield. Just a giant floating hand and an empty cuff.
+    stamp(g, 5, 4 + lift, ['......oo..oo..', '..oo.ohmoohmo.', '.ohmoohmoohmo.', '.ohmoohmoohmo.', '.ohmoohmoohmo.', '.ohmmmmmmmmo..', '..ohmmmmmmo...', 'ooohmmmmmmo...', 'ohmmmmmmmmo...', '.ohmmmmmmso...', '..ohmmmmso....', '...ohmmso.....', '..oggggggo....', '..gvvvvvvg....', '..oggggggo....'], 'm')
+    // The cuff is hollow; mint ectoplasm leaks out beneath it.
+    stamp(g, 9, 18 + lift, ['.a..a.', '.a.a..', 'a...a.', '....a.', '...a..'], 'a')
+    stamp(g, 10, 11 + lift, ['v..v', 'h..h'], 'v')
+    if (mode === 'write') {
+      stamp(g, 17, 17, ['pppppp', 'piiiip', 'pppppp', 'pppppp', 'pppppp'], 'p')
+      for (let x = 18; x < 18 + Math.min(step + 1, 4); x++) put(g, x, 20, 'i')
+      stroke(g, 15, 13, 18 + step % 2, 18, 'g')
+    } else if (mode === 'zap' && step < 3) {
+      // Hauls the blade overhead, then drops its entire weight into the chop.
+      stroke(g, 16, 11, 21, 2, 's'); stroke(g, 17, 11, 22, 2, 'h')
+      stroke(g, 14, 10, 19, 12, 'g')
+      put(g, 8, 2, 'a'); put(g, 3, 11, 'a')
+    } else if (mode === 'zap' && step < 7) {
+      stamp(g, 15, 12, ['.g......', '.gssssss', 'gdhhhhhh', '.gmmmmmm', '.gssssss'], 'h')
+      if (step < 5) stamp(g, 19, 6, ['a...', '.a..', '..a.', '...a', '...a', '..a.'], 'a')
+    } else {
+      // Oversized diagonal blade, pointed down as though too heavy to carry.
+      stroke(g, 15, 13, 22, 21, 'o')
+      stroke(g, 16, 13, 23, 21, 'h')
+      stroke(g, 16, 14, 22, 21, 'm')
+      stroke(g, 15, 15, 21, 22, 's')
+      stroke(g, 14, 16, 21, 23, 's')
+      stroke(g, 15, 16, 22, 23, 'm')
+      stroke(g, 13, 15, 18, 11, 'g')
+      put(g, 14, 13, 'd')
+    }
+    return g
+  }
+
+  const KNIGHTS = [
+    {
+      id: 'V9', name: 'Thimble Mouse', draw: drawMouse,
+      note: 'A mouse playing knight: enormous pink ears, a sewing-thimble helmet, button shield and needle sword. Lunges with its whole tiny body.',
+      labels: { idle: 'On tiptoe', write: 'Tiny quest log', zap: 'Needle lunge' },
+      palette: { o: 0x493646, f: 0xb99b89, p: 0xf5b6b7, h: 0xffead5, e: 0x302e42, m: 0xabc5d2, s: 0x648598, r: 0xc66362, d: 0x813f56, c: 0x699c9d, g: 0xf0cb89, i: 0x71563d },
+    },
+    {
+      id: 'V10', name: 'Sir Wick', draw: drawCandle,
+      note: 'A brave little candle melting into its own boots. A flame for a crown, a crooked wax sword, and an alarming tendency to drip after a swing.',
+      labels: { idle: 'Flicker', write: 'Warm notes', zap: 'Flare & melt' },
+      palette: { s: 0xb47570, y: 0xf0b8a0, h: 0xffedbf, r: 0xf37657, f: 0xffc260, e: 0x673f57, g: 0xc78c58, d: 0x7b5055, p: 0xffe7b2, i: 0x895454 },
+    },
+    {
+      id: 'V11', name: 'The Unhanded', draw: drawGlove,
+      note: 'One haunted gauntlet. No knight inside. Mint-green wisps spill from the cuff as it wrestles a sword much too heavy for a disembodied hand.',
+      labels: { idle: 'Haunting', write: 'Ghostwriting', zap: 'Heavy chop' },
+      palette: { o: 0x3d3659, m: 0x9282b5, h: 0xe1d5f6, s: 0x625682, v: 0x292844, a: 0x8fe6ce, g: 0xc5a574, d: 0x765a70, p: 0xdedce8, i: 0x625678 },
+    },
+  ]
+
+  // Keep the earlier armored revision for side-by-side comparison with the new characters.
+  const ARMORED_KNIGHTS = [
+    {
+      id: 'V12', name: 'Tin-can Squire', group: 'armored',
+      note: 'Earlier armored revision: round steel greathelm, dark visor, crimson plume, blue kite shield and a broad sword.',
+      palette: { o: 0x242c40, m: 0x9eaec4, h: 0xe8f2ff, s: 0x63768f, v: 0x182234, r: 0xe86567, d: 0x973e56, c: 0x5085bf, g: 0xeac478 },
+      helmet: ['...oooooo...', '..ohhhhmmmo.', '.ohhmmmmmmo.', '.ohmmmmmmso.', '.ovvvvvvvvo.', '.ovvvgvvvvo.', '.ommmgmmmso.', '..ommgmsso..', '...oooooo...'],
+      crest: ['..rrr.', '.rrrrr', 'rrddr.', 'rdd...'],
+      shield: ['ogggggo', 'gcccccg', 'gcchccg', 'gchhhcg', 'gcchccg', '.gcccg.', '..gcg..', '...o...'],
+    },
+    {
+      id: 'V13', name: 'Brambleguard', group: 'armored',
+      note: 'Earlier armored revision: pointed forest helm, branching crest, leaf shield and bronze trim.',
+      palette: { o: 0x273b37, m: 0x87a791, h: 0xdde7b2, s: 0x536e63, v: 0x1a302d, r: 0x93bf65, d: 0x486d45, c: 0x588f64, g: 0xd9b86d },
+      helmet: ['....ooo.....', '...ohhmo....', '..ohhmmmo...', '.ohhmmmmmo..', '.ovvvvvvvo..', '.ovvgvvvvo..', '.ommgmmso...', '..omgmso....', '...oooo.....'],
+      crest: ['r...r..r', '.r..r.r.', '..rrgr..', '...gg...'],
+      shield: ['...g...', '..ghg..', '.gchcg.', 'gcchccg', 'gcchccg', '.gchcg.', '..ghg..', '...g...'],
+    },
+    {
+      id: 'V14', name: 'Moonlit Duelist', group: 'armored',
+      note: 'Earlier armored revision: angular indigo helm, silver crescent, violet cape and a pale blade.',
+      palette: { o: 0x29283f, m: 0x747dba, h: 0xe7eaff, s: 0x4a5184, v: 0x181c32, r: 0xb6a1e4, d: 0x65578c, c: 0x8071bc, g: 0xa4def0 },
+      helmet: ['...oooooo...', '..ohhhmmmo..', '.ohhmmmmsso.', '.ommmmmmsso.', '.ovvvvvvvvo.', '..ovvgvvvo..', '..ommgmso...', '...omgso....', '....ooo.....'],
+      crest: ['..hh..', '.hh...', '.hh...', '..hhh.'],
+      shield: ['.ggggg.', 'gcccccg', 'gchhccg', 'gchcccg', 'gchhccg', '.gcccg.', '..gcg..', '...o...'],
+    },
+  ].map(v => ({ ...v, palette: { ...v.palette, p: 0xf4dfb0, i: 0x71563d },
+    labels: { idle: 'Guard', write: 'Quest log', zap: 'Sword swing' },
+    draw: (mode, step) => drawArmoredKnight(v, mode, step) }))
+
+  function drawArmoredKnight(v, mode, step) {
+    const g = emptyStage()
+    stamp(g, 5, 11, ['.ddrrrrdd.', 'ddrrrrrrdd', 'drrrrrrrrd', 'drrddddrrd', 'drrddddrrd', 'drrddddrrd', 'ddrddddrdd', '.dddddddd.'], 'r')
+    stamp(g, 6, 11, ['.oo....oo.', 'ohmo..ohmo', 'ommoooommo', '.ohhmmmso.', '..ommmmo..', '..oggggo..', '..orrro...', '..orsro...', '..oo.oo...'], 'm')
+    stamp(g, 8, 19, ['ohmoohmo', 'omsoomso', 'omsoomso', 'ohsoohso', 'oooo.oooo'], 'm')
+    stamp(g, 6, 3, v.helmet, 'm')
+    stamp(g, v.id === 'V13' ? 7 : 10, 0, v.crest, 'r')
+    stamp(g, 1, 13, v.shield, 'c')
+    if (mode === 'write') {
+      stamp(g, 17, 13, ['pppppp', 'piiiip', 'pppppp', 'pppppp', 'pppppp', 'pppppp'], 'p')
+      for (let x = 18; x < 18 + Math.min(4, step + 1); x++) put(g, x, 16, 'i')
+      stamp(g, 16, 14 + step % 2, ['omog', '..g.'], 'm')
+    } else if (mode === 'zap' && step < 2) {
+      stamp(g, 15, 11, ['.omo.', 'ohmo.', '.oo..'], 'm')
+      stamp(g, 16, 2, ['h.....', 'hso...', '.hso..', '..hso.', '...hso', '....hs', '...ggg', '....d.', '...omo'], 'h')
+    } else if (mode === 'zap' && step < 6) {
+      stamp(g, 15, 14, ['omo', 'ohm', '.oo'], 'm')
+      stamp(g, 16, 14, ['.g......', '.gssssso', 'odhhhhhh', '.gssssso', '.g......'], 'h')
+      if (step < 4) stamp(g, 18, 8, ['..hh..', '....h.', '.....h', '.....h', '.....h', '....h.', '...h..'], 'h')
+      if (step === 4) stamp(g, 20, 11, ['..g.', '.ghg', '..g.'], 'g')
+    } else {
+      stamp(g, 15, 13, ['omso..', 'ohmmmo', '.oooo.'], 'm')
+      stamp(g, 18, 5, ['..h..', '.ohs.', '.ohs.', '.ohs.', '.ohs.', '.ohs.', '.ohs.', 'ggggg', '..d..', '.omo.', '..g..'], 'h')
+    }
+    return g
+  }
+
+  function drawBucket(mode, step) {
+    const g = emptyStage()
+    const crouch = mode === 'zap' && step < 2 ? 1 : 0
+    // Almost all helmet: a squat little bucket balanced on tiny boots. No shield.
+    stamp(g, 7, 16, ['.rrrrrr.', 'orrhhrro', 'omrrrmso', '.oggggo.', '..oooo..', '.om.om..', 'oom.omo.'], 'm')
+    stamp(g, 4, 7 + crouch, ['...ooooooo...', '..ohhhhhmmo..', '.ohhhmmmmmso.', '.ohhmmmmmmso.', '.omvvvvvvvmo.', '.omvhhvhhvmo.', '.ommmmmmmmso.', '.ommvmvmvmso.', '.ommmmmmmmso.', '..ossssssoo..', '...ooooooo...'], 'm')
+    stamp(g, 4, 17, ['omo', 'oms', '.oo'], 'm')
+    if (mode === 'idle' && step === 2) stamp(g, 8, 12, ['vvvvvv'], 'v')
+    if (mode === 'write') {
+      stamp(g, 17, 17, ['pppppp', 'piiiip', 'pppppp', 'pppppp', 'pppppp'], 'p')
+      for (let x = 18; x < 18 + Math.min(4, step + 1); x++) put(g, x, 20, 'i')
+      stamp(g, 15, 18 + step % 2, ['omm'], 'm')
+    } else if (mode === 'zap' && step >= 2 && step < 6) {
+      stamp(g, 15, 17, ['.g.....', 'oghhhho', '.gssso.', '.g.....'], 'h')
+      if (step < 4) stamp(g, 18, 14, ['.h.', '..h', '..h'], 'h')
+    } else {
+      stamp(g, 17, 12, ['..h..', '.ohs.', '.ohs.', '.ohs.', 'ggggg', '..d..', '.omo.', '..o..'], 'h')
+      stamp(g, 15, 18, ['ommo'], 'm')
+    }
+    return g
+  }
+
+  function drawGuardian(mode, step) {
+    const g = emptyStage()
+    // Broad shoulders and an enormous chest; antlers break the silhouette above the helm.
+    stamp(g, 2, 10, ['.oooooooooooooo.', 'ohhmmmmmmmhhmmso', 'ohhmmmmmsshmmso.', 'ommmmmmssssmmso.', '.ommhmmmmmmmso..', '..ommmmmmmmso...', '..omggggggmso...', '..ommmmmmmmso...', '..osmmmmmmsso...', '..ommm..mmmo....', '..omms..smmo....', '.ohmmo..ommso...', '.ooooo..ooooo...'], 'm')
+    stamp(g, 5, 5, ['..oooooo..', '.ohhhhmmo.', 'ohhmmmmmso', 'omvvvvvvmo', 'omvaavavmo', '.ommmmmmo.', '..oooooo..'], 'm')
+    stamp(g, 2, 0, ['g...........g', 'g..g.....g..g', '.g.g.....g.g.', '.ggg.....ggg.', '...g.....g...', '....g...g....', '.....ggg.....'], 'g')
+    if (mode === 'idle' && step === 2) put(g, 3, 3, 'a')
+    if (mode === 'write') {
+      stamp(g, 17, 15, ['pppppp', 'piiiip', 'pppppp', 'pppppp', 'pppppp'], 'p')
+      for (let x = 18; x < 18 + Math.min(4, step + 1); x++) put(g, x, 18, 'i')
+      stamp(g, 15, 15 + step % 2, ['omm'], 'm')
+    } else if (mode === 'zap' && step >= 2 && step < 6) {
+      // A heavy two-handed cleave, not the squire's quick wrist swing.
+      stamp(g, 8, 13, ['.....g..........', '....ggssssssssso', 'ommmgdhhhhhhhhhh', 'ommmggmmmmmmmmso', '.....gssssssssso'], 'h')
+      if (step < 4) stroke(g, 16, 5, 22, 11, 'a')
+    } else {
+      const shiftX = mode === 'zap' && step < 2 ? -2 : 0
+      stamp(g, 18 + shiftX, 1, ['..h...', '.ohso.', '.ohmso', '.ohmso', '.ohmso', '.ohmso', '.ohmso', '.ohmso', '.ohmso', '.ohmso', '.ohmso', '..hso.', 'gggggg', '..d...', '.ommo.', '..d...', '.ommo.'], 'h')
+      stamp(g, 14, 14, ['ommmmm', '..ommm'], 'm')
+    }
+    return g
+  }
+
+  function drawDuelist(mode, step) {
+    const g = emptyStage()
+    const sway = mode === 'idle' && step % 2 ? 1 : 0
+    // Long asymmetric cloak behind a narrow body; a hood, not another bucket helmet.
+    stamp(g, 4 + sway, 8, ['......rrr.', '.....rrdd.', '.....rrdd.', '....rrrdd.', '....rrrdd.', '...rrrddd.', '...rrrddd.', '..rrrdddd.', '..rrrddd..', '.rrrdddd..', '.rrrddd...', 'rrrdddd...', 'rrrddd....', 'rrrrr.....', '.rrr......'], 'r')
+    stamp(g, 9, 9, ['.omo.', 'ohmso', '.oms.', '.oms.', '.oggo', '.oms.', '.oms.', '.oms.', '.o.o.', '.m.m.', '.m.m.', '.s.s.', 'om.om', 'oo.oo'], 'm')
+    stamp(g, 8, 0, ['....o....', '...oro...', '..orhro..', '.orhddro.', 'ordvvvdro', 'ordvaavdo', '.ordvvdo.', '..orddo..', '...ooo...'], 'r')
+    if (mode === 'write') {
+      stamp(g, 17, 14, ['pppppp', 'piiiip', 'pppppp', 'pppppp', 'pppppp'], 'p')
+      for (let x = 18; x < 18 + Math.min(4, step + 1); x++) put(g, x, 17, 'i')
+      stroke(g, 13, 12, 17, 15 + step % 2, 'm')
+    } else if (mode === 'zap' && step >= 2 && step < 6) {
+      stroke(g, 13, 12, 17, 12, 'm')
+      stroke(g, 17, 12, 23, 9, 'h')
+      stamp(g, 16, 11, ['.g.', 'gmg', '.g.'], 'g')
+      stroke(g, 10, 18, 7, 22, 'm')
+      if (step === 2) stroke(g, 20, 8, 22, 7, 'a')
+    } else {
+      stroke(g, 13, 12, 17, 14, 'm')
+      stroke(g, 18, 13, 22, 4, 'h')
+      stamp(g, 16, 13, ['.gg.', 'gddg', '.gg.'], 'g')
+    }
+    return g
+  }
+
+  function drawRaven(mode, step) {
+    const g = emptyStage()
+    const wind = mode === 'idle' && step % 2 ? 1 : 0
+    // A traveler in a bone-white bird mask, not a horned void: beak, eye socket and feather layers.
+    stamp(g, 3 + wind, 10, ['.....rrrrr...', '....rrlrrdd..', '...rrlrlrddd.', '..rrlrlrrddd.', '..rlrlrrdddd.', '.rrlrlrrdddd.', '.rlrlrrddddd.', 'rrlrlrrdddd..', '.rrlrddddd...', 'rrlrrdddd....', '.rrdddddd....', '..rdd.ddd....'], 'r')
+    stamp(g, 8, 11, ['..oooo..', '.ommmmo.', '.omhmso.', '..omso..', '..oggo..', '..omso..', '..omso..', '..ommo..', '.om.om..', '.ms.omo.', 'oms.oms.', 'ooo.oooo'], 'm')
+    stamp(g, 6, 1, ['..r..r......', '..rlrr......', '.rrlrrr.....', '.orrrrrro...', 'orhhhhhhho..', 'orhhvvhhhho.', '.orhvvhhhhhh', '..orhhhhhmho', '...ohhhmmo..', '....oooo....'], 'h')
+    // A teal neck wrap and a single feather at the shoulder soften the steel.
+    stamp(g, 9, 10, ['aaaaaa', '.aa.a.', '..a...'], 'a')
+    if (mode === 'idle' && step === 2) put(g, 11, 7, 'h')
+    if (mode === 'write') {
+      stamp(g, 17, 14, ['pppppp', 'piiiip', 'pppppp', 'pppppp', 'pppppp'], 'p')
+      for (let x = 18; x < 18 + Math.min(4, step + 1); x++) put(g, x, 17, 'i')
+      stroke(g, 13, 13, 17, 15 + step % 2, 'm')
+    } else if (mode === 'zap' && step < 2) {
+      stroke(g, 14, 13, 18, 10, 'm')
+      stamp(g, 17, 4, ['h.....', '.hm...', '..hm..', '...hm.', '....h.', '...ggg', '....d.'], 'h')
+    } else if (mode === 'zap' && step < 6) {
+      stroke(g, 13, 13, 17, 15, 'm')
+      stamp(g, 16, 14, ['.g......', 'gdmmmmhh', '.ghhhhh.', '..hhh...'], 'h')
+      if (step < 4) stamp(g, 20, 9, ['l..', '.l.', '..l', '..l', '.l.'], 'l')
+      put(g, 3, 17, 'l'); put(g, 2, 19, 'r')
+    } else {
+      stroke(g, 13, 13, 18, 15, 'm')
+      stamp(g, 17, 6, ['....h.', '...hm.', '..hm..', '..hm..', '.hm...', '.hm...', '..hm..', '..hm..', '...ggg', '...d..', '..omo.'], 'h')
+    }
+    return g
+  }
+
+  function drawWanderer(mode, step) {
+    const g = emptyStage()
+    // Thick traveling leathers, a fur mantle and a Viking-inspired pointed helm.
+    stamp(g, 7, 12, ['.rrrrrr.', 'orrhhrro', 'omrrrrmo', '.omrrmo.', '.oggggo.', '.omrrmo.', '.omrrmo.', '.om.om..', '.ms.sm..', 'oms.smo.', 'ooo.ooo.'], 'm')
+    stamp(g, 3, 10, ['...ffffff....', '.ffhffhfhff..', 'fhffhffhfhff.', '.ffhffhfhff..', 'f.fhffhff.f..', '..f.ff.f.....'], 'f')
+    stamp(g, 7, 2, ['....g....', '...gmg...', '..ghhmg..', '.ghhmmmg.', 'ohhmmmmmo', 'omvvvvvmo', 'omavavamo', '.omvvvmo.', '..omvmo..', '...ooo...'], 'm')
+    // Low swept-back horns, attached at the temples, not Eclipse's upright crescent.
+    stamp(g, 1, 2, ['hh.....', '.hh....', '..hm...', '...hmm.', '....hmm', '.....gg'], 'h')
+    stamp(g, 15, 2, ['.....hh', '....hh.', '...mh..', '.mmh...', 'mmh....', 'gg.....'], 'h')
+    if (mode === 'idle' && step === 2) stamp(g, 9, 8, ['vvvvv'], 'v')
+    if (mode === 'write') {
+      stamp(g, 17, 15, ['pppppp', 'piiiip', 'pppppp', 'pppppp', 'pppppp'], 'p')
+      for (let x = 18; x < 18 + Math.min(4, step + 1); x++) put(g, x, 18, 'i')
+      stamp(g, 15, 15 + step % 2, ['ommm'], 'm')
+    } else if (mode === 'zap' && step < 2) {
+      stroke(g, 14, 13, 18, 10, 'm')
+      stamp(g, 15, 0, ['h......', 'hms....', '.hms...', '..hms..', '...hms.', '....hms', '....ggg', '.....d.'], 'h')
+    } else if (mode === 'zap' && step < 6) {
+      stroke(g, 14, 14, 17, 15, 'm')
+      stamp(g, 16, 13, ['.g......', '.gssssso', 'gdhhhhhh', '.gmmm.ms', '.gssssso'], 'h')
+      if (step < 4) stroke(g, 18, 6, 23, 11, 'h')
+    } else {
+      stroke(g, 14, 14, 19, 16, 'm')
+      // A broad, chipped edge instead of a delicate rapier.
+      stamp(g, 17, 6, ['..hh..', '.ohms.', '.ohms.', '.oh.s.', '.ohms.', '.ohms.', '.ohms.', '.ohms.', 'gggggg', '..d...', '.ommo.'], 'h')
+    }
+    return g
+  }
+
+  const KNIGHT_TRIO = [
+    { id: 'V19', name: 'Horned Wanderer', group: 'trio', draw: drawWanderer,
+      note: 'Swept-back ivory horns, a pointed Viking-style helm, warm fur mantle and traveling leathers. Small glowing eyes and a heavy chipped sword.',
+      labels: { idle: 'On the trail', write: 'Travel journal', zap: 'Heavy cut' },
+      palette: { o: 0x393644, m: 0x8d9eaa, h: 0xf1e5c9, s: 0x5c6b79, v: 0x24343a, a: 0xaad9d1, r: 0x7e665c, g: 0xc3a26d, d: 0x725443, f: 0xb7a087, p: 0xe7d5b1, i: 0x736158 } },
+    { id: 'V18', name: 'Raven Swordsman', group: 'trio', draw: drawRaven,
+      note: 'An ivory beaked mask, layered blue-gray feathers and a teal neck wrap. A watchful traveling swordsman, less ominous than the Eclipse version.',
+      labels: { idle: 'Watching', write: 'Field notes', zap: 'Feather sweep' },
+      palette: { o: 0x313749, m: 0x90a5b5, h: 0xf4e8cb, s: 0x617889, v: 0x27323d, r: 0x5d7790, d: 0x3a4f65, l: 0x8199af, a: 0x81b8bb, g: 0xc79c62, p: 0xe5ddc6, i: 0x667582 } },
+    { id: 'V15', name: 'Bucket Squire', group: 'trio', draw: drawBucket,
+      note: 'Short, round and almost entirely helmet. Tiny boots, a stubby sword and no shield. Wins by sheer enthusiasm.',
+      labels: { idle: 'Peeking out', write: 'Little notes', zap: 'Stubby swing' },
+      palette: { o: 0x34374b, m: 0xb1bccb, h: 0xf1f0de, s: 0x708599, v: 0x293246, r: 0xd57961, g: 0xe4bc76, d: 0x84564b, p: 0xf2ddb4, i: 0x796154 } },
+    { id: 'V16', name: 'Forest Guardian', group: 'trio', draw: drawGuardian,
+      note: 'Hulking moss-covered plate, branching antlers and a huge two-handed greatsword. Broad as the duelist is tall.',
+      labels: { idle: 'Standing watch', write: 'Field journal', zap: 'Two-handed cleave' },
+      palette: { o: 0x263e3b, m: 0x719382, h: 0xc6d9a4, s: 0x456b60, v: 0x183c36, a: 0xb4e8a1, g: 0xc7a672, d: 0x795f4a, p: 0xe3d5ac, i: 0x5e684d } },
+    { id: 'V17', name: 'Moon Duelist', group: 'trio', draw: drawDuelist,
+      note: 'Tall and slim, face hidden in a pointed hood. A long trailing cape and a fine rapier; all reach, no bulk.',
+      labels: { idle: 'Cloaked', write: 'Moonlit notes', zap: 'Rapier thrust' },
+      palette: { o: 0x282941, m: 0x9aacc9, h: 0xe0edff, s: 0x55627f, r: 0x7670a7, d: 0x49466d, v: 0x20283e, a: 0x8fe1ec, g: 0xc4bbdf, p: 0xdedcf0, i: 0x686183 } },
+  ]
+
+  function buildKnight(v) {
+    const body = v.draw('idle', 0).map(row => row.join(''))
+    const frames = Object.fromEntries([['idle', 4], ['write', 6], ['zap', 12]].map(([mode, length]) =>
+      [mode, Array.from({ length }, (_, step) => diff(body, v.draw(mode, step)))]))
+    return { id: v.id, name: v.name, note: v.note, palette: v.palette, labels: v.labels,
+      group: v.group || 'knights', columns: 24, rows: 12, body, frames }
+  }
+
+  const VARIANTS = [V0, ...SPECS.map(build), ...KNIGHTS.map(buildKnight), ...ARMORED_KNIGHTS.map(buildKnight), ...KNIGHT_TRIO.map(buildKnight)]
 
   // Pixels for one frame, exactly as cellsOf lays them out (null = terminal background).
   function pixelsOf(v, mode, frame) {
@@ -856,7 +1214,7 @@ body { overflow-wrap: anywhere; }
   // Same rule as the gallery: zap plays its frames, then rests in idle before the next.
   const ZAP_REST = 12
   const frameAt = (v, mode, t) => {
-    if (mode === 'idle') return { mode: 'idle', f: 0 }
+    if (mode === 'idle') return { mode: 'idle', f: Math.floor(t / 3) % v.frames.idle.length }
     if (mode === 'write') return { mode: 'write', f: Math.floor(t / 2) % v.frames.write.length }
     const n = v.frames.zap.length, i = t % (n + ZAP_REST)
     return i < n ? { mode: 'zap', f: i } : { mode: 'idle', f: 0 }
@@ -877,9 +1235,30 @@ body { overflow-wrap: anywhere; }
   // ---------- 2. Critter ----------
   const BIG = 12
   const stages = []
+  const FAMILIES = ['trio', 'knights', 'armored', 'creatures', 'archive']
+  let activeFamily = store.get('family', 'trio')
+  if (!FAMILIES.includes(activeFamily)) activeFamily = 'trio'
   let cTick = 0, cPlaying = !reduced
   ;(function buildCards() {
     const host = $('cards')
+    const groups = [
+      { id: 'trio', title: 'Knight concepts', note: 'New: Horned Wanderer and Raven Swordsman · Bucket Squire, Forest Guardian and Moon Duelist kept for comparison · 24×24 · prototype only' },
+      { id: 'knights', title: 'Unlikely knights', note: 'A mouse, a candle, a haunted glove. Three different bodies, personalities and sword moves · 24×24 · prototype only' },
+      { id: 'armored', title: 'Armored knights', note: 'The earlier armored revision, preserved for comparison · guard / quest log / sword swing · 24×24 · prototype only' },
+      { id: 'creatures', title: 'Creatures', note: 'The original creature explorations · idle / write / zap' },
+      { id: 'archive', title: 'Original', note: 'The first Sidekick sprite, kept here for comparison.' },
+    ]
+    const groupHosts = new Map()
+    for (const group of groups) {
+      const section = document.createElement('section'); section.className = 'lineup'; section.id = 'family-' + group.id
+      section.setAttribute('role', 'tabpanel'); section.setAttribute('aria-labelledby', 'tab-' + group.id)
+      section.hidden = group.id !== activeFamily
+      const heading = document.createElement('h3'); heading.id = group.id + '-heading'; heading.textContent = group.title
+      const description = document.createElement('p'); description.textContent = group.note
+      const cards = document.createElement('div'); cards.className = 'cards'
+      section.append(heading, description, cards); host.append(section); groupHosts.set(group.id, cards)
+    }
+    host.classList.remove('cards')
     for (const v of VARIANTS) {
       const chosen = v.id === 'V3'
       const card = document.createElement('article')
@@ -887,7 +1266,7 @@ body { overflow-wrap: anywhere; }
       card.setAttribute('aria-label', v.id + ' ' + v.name + (chosen ? ', chosen' : ', alternative'))
       const note = v.id === 'V0' ? 'Shipped at HEAD: 16×12, flat yellow, no outline or shading.' : v.note
       card.innerHTML = '<div class="head"><span class="id">' + v.id + '</span><span class="name"></span><span class="badge' + (chosen ? ' yes' : '') + '">' +
-        (chosen ? 'chosen' : v.id === 'V0' ? 'alternative · was HEAD' : 'alternative') + '</span><span class="size">' + v.columns + '×' + v.rows + ' cells · ' +
+        (chosen ? 'chosen' : ['trio', 'knights', 'armored'].includes(v.group) ? 'concept' : v.id === 'V0' ? 'original' : 'alternative') + '</span><span class="size">' + v.columns + '×' + v.rows + ' cells · ' +
         v.columns + '×' + v.rows * 2 + ' px</span></div><p class="note"></p><div class="stages"></div><div class="swatches"></div>'
       card.querySelector('.name').textContent = v.name
       card.querySelector('.note').textContent = note
@@ -908,15 +1287,16 @@ body { overflow-wrap: anywhere; }
         s.innerHTML = '<i style="background:' + hex(v.palette[k]) + '"></i>' + k
         sw.append(s)
       }
-      host.append(card)
+      groupHosts.get(v.group).append(card)
     }
   })()
   function renderCritters() {
     for (const s of stages) {
+      if (s.v.group !== activeFamily) continue
       const { mode, f } = frameAt(s.v, s.mode, cTick)
       drawCritter(s.big, s.v, mode, f, undefined, undefined, BIG, BIG)
       drawCritter(s.real, s.v, mode, f, undefined, undefined, CW, CH / 2)
-      s.cap.textContent = s.mode + (s.mode === 'idle' ? '' : mode === 'idle' ? ' · resting' : ' · ' + (f + 1) + '/' + s.v.frames[s.mode].length)
+      s.cap.textContent = (s.v.labels?.[s.mode] || s.mode) + (s.mode === 'idle' ? '' : mode === 'idle' ? ' · resting' : ' · ' + (f + 1) + '/' + s.v.frames[s.mode].length)
     }
     $('c-tick').textContent = 'tick ' + cTick + ' · ' + cTick * TICK + ' ms' + (reduced && !cPlaying ? ' · reduced motion: press Step' : '')
   }
@@ -1040,15 +1420,33 @@ body { overflow-wrap: anywhere; }
   const TABS = ['pane', 'critter', 'strike', 'status']
   let tab = 'pane'
   function showTab(name, fromHash) {
-    tab = TABS.includes(name) ? name : 'pane'
+    const family = FAMILIES.includes(name) ? name : null
+    if (family) activeFamily = family
+    tab = family ? 'critter' : TABS.includes(name) ? name : 'pane'
+    for (const id of FAMILIES) {
+      $('family-' + id).hidden = id !== activeFamily
+      const link = $('tab-' + id)
+      link.setAttribute('aria-selected', String(id === activeFamily))
+      link.tabIndex = id === activeFamily ? 0 : -1
+    }
+    store.set('family', activeFamily)
     for (const id of TABS) $('sec-' + id).hidden = id !== tab
     for (const a of document.querySelectorAll('nav.tabs a')) { if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current') }
     for (const g of document.querySelectorAll('.bar .group')) g.hidden = !g.dataset.for.split(' ').includes(tab)
     store.set('tab', tab)
-    if (fromHash) window.scrollTo(0, 0)
     renderAll()
+    if (fromHash) window.scrollTo(0, 0)
   }
   window.addEventListener('hashchange', () => showTab(location.hash.slice(1), true))
+  document.querySelector('.lineup-nav').addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+    const current = FAMILIES.indexOf(activeFamily)
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? FAMILIES.length - 1
+      : (current + (event.key === 'ArrowRight' ? 1 : -1) + FAMILIES.length) % FAMILIES.length
+    event.preventDefault()
+    location.hash = FAMILIES[next]
+    $('tab-' + FAMILIES[next]).focus()
+  })
 
   function renderAll() {
     if (tab === 'pane') renderPane()
