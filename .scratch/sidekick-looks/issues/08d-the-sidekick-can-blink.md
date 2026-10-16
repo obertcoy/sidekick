@@ -4,11 +4,11 @@
 
 **Blocked by:** 08c: Zap raises its arm with a pose
 
-**Status:** ready-for-agent
+**Status:** done except the by-eye check (last box), pending the owner
 
-- [ ] `blink` is in the pose list; the foxkit and the classic character each draw it
-- [ ] A once-only `blink` animation exists: its middle frame differs from rest only at the eye pixels, and its first and last frames equal rest
-- [ ] On a character wearing glasses the blink is hidden by the glasses (accessories draw over poses)
-- [ ] The load-time anchor and pose checks cover every animation a character can play, including animations not mapped to a state; a character that would play the blink without the `blink` pose is refused at load
-- [ ] No state plays the blink yet; nothing visible changes in the pane
+- [x] `blink` is in the pose list; the foxkit and the classic character each draw it
+- [x] A once-only `blink` animation exists: its middle frame differs from rest only at the eye pixels, and its first and last frames equal rest
+- [x] On a character wearing glasses the blink is hidden by the glasses (accessories draw over poses)
+- [x] The load-time anchor and pose checks cover every animation a character can play, including animations not mapped to a state; a character that would play the blink without the `blink` pose is refused at load
+- [x] No state plays the blink yet; nothing visible changes in the pane
 - [ ] The classic character's blink is checked by eye in the running app (it is one pixel per eye and may read weakly); the result is noted in this ticket

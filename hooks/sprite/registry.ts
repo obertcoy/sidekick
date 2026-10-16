@@ -3,6 +3,7 @@ import { cap } from './accessories/cap'
 import { flag } from './accessories/flag'
 import { glasses } from './accessories/glasses'
 import { scarf } from './accessories/scarf'
+import { blink } from './animations/blink'
 import { cheer } from './animations/cheer'
 import { idle } from './animations/idle'
 import { look } from './animations/look'
@@ -21,7 +22,7 @@ import { REPLACEABLE_STATES, STATE_NAMES } from './types'
 
 export const CHARACTERS: Readonly<Record<string, Character>> = { foxkit, classic }
 
-export const ANIMATIONS = { idle, write, zap, look, shrug, cheer } as const satisfies Record<string, Animation>
+export const ANIMATIONS = { idle, write, zap, look, shrug, cheer, blink } as const satisfies Record<string, Animation>
 
 /** What the sidekick is shown doing, and the animation that plays for each. */
 export const STATES = {
@@ -129,11 +130,29 @@ export const requireDeclaredPoses = (character: Character, played: Readonly<Reco
   }
 }
 
-// Every character plays what the lookup gives it for every state, so each is checked at load: its replacements first,
-// then the anchors and poses of all it plays.
-export const requirePlayed = (character: Character): void => {
-  requireReplacements(character)
-  const played = Object.fromEntries(STATE_NAMES.map(state => [`${animationNameOf(character, state)} (${state})`, animationOf(character, state)]))
+/**
+ * The animations every character plays outside any state, as ambient motion. Ticket 09 schedules from this list, and the load check
+ * covers each of them for every character. A new ambient animation is its file, its catalog line and a name here.
+ */
+export const AMBIENT = ['blink'] as const satisfies readonly (keyof typeof ANIMATIONS)[]
+export type AmbientName = (typeof AMBIENT)[number]
+
+// Checked at load for each character: its replacements first, then the anchors and poses of exactly what it plays. That is the animation
+// of each state through the lookup (named with its state, "zap (ticket-done)"), plus each ambient one (by plain name). An animation
+// that the character displaces (the shared zap, for a character with its own ticket-done) is not played, so it is not checked.
+export const requirePlayed = (character: Character, catalog: Readonly<Record<string, Animation>> = ANIMATIONS, ambient: readonly string[] = AMBIENT): void => {
+  requireReplacements(character, catalog)
+  const byState = STATE_NAMES.flatMap(state => {
+    const name = animationNameOf(character, state)
+    const animation = found(catalog, name)
+    return animation === undefined ? [] : [[`${name} (${state})`, animation] as const]
+  })
+  const byAmbient = ambient.map(name => {
+    const animation = found(catalog, name)
+    if (animation === undefined) throw new Error(`sprite: the ambient animation "${name}" does not exist; known: ${Object.keys(catalog).join(', ')}`)
+    return [name, animation] as const
+  })
+  const played = Object.fromEntries([...byState, ...byAmbient])
   requireAnchors(character, played)
   requirePoses(character, played)
   requireDeclaredPoses(character, played)

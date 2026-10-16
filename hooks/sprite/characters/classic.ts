@@ -57,6 +57,8 @@ export const classic = defineCharacter({
   poses: {
     // The raised arm zap draws around the `reach` paw at (10,9): outline above it, base on it, outline to its lower left. The patch straddles the headRegion (bottom row 9): its pixels at y 8 and 9 bob with the head, the `k` at (9,10) does not. Zap has no bob, so nothing tears today; a bobbing animation using this pose would need the patch moved inside the region.
     armUp: { at: { x: 9, y: 8 }, rows: [' k', ' y', 'k'] },
+    // Closed eyes: the one-pixel eyes at (4,8) and (7,8) become shade, the lid; the eye and the outline are nearly the same colour, so shade reads better. Inside the headRegion, so it bobs with the head; glasses draw over it.
+    blink: { at: { x: 4, y: 8 }, rows: ['n  n'] },
   },
   // Columns 0-1 hold the tail, which stays put while the head bobs.
   headRegion: { left: 2, top: 3, right: 17, bottom: 9 },

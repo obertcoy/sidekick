@@ -9,7 +9,9 @@ import { composePixels, defineAnimation, defineCharacter, posed, render, SLOT_OR
 import { currentLook, drawable, droppedOf, layersOf, setSavedLook } from '../hooks/sprite/look-in-use'
 import {
   ACCESSORIES,
+  AMBIENT,
   ANIMATIONS,
+  animationNameOf,
   animationOf,
   BACKGROUNDS,
   CHARACTERS,
@@ -22,7 +24,7 @@ import {
   slotRefusal,
 } from '../hooks/sprite/registry'
 import type { Accessory, Animation, Background, Character, Layers, PoseName, Slot } from '../hooks/sprite/types'
-import { POSES, SLOTS } from '../hooks/sprite/types'
+import { POSES, SLOTS, STATE_NAMES } from '../hooks/sprite/types'
 import { isStruck, strikeSteps } from '../hooks/strike'
 import { GOLDEN } from './sprite-golden'
 
@@ -282,12 +284,12 @@ if (flag === undefined) throw new Error('no flag')
 
 /** Every pixel of a frame, so two frames can be compared whole. */
 const frameOf = (layers: Layers, animation: Animation, step: number): string => JSON.stringify(composePixels(layers, animation, step))
-const withAll = (_character: Character): Layers['outfit'] => ({ head: cap, face: glasses, neck: scarf, held: flag })
-const withoutHeld = (_character: Character): Layers['outfit'] => ({ head: cap, face: glasses, neck: scarf })
+const withAll = (): Layers['outfit'] => ({ head: cap, face: glasses, neck: scarf, held: flag })
+const withoutHeld = (): Layers['outfit'] => ({ head: cap, face: glasses, neck: scarf })
 
 /** Expects every pixel of the four accessories to be in `frame` in its own colour, where its anchor, origin and the character's bob declaration put it. */
 const expectOwnPixels = (character: Character, frame: Pixels, bob: number, label: string): void => {
-  const outfit = withAll(character)
+  const outfit = withAll()
   for (const slot of SLOTS) {
     const accessory = outfit[slot]
     const anchor = character.anchors[slot]
@@ -322,7 +324,7 @@ test('both characters have a held anchor on the stage, and a flag stands on it, 
       `${name} flag clear of the body`,
     ).toEqual([])
     // And of the other accessories: worn together at rest, each keeps all of its own pixels.
-    expectOwnPixels(character, composePixels({ character, outfit: withAll(character), background: null }, ANIMATIONS.idle, 0), 0, `${name} at rest`)
+    expectOwnPixels(character, composePixels({ character, outfit: withAll(), background: null }, ANIMATIONS.idle, 0), 0, `${name} at rest`)
   }
 })
 
@@ -332,8 +334,8 @@ test('writing and zapping hide the held slot in every frame, on both characters,
       const animation = ANIMATIONS[mode]
       expect(animation.hides, mode).toEqual(['held'])
       for (let step = 0; step < animation.frames; step++) {
-        const worn = { character, outfit: withAll(character), background: null }
-        const hidden = { character, outfit: withoutHeld(character), background: null }
+        const worn = { character, outfit: withAll(), background: null }
+        const hidden = { character, outfit: withoutHeld(), background: null }
         // The flag is not in the frame: it is exactly the frame of a sidekick holding nothing.
         expect(frameOf(worn, animation, step), `${name} ${mode} ${step}`).toBe(frameOf(hidden, animation, step))
         // The other slots are still drawn.
@@ -341,8 +343,8 @@ test('writing and zapping hide the held slot in every frame, on both characters,
       }
     }
     // At rest the same outfit does show the flag.
-    expect(frameOf({ character, outfit: withAll(character), background: null }, ANIMATIONS.idle, 0)).not.toBe(
-      frameOf({ character, outfit: withoutHeld(character), background: null }, ANIMATIONS.idle, 0),
+    expect(frameOf({ character, outfit: withAll(), background: null }, ANIMATIONS.idle, 0)).not.toBe(
+      frameOf({ character, outfit: withoutHeld(), background: null }, ANIMATIONS.idle, 0),
     )
   }
   expect(ANIMATIONS.idle.hides).toEqual([])
@@ -350,7 +352,7 @@ test('writing and zapping hide the held slot in every frame, on both characters,
 
 test('an animation that hides no slot leaves every accessory drawn, and one that hides a slot hides only that slot', async () => {
   for (const character of Object.values(CHARACTERS)) {
-    const layers = { character, outfit: withAll(character), background: null }
+    const layers = { character, outfit: withAll(), background: null }
     const hidesNone: Animation = { needs: [], poses: [], frames: 2, msPerFrame: 100, once: false, hides: [], frame: step => ({ bob: step }) }
     const hidesFace: Animation = { ...hidesNone, hides: ['face'] }
     const everything = (animation: Animation, step: number) => frameOf(layers, animation, step)
@@ -361,7 +363,7 @@ test('an animation that hides no slot leaves every accessory drawn, and one that
       // The same held accessory is drawn by an animation that hides nothing and not by one that hides held.
       expect(everything(hidesNone, step)).not.toBe(frameOf(layers, { ...hidesNone, hides: ['held'] }, step))
       // Hiding the face takes out the glasses and nothing else.
-      const { face: _face, ...noFace } = withAll(character)
+      const { face: _face, ...noFace } = withAll()
       expect(everything(hidesFace, step)).toBe(kept(noFace))
     }
   }
@@ -385,7 +387,7 @@ test('all four slots are worn together and held is drawn above the other three',
   for (const [name, character] of Object.entries(CHARACTERS)) {
     const { head, face, neck, held } = character.anchors
     if (face === undefined || neck === undefined || held === undefined) throw new Error(`${name} lacks an anchor`)
-    const worn = composePixels({ character, outfit: withAll(character), background: null }, ANIMATIONS.idle, 0)
+    const worn = composePixels({ character, outfit: withAll(), background: null }, ANIMATIONS.idle, 0)
     expect(worn[head.y]?.[head.x], `${name} cap`).toBe(cap.palette.d)
     expect(worn[face.y]?.[face.x], `${name} glasses`).toBe(glasses.palette.L)
     expect(worn[neck.y]?.[neck.x], `${name} scarf`).toBe(scarf.palette.t)
@@ -417,7 +419,7 @@ test('layersOf takes the flag in the held slot only, and a held anchor needs a b
 test('looking, shrugging and cheering hide no slot, and what they draw is on the stage and clear of the body and all four accessories, bobbed frames included', async () => {
   for (const mode of ['look', 'shrug', 'cheer'] as const) expect(ANIMATIONS[mode].hides, mode).toEqual([])
   for (const [name, character] of Object.entries(CHARACTERS)) {
-    const layers = { character, outfit: withAll(character), background: null }
+    const layers = { character, outfit: withAll(), background: null }
     for (const mode of ['look', 'shrug', 'cheer'] as const) {
       const animation = ANIMATIONS[mode]
       let bobbed = 0
@@ -636,8 +638,8 @@ const padded = (character: Character): string[] => Array.from({ length: STAGE.he
 const withPoses = (name: string, poses: unknown): Character => ({ ...foxkit, name, poses }) as unknown as Character
 const armless = defineCharacter({ ...foxkit, name: 'armless', poses: {} })
 
-test('the pose names are one fixed list that holds armUp', async () => {
-  expect(POSES).toEqual(['armUp'])
+test('the pose names are one fixed list that holds armUp and blink', async () => {
+  expect(POSES).toEqual(['armUp', 'blink'])
 })
 
 test('posed lays each patch over the body: a space keeps the pixel, a dot clears it, a letter sets it', async () => {
@@ -770,7 +772,7 @@ test('zap draws every frame as it did when the arm was three painted dots (their
         return { ...plan, poses: [], dots: [...(plan.dots ?? []), ...glow, ...arm] }
       },
     }
-    for (const outfit of [{}, withAll(character), withoutHeld(character)]) {
+    for (const outfit of [{}, withAll(), withoutHeld()]) {
       const layers = { character, outfit, background: null }
       for (let step = 0; step < ANIMATIONS.zap.frames; step++) {
         expect(frameOf(layers, ANIMATIONS.zap, step), `${character.name} ${step} ${Object.keys(outfit).length} accessories`).toBe(
@@ -814,4 +816,129 @@ test('accessories draw over posed pixels, in bobbed frames too, and the cap sits
       `bob ${bob} cap overlaps the pose`,
     ).toBe(true)
   }
+})
+
+// The blink: a once-only animation that closes the eyes for one frame, drawn by each character as the blink pose. No state plays it yet.
+
+/** The eye pixels of a character's body, as "x,y": every pixel whose legend role is the eye. */
+const eyePixels = (character: Character): string[] =>
+  padded(character).flatMap((row, y) => [...row].flatMap((letter, x) => (character.legend[letter] === 'eye' ? [`${x},${y}`] : [])))
+/** The pixels where two frames differ, as "x,y". */
+const differing = (a: Pixels, b: Pixels): string[] => a.flatMap((row, y) => row.map((_, x) => x).flatMap(x => (a[y]?.[x] !== b[y]?.[x] ? [`${x},${y}`] : [])))
+const restPixels = (layers: Layers): Pixels => composePixels(layers, ANIMATIONS.idle, 0)
+
+test('blink is a pose every shipped character draws, and a once-only animation that declares it', async () => {
+  expect(POSES).toContain('blink')
+  for (const character of Object.values(CHARACTERS)) expect(character.poses?.blink, character.name).toBeDefined()
+  expect(ANIMATIONS.blink.once).toBe(true)
+  expect(ANIMATIONS.blink.poses).toEqual(['blink'])
+  expect(ANIMATIONS.blink.needs).toEqual([])
+})
+
+test('the blink closes the eyes in exactly one frame, which is neither the first nor the last; every other frame is rest', async () => {
+  for (const character of Object.values(CHARACTERS)) {
+    const layers = bare(character)
+    const rest = restPixels(layers)
+    const closed = Array.from({ length: ANIMATIONS.blink.frames }, (_, step) => step).filter(
+      step => differing(composePixels(layers, ANIMATIONS.blink, step), rest).length > 0,
+    )
+    expect(closed, character.name).toHaveLength(1)
+    expect(closed[0], character.name).toBeGreaterThan(0)
+    expect(closed[0], character.name).toBeLessThan(ANIMATIONS.blink.frames - 1)
+  }
+})
+
+test('the blink frame differs from rest at the eye pixels and nowhere else, on every character', async () => {
+  for (const character of Object.values(CHARACTERS)) {
+    const layers = bare(character)
+    const rest = restPixels(layers)
+    for (let step = 0; step < ANIMATIONS.blink.frames; step++) {
+      const changed = differing(composePixels(layers, ANIMATIONS.blink, step), rest)
+      // The middle frame differs at exactly the eyes; the others are rest.
+      const middle = Math.floor(ANIMATIONS.blink.frames / 2)
+      expect(changed.sort(), `${character.name} step ${step}`).toEqual(step === middle ? eyePixels(character).sort() : [])
+    }
+    expect(eyePixels(character).length, character.name).toBeGreaterThan(0)
+  }
+})
+
+test('glasses hide the blink: with them on, every blink frame equals rest, also with all four accessories and in a bobbed frame', async () => {
+  for (const character of Object.values(CHARACTERS)) {
+    for (const outfit of [{ face: glasses }, withAll()]) {
+      const layers = { character, outfit, background: null }
+      const rest = restPixels(layers)
+      for (let step = 0; step < ANIMATIONS.blink.frames; step++) {
+        expect(
+          differing(composePixels(layers, ANIMATIONS.blink, step), rest),
+          `${character.name} ${Object.keys(outfit).length} accessories step ${step}`,
+        ).toEqual([])
+      }
+    }
+    // Bobbed: the same pose in a frame that bobs the head down a pixel. The blink shows without glasses and is hidden with them.
+    const bobbing = defineAnimation({
+      needs: [],
+      poses: ['blink'],
+      frames: 1,
+      msPerFrame: 1,
+      once: false,
+      hides: [],
+      frame: () => ({ bob: 1, poses: ['blink'] }),
+    })
+    const steady: Animation = { ...bobbing, poses: [], frame: () => ({ bob: 1 }) }
+    expect(
+      differing(composePixels(bare(character), bobbing, 0), composePixels(bare(character), steady, 0)).length,
+      `${character.name} bobbed blink shows`,
+    ).toBeGreaterThan(0)
+    for (const outfit of [{ face: glasses }, withAll()]) {
+      const layers = { character, outfit, background: null }
+      expect(differing(composePixels(layers, bobbing, 0), composePixels(layers, steady, 0)), `${character.name} bobbed, glasses on`).toEqual([])
+    }
+  }
+})
+
+test('no state plays the blink, for any character', async () => {
+  expect(Object.values(STATES)).not.toContain('blink')
+  for (const character of Object.values(CHARACTERS)) {
+    for (const state of STATE_NAMES) expect(animationNameOf(character, state), `${character.name} ${state}`).not.toBe('blink')
+  }
+})
+
+test('the load check covers the animations a character plays: one per state, plus the ambient ones no state plays', async () => {
+  expect(AMBIENT).toEqual(['blink'])
+  // A character that draws armUp but not blink is refused for the blink, which no state plays.
+  const blinkless = defineCharacter({ ...foxkit, name: 'blinkless', poses: { armUp: foxkit.poses?.armUp } })
+  expect(() => requirePlayed(blinkless)).toThrow('sprite: character "blinkless" has no pose "blink", which the animation "blink" needs')
+  // An ambient animation that needs an anchor the character lacks is refused, naming the animation.
+  const needy = defineAnimation({ needs: ['neck'], poses: [], frames: 1, msPerFrame: 1, once: false, hides: [], frame: () => ({}) })
+  const { neck: _neck, ...withoutNeck } = foxkit.anchors
+  const neckless = defineCharacter({ ...foxkit, name: 'neckless', anchors: withoutNeck, bobs: { head: true, face: true, held: false } })
+  expect(() => requirePlayed(neckless)).not.toThrow()
+  expect(() => requirePlayed(neckless, { ...ANIMATIONS, needy }, [...AMBIENT, 'needy'])).toThrow(
+    'sprite: character "neckless" is missing the anchor "neck", which the animation "needy" needs',
+  )
+  // An ambient animation that asks for a pose it did not declare is refused.
+  const sneaky: Animation = { needs: [], poses: [], frames: 1, msPerFrame: 1, once: false, hides: [], frame: () => ({ poses: ['blink'] }) }
+  expect(() => requirePlayed(foxkit, { ...ANIMATIONS, sneaky }, [...AMBIENT, 'sneaky'])).toThrow(
+    'the animation "sneaky" asks for the pose "blink" at step 0 for character "foxkit"',
+  )
+  // The state-labelled names stay where a state plays the animation.
+  expect(() => requirePlayed(armless)).toThrow('which the animation "zap (ticket-done)" needs')
+  for (const character of Object.values(CHARACTERS)) expect(() => requirePlayed(character), character.name).not.toThrow()
+})
+
+test('a character that replaces ticket-done never plays zap, so it needs no armUp; an animation only some character replaces with is not checked against the rest', async () => {
+  const { armUp: _armUp, ...blinkOnly } = foxkit.poses ?? {}
+  const owl = defineCharacter({ ...foxkit, name: 'owl', poses: blinkOnly, animations: { 'ticket-done': 'cheer' } })
+  expect(() => requirePlayed(owl)).not.toThrow()
+  // Without the replacement it would play zap and be refused.
+  expect(() => requirePlayed({ ...owl, animations: {} })).toThrow('has no pose "armUp", which the animation "zap (ticket-done)" needs')
+  // hoot is in a catalog but is neither a state's shared animation nor ambient, so it is not checked against foxkit.
+  const hoot = defineAnimation({ needs: ['neck'], poses: [], frames: 1, msPerFrame: 1, once: false, hides: [], frame: () => ({}) })
+  const { neck: _neck, ...withoutNeck } = foxkit.anchors
+  const neckless = defineCharacter({ ...foxkit, name: 'neckless', anchors: withoutNeck, bobs: { head: true, face: true, held: false } })
+  expect(() => requirePlayed(neckless, { ...ANIMATIONS, hoot })).not.toThrow()
+  // ...but a character that does replace a state with it is refused when it lacks the anchor.
+  expect(() => requirePlayed({ ...neckless, animations: { working: 'hoot' } }, { ...ANIMATIONS, hoot })).toThrow(
+    'sprite: character "neckless" is missing the anchor "neck", which the animation "hoot (working)" needs',
+  )
 })

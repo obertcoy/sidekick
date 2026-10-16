@@ -17,7 +17,7 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 | 10 | 14 The type check is clean (independent; can also run alongside 08c) | — | done |
 | 10b | 16 CI checks lint, types and tests | 14, 15 | in progress (owner: red-run proof, branch protection) |
 | 11 | 08c Zap raises its arm with a pose | 08b | done |
-| 12 | 08d The sidekick can blink | 08c | ready |
+| 12 | 08d The sidekick can blink | 08c | done (by-eye check of the classic blink pending) |
 | 13 | 09 Ambient motion with an off switch | 07, 08d | ready |
 | 14 | 10 A multi-frame background cycles at rest | 09 | ready |
 | 15 | 11 A character replaces a state animation | 07 | done |

@@ -94,7 +94,7 @@ export type Character = {
  * Body changes an animation can ask for by name; each character draws its own. One shared, fixed list.
  * It grows only together with the animation that first uses a new name.
  */
-export const POSES = ['armUp'] as const
+export const POSES = ['armUp', 'blink'] as const
 export type PoseName = (typeof POSES)[number]
 
 /** Letters laid over the body from `at`, row by row: ' ' keeps the body's pixel, '.' clears it, any other letter is from the legend. */

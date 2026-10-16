@@ -59,6 +59,8 @@ export const foxkit = defineCharacter({
   poses: {
     // The raised arm zap draws around the `reach` paw at (13,7): outline above it, base on it, outline to its lower left. The patch is inside the headRegion, so it bobs with the head; zap has no bob.
     armUp: { at: { x: 12, y: 6 }, rows: [' o', ' y', 'o'] },
+    // Closed eyes: the two-pixel eyes at (5,4-5) and (9,4-5) become a lid. The top pixel goes to base, the bottom to the outline colour. Inside the headRegion, so it bobs with the head; glasses draw over it.
+    blink: { at: { x: 5, y: 4 }, rows: ['y   y', 'o   o'] },
   },
   // Columns 0-2 hold the ear tip and the tail, which stay put while the head bobs.
   headRegion: { left: 3, top: 1, right: 17, bottom: 8 },
