@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import { createActivity, type Shown } from '../hooks/activity'
 import { playsFor } from '../hooks/sprite'
 import { foxkit } from '../hooks/sprite/characters/foxkit'
@@ -7,6 +7,7 @@ import { setSavedLook } from '../hooks/sprite/look-in-use'
 import { ANIMATIONS, animationOf, CHARACTERS, STATES } from '../hooks/sprite/registry'
 import type { Character } from '../hooks/sprite/types'
 import { BURNS, isStruck, STRIKE_REST_STEPS, strikeSteps } from '../hooks/strike'
+import { test } from './world'
 
 // What plays for a character that names its own animations. This file imports nothing that ticket 11 added,
 // so on code without replacements these tests fail by their assertions, not by a missing export.

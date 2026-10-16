@@ -24,7 +24,7 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 | 16 | 13 Animations wait until the pane is shown | 09 | ready |
 | 17 | 12 README and vocabulary match the new system | 06, 10, 11, 13 | ready (last) |
 | — | 08e A fuller raised arm | 08c | optional, needs the owner's decision |
-| — | 17 Tests pass on a busy machine (independent; can run alongside any ticket) | — | ready |
+| — | 17 Tests pass on a busy machine (independent; can run alongside any ticket) | — | done |
 
 ## Checks
 

@@ -14,7 +14,7 @@ Find where the time goes and make the suite pass on a busy machine: first make t
 
 **Blocked by:** —
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] The slowest tests are listed with their times before and after (see Result; the machine was never quiet, load average about 20 to 22 from an outside VM, so these are the best available "quiet" numbers)
 - [x] No test takes more than half the per-test limit on a quiet machine (holds against the new 30 s limit only: slowest 2.5 s at load about 22; at load 60 to 70 a test took up to 19 s)

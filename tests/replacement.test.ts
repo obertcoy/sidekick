@@ -1,9 +1,10 @@
-import { expect, test } from 'claude-code/testing'
+import { expect } from 'claude-code/testing'
 import { foxkit } from '../hooks/sprite/characters/foxkit'
 import { defineCharacter } from '../hooks/sprite/compose'
 import { ANIMATIONS, CHARACTERS, requireReplacements } from '../hooks/sprite/registry'
 import type { Animation, Character } from '../hooks/sprite/types'
 import { BURNS, HITS, isStruck, MIN_STRIKE_FRAMES, strikeSteps } from '../hooks/strike'
+import { test } from './world'
 
 // The load checks for a character's replacements. What plays is in replacement-lookup.test.ts. These tests
 // call the checks directly: a character registered from a test is not seen by the running mod.
