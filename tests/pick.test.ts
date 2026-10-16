@@ -1,8 +1,8 @@
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, mock } from 'claude-code/testing'
 import type { World } from './world'
-import { addSet, answered, PANE, RECIPE, RUN, SURFACES, ticket, world } from './world'
+import { addSet, answered, PANE, RECIPE, RUN, SURFACES, test, ticket, world } from './world'
 
 const ROOT = '/work/shop'
 const SEARCH = { '01-index.md': ticket('01: Index', 'done'), '02-query.md': ticket('02: Query', 'open') }

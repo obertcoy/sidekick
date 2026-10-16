@@ -1,8 +1,8 @@
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, mock } from 'claude-code/testing'
 import type { Reply, World } from './world'
-import { addSet, answered, failed, PANE, RECIPE, RUN, SURFACES, ticket, world } from './world'
+import { addSet, answered, failed, PANE, RECIPE, RUN, SURFACES, test, ticket, world } from './world'
 
 const ROOT = '/work/shop'
 const CHECKOUT = {

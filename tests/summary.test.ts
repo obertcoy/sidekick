@@ -1,8 +1,8 @@
 import type { TurnCompleteInput } from 'claude-code'
 import type { Engine, MockClock } from 'claude-code/testing'
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, mock } from 'claude-code/testing'
 import type { Reply, World } from './world'
-import { answered, failed, PANE, SURFACES, world } from './world'
+import { answered, failed, PANE, SURFACES, test, world } from './world'
 
 // A project with no tickets: the only model calls are the summary's.
 const ROOT = '/work/notes'

@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, mock } from 'claude-code/testing'
 import { changeLook, lookReport } from '../hooks/look'
 import { leftOut } from '../hooks/sprite'
 import { foxkit } from '../hooks/sprite/characters/foxkit'
@@ -10,7 +10,7 @@ import { ACCESSORIES, ANIMATIONS, CHARACTERS } from '../hooks/sprite/registry'
 import type { Accessory, Character } from '../hooks/sprite/types'
 import { strikeSteps } from '../hooks/strike'
 import { GOLDEN } from './sprite-golden'
-import { addSet, answered, PANE, RECIPE, RUN, ticket, world } from './world'
+import { addSet, answered, PANE, RECIPE, RUN, test, ticket, world } from './world'
 
 // The pane draws the look resolved at each refresh, and the test world keeps what was painted.
 const ROOT = '/work/shop'

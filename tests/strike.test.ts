@@ -1,8 +1,8 @@
 import type { On } from 'claude-code'
 import type { Engine, MockClock, Mounted as MountedPane } from 'claude-code/testing'
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, mock } from 'claude-code/testing'
 import type { World } from './world'
-import { addSet, answered, PANE, RECIPE, RUN, ticket, world } from './world'
+import { addSet, answered, PANE, RECIPE, RUN, test, ticket, world } from './world'
 
 // When a ticket finishes, the critter zaps and a bolt strikes the ticket's row: the row charges,
 // the bolt runs down from the critter, the row flashes, the strike-through burns across it, and

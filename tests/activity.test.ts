@@ -1,12 +1,12 @@
 import type { On } from 'claude-code'
 import type { Engine, MockClock } from 'claude-code/testing'
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, mock } from 'claude-code/testing'
 import { render } from '../hooks/sprite/compose'
 import { currentLook, layersOf } from '../hooks/sprite/look-in-use'
 import { ANIMATIONS } from '../hooks/sprite/registry'
 import { strikeSteps } from '../hooks/strike'
 import type { Reply, World } from './world'
-import { addSet, answered, counting, failed, PANE, RECIPE, REFRESH_MS, RUN, ticket, world } from './world'
+import { addSet, answered, counting, failed, PANE, RECIPE, REFRESH_MS, RUN, test, ticket, world } from './world'
 
 // What the sidekick does while a search runs, when one fails, and how that mixes with turns and
 // zaps. Each test drives the mod as the engine does and reads the cells the mod painted.
@@ -36,9 +36,22 @@ const TICKETS = {
   '03-ship.md': ticket('03: Shipping', 'ready-for-agent'),
 }
 
+// Drawing a frame costs real time, and `named` asks for every frame of every animation on each call, so a
+// frame is drawn once per look and animation. The key is the look's names, which is all that picks the picture.
+const drawn = new Map<string, string[]>()
+
 /** Every frame of an animation as the renderer draws it for the look now. */
-const framesOf = (mode: keyof typeof ANIMATIONS): string[] =>
-  Array.from({ length: ANIMATIONS[mode].frames }, (_, step) => render(layersOf(currentLook()), ANIMATIONS[mode], step))
+const framesOf = (mode: keyof typeof ANIMATIONS): string[] => {
+  const look = currentLook()
+  const key = `${mode}:${JSON.stringify(look)}`
+  let frames = drawn.get(key)
+  if (frames === undefined) {
+    frames = Array.from({ length: ANIMATIONS[mode].frames }, (_, step) => render(layersOf(look), ANIMATIONS[mode], step))
+    drawn.set(key, frames)
+  }
+
+  return [...frames]
+}
 const REST = (): string => framesOf('idle')[0] ?? ''
 
 /** What each painted picture is, by name ("look3", "shrug7"), so that a failure reads as a sequence. Pictures that are the same frame have the same name. */

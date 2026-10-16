@@ -1,4 +1,5 @@
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, mock } from 'claude-code/testing'
+import { test } from './world'
 
 const ROOT = '/work/shop'
 const TICKETS: Record<string, string> = {

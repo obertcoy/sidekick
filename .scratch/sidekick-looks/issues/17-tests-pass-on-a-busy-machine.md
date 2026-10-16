@@ -16,9 +16,9 @@ Find where the time goes and make the suite pass on a busy machine: first make t
 
 **Status:** ready-for-agent
 
-- [ ] The slowest tests are listed with their times before and after (quiet machine)
-- [ ] No test takes more than half the per-test limit on a quiet machine
-- [ ] Ten back-to-back runs pass while a second `claude plugin test .` runs alongside
-- [ ] If the limit is raised, it is raised in one place, with a comment saying why
-- [ ] Every test asserts what it asserted before (titles and expectations unchanged unless a title was wrong)
-- [ ] `tests/sprite-golden.ts` is unchanged
+- [x] The slowest tests are listed with their times before and after (quiet machine)
+- [x] No test takes more than half the per-test limit on a quiet machine
+- [x] Ten back-to-back runs pass while a second `claude plugin test .` runs alongside
+- [x] If the limit is raised, it is raised in one place, with a comment saying why
+- [x] Every test asserts what it asserted before (titles and expectations unchanged unless a title was wrong)
+- [x] `tests/sprite-golden.ts` is unchanged
