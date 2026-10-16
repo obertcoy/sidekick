@@ -1,4 +1,4 @@
-# Handoff: sidekick-looks, continue from ticket 09
+# Handoff: sidekick-looks, continue from tickets 10 and 13
 
 Written 2026-10-16. Supersedes the temp-folder handoffs. Order, status and decisions live in `issues/README.md`; read it first.
 
@@ -10,14 +10,17 @@ Written 2026-10-16. Supersedes the temp-folder handoffs. Order, status and decis
 - **17** tests pass on a busy machine: every test file imports `test` from `tests/world.ts`, which sets a 30 s limit (harness default 5 s). Root cause: the harness starts every test file at once; per-test work is 0.1–0.7 s alone.
 - `biome.json` ignores `.claude/worktrees` (`!!`), so agent worktrees do not break `biome ci .`.
 
-## In flight when this was written
+- **09** ambient motion: four ambient animations (blink, tailFlick, earFlick, cheekSpark; new poses `tailUp`, `earsUp`), scheduled by the activity state machine (phases `between` and `ambient`, a 5–15 s gap drawn in the shell), each character lists its own (`Character.ambient`), `/sidekick-motion [off|on]` with the global store key `motion` (on by default). The command name and key were the builder's choice by analogy with the look command; the owner has not confirmed them.
 
-- **09** ambient motion was being built by a background agent in the working tree of the original machine. Its uncommitted work is only there. On a new device, start 09 again from the ticket unless that work was committed and pushed.
+## Next
+
+- **10** (multi-frame background) and **13** (pane shown) are both unblocked by 09 and can run in parallel; 13 needs the open decision below first. Then **12** last.
+- Known pre-existing issue (no ticket yet): after a look change the resting picture keeps the old character until the next state.
 
 ## Open decisions (ask the owner)
 
 - **Ticket 13 (rewrite pending):** owner said animations play only while the pane is shown (shown is enough; keyboard focus not needed). While hidden: ambient and the shrug are dropped; the **ticket-done zap with its strike waits** and plays when the pane is shown. Still open: does the **set-done cheer** wait too, or is it dropped? Then rewrite ticket 13's boxes 3–6 accordingly.
-- **08d box 6:** the classic's blink is one pixel per eye (eye turns shade `n`). Recommended: check it by eye after 09, when the blink plays on its own (`run` skill). Owner has not confirmed.
+- **By-eye check (08d box 6):** the classic's blink, tail flick and ear flick are one pixel each and may read weakly. 09 now plays them on its own; check them in the running app (`run` skill). Owner has not confirmed when.
 - **08e / 08f / 08g** optional tickets: not decided.
 
 ## How the owner wants it run
