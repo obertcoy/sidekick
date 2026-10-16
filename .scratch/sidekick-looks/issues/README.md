@@ -20,7 +20,7 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 | 12 | 08d The sidekick can blink | 08c | ready |
 | 13 | 09 Ambient motion with an off switch | 07, 08d | ready |
 | 14 | 10 A multi-frame background cycles at rest | 09 | ready |
-| 15 | 11 A character replaces a state animation | 07 | ready |
+| 15 | 11 A character replaces a state animation | 07 | done |
 | 16 | 13 Animations wait until the pane is shown | 09 | ready |
 | 17 | 12 README and vocabulary match the new system | 06, 10, 11, 13 | ready (last) |
 | — | 08e A fuller raised arm | 08c | optional, needs the owner's decision |

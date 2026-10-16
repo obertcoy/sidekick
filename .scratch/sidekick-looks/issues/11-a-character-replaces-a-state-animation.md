@@ -4,7 +4,7 @@
 
 **Blocked by:** 07: The sidekick looks around during a search and shrugs when it fails
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] A character that names nothing plays the shared animation for every state
 - [x] A character that names an animation for a state plays it in place of the shared one, and the shared ones for the other states
