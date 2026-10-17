@@ -1,6 +1,6 @@
 // What the sidekick is doing: the conditions that hold now (a turn runs, a search runs), a queue of
 // once-only animations, and, while it rests with nothing going on, its ambient motion. One small unit,
-// one timer, no knowledge of the pane. register.tsx tells it what happens; it tells register.tsx what to draw.
+// one timer, and no knowledge of the pane beyond whether it is the one shown. register.tsx tells it what happens; it tells register.tsx what to draw.
 //
 // A pure `transition(model, event, playsFor, ambientOf)` is the only place anything changes: it returns the next model
 // and the effects to run, as data. `createActivity` is the shell: it owns the one timer and runs the effects in order,
@@ -41,6 +41,8 @@ export type Entry = {
   readonly onStep?: (step: number) => void
   /** Called when the entry is over, before what comes next is drawn. */
   readonly onEnd?: () => void
+  /** The entry is kept when it arrives while the pane is not shown, and plays once when the pane is next shown. An entry without it is dropped then: its moment has passed. */
+  readonly isKeptWhenHidden?: boolean
 }
 
 /** The part of the clock the activity needs; `$.clock` has it. */
@@ -51,6 +53,8 @@ export type Activity = {
   set: (condition: Condition, isOn: boolean) => void
   /** Turns ambient motion on or off. It starts off; with it off no timer runs at rest. */
   setMotion: (isOn: boolean) => void
+  /** Tells the activity whether the pane is the one shown. It starts shown. Hidden, nothing is drawn and no timer runs; shown again, it does what the conditions call for. */
+  setShown: (isShown: boolean) => void
   /** Whether the condition holds now. */
   has: (condition: Condition) => boolean
   /** Adds a once-only animation behind those already waiting. It plays at once when none is playing. */
@@ -66,8 +70,10 @@ export type Activity = {
 // The machine. `resting` loops what still goes on; `between` is a rest with nothing going on and a gap pending, until the next ambient
 // animation; `ambient` plays that animation; `playing` runs an entry through its frames; `holding` is an entry whose animation is over
 // but whose rest steps are not, the sidekick resting meanwhile. An entry or a condition that arrives in `between` or `ambient` takes over at once.
+// `away` is every phase while the pane is not the one shown: nothing is drawn and no timer runs. The conditions still follow what happens, entries
+// that are kept wait, and when the pane is shown the machine begins afresh from them.
 
-export const PHASES = ['resting', 'between', 'ambient', 'playing', 'holding'] as const
+export const PHASES = ['resting', 'between', 'ambient', 'playing', 'holding', 'away'] as const
 export type PhaseKind = (typeof PHASES)[number]
 
 /** An animation under way: the one resolved when it began (never asked for again), the step it is at, and how many steps it has in all. */
@@ -77,7 +83,14 @@ type Play = { readonly animation: Animation; readonly step: number; readonly ste
 type Run = Play & { readonly entry: Entry }
 
 /** What each kind carries; a kind missing here does not compile. */
-type Fields = { resting: Record<never, never>; between: Record<never, never>; ambient: Play; playing: Run; holding: Run }
+type Fields = {
+  resting: Record<never, never>
+  between: Record<never, never>
+  ambient: Play
+  playing: Run
+  holding: Run
+  away: Record<never, never>
+}
 export type Phase = { [K in PhaseKind]: { readonly kind: K } & Fields[K] }[PhaseKind]
 
 export type Model = {
@@ -100,6 +113,8 @@ export type Event =
   | { readonly type: 'gap'; readonly roll: number }
   /** The look changed, so what the character plays on its own may have too. */
   | { readonly type: 'look' }
+  /** The pane is now the one shown, or no longer. */
+  | { readonly type: 'view'; readonly isShown: boolean }
 
 export type Effect =
   | { readonly do: 'draw'; readonly shown: Shown }
@@ -145,9 +160,31 @@ const showsRest = (phase: Phase): boolean => {
     case 'resting':
     case 'ambient':
     case 'playing':
+    case 'away':
       return false
     default:
       return unreachable(phase)
+  }
+}
+
+/**
+ * The pane goes behind another: whatever runs stops, an entry under way is over (it began while the pane was shown, so it does not play again),
+ * and of those waiting only the ones that are kept stay. Nothing is drawn; the next picture is the one drawn when the pane is shown.
+ */
+const goAway = (m: Model): Result => {
+  const waiting = m.waiting.filter(entry => entry.isKeptWhenHidden === true)
+  const away: Model = { ...m, waiting, phase: { kind: 'away' } }
+  switch (m.phase.kind) {
+    case 'playing':
+    case 'holding':
+      return { model: away, effects: [{ do: 'stop' }, { do: 'end', entry: m.phase.entry }] }
+    case 'resting':
+    case 'between':
+    case 'ambient':
+    case 'away':
+      return { model: away, effects: [{ do: 'stop' }] }
+    default:
+      return unreachable(m.phase)
   }
 }
 
@@ -245,6 +282,7 @@ const reconsider = (m: Model, playsFor: Lookup, ambientOf: Ambient, cutsAmbient:
       return cutsAmbient ? begin(m, playsFor, ambientOf, false) : same(m)
     case 'playing':
     case 'holding':
+    case 'away':
       return same(m)
     default:
       return unreachable(m.phase)
@@ -269,6 +307,8 @@ export const transition = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambi
           return same(next)
         case 'holding':
           return showRest(next, playsFor)
+        case 'away':
+          return same(next)
         default:
           return unreachable(m.phase)
       }
@@ -276,6 +316,8 @@ export const transition = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambi
     case 'queue': {
       const next = { ...m, waiting: [...m.waiting, e.entry] }
       switch (m.phase.kind) {
+        case 'away':
+          return e.entry.isKeptWhenHidden === true ? same(next) : same(m)
         case 'resting':
         case 'between':
         case 'ambient':
@@ -293,7 +335,8 @@ export const transition = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambi
         case 'resting':
           return show(m, { ...m.shown, frame: (m.shown.frame + 1) % m.shown.animation.frames })
         case 'between':
-          // The gap is the only timer, and it is not a tick.
+        case 'away':
+          // The gap is the only timer, and it is not a tick. Away there is no timer; a tick on its way when the pane went behind another is ignored.
           return same(m)
         case 'ambient':
           return advanceAmbient(m, p, playsFor, ambientOf)
@@ -318,6 +361,7 @@ export const transition = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambi
         case 'ambient':
         case 'playing':
         case 'holding':
+        case 'away':
           return same(m)
         default:
           return unreachable(m.phase)
@@ -326,13 +370,28 @@ export const transition = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambi
     case 'look':
       // The old character's ambient animation may need anchors the new one lacks, so it does not play on.
       return reconsider(m, playsFor, ambientOf, true)
+    case 'view': {
+      if (e.isShown === (m.phase.kind !== 'away')) return same(m)
+      // Shown again, it does what the conditions call for now (or rests), after the animations that were kept; its ambient wait starts afresh.
+      return e.isShown ? begin({ ...m, phase: { kind: 'resting' } }, playsFor, ambientOf, false) : goAway(m)
+    }
     default:
       return unreachable(e)
   }
 }
 
-/** `draw` is called with every picture to show: when what is shown changes, and on `repaint`. */
-export const createActivity = (clock: Clock, draw: (shown: Shown) => void, playsFor: Lookup, ambientOf: Ambient = noAmbient): Activity => {
+/**
+ * `draw` is called with every picture to show: when what is shown changes, and on `repaint`, never while the pane is not shown.
+ * `isShownNow`, when given, is asked each time the timer fires, before the sidekick acts on it, so a pane that went behind another is found out at once
+ * and shows nothing more; without it the pane is taken to be shown until `setShown` says otherwise.
+ */
+export const createActivity = (
+  clock: Clock,
+  draw: (shown: Shown) => void,
+  playsFor: Lookup,
+  ambientOf: Ambient = noAmbient,
+  isShownNow?: () => Promise<boolean>,
+): Activity => {
   let model = initial(playsFor)
   let timer: Timer | undefined
   const inbox: Event[] = []
@@ -351,12 +410,12 @@ export const createActivity = (clock: Clock, draw: (shown: Shown) => void, plays
         return
       case 'every':
         timer?.cancel()
-        timer = clock.every(effect.ms, () => dispatch({ type: 'tick' }))
+        timer = clock.every(effect.ms, () => fire({ type: 'tick' }))
 
         return
       case 'wait':
         timer?.cancel()
-        timer = clock.after(gapMs(), () => dispatch({ type: 'gap', roll: Math.random() }))
+        timer = clock.after(gapMs(), () => fire({ type: 'gap', roll: Math.random() }))
 
         return
       case 'start':
@@ -374,6 +433,20 @@ export const createActivity = (clock: Clock, draw: (shown: Shown) => void, plays
       default:
         unreachable(effect)
     }
+  }
+  // What the timer fires: the event, once the pane is known to be shown. If it is not, the pane goes away instead and the event is not acted on.
+  const fire = (event: Event): void => {
+    if (isShownNow === undefined) {
+      dispatch(event)
+
+      return
+    }
+    const fired = timer
+    void isShownNow().then(isShown => {
+      dispatch({ type: 'view', isShown })
+      // The answer took a moment: a timer that was replaced meanwhile fired for something that is over.
+      if (timer === fired) dispatch(event)
+    })
   }
   // One event at a time: a hook that calls set or queue is handled after the effects now running.
   const dispatch = (event: Event): void => {
@@ -394,12 +467,13 @@ export const createActivity = (clock: Clock, draw: (shown: Shown) => void, plays
   return {
     set: (condition, isOn) => dispatch({ type: 'set', condition, isOn }),
     setMotion: isOn => dispatch({ type: 'motion', isOn }),
+    setShown: isShown => dispatch({ type: 'view', isShown }),
     has: condition => model.conditions[condition],
     queue: entry => dispatch({ type: 'queue', entry }),
     lookChanged: () => dispatch({ type: 'look' }),
     repaint: () => {
       dispatch({ type: 'look' })
-      draw(model.shown)
+      if (model.phase.kind !== 'away') draw(model.shown)
     },
     shown: () => model.shown,
   }

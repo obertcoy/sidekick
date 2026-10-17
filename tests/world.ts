@@ -74,6 +74,10 @@ export type World = {
   blits: string[]
   /** The cells of every one of those repaints, in order: what the sidekick looked like each time. */
   painted: string[]
+  /** Whether the sidekick's pane is the one shown (true) or a tab behind another pane (false); the engine answers `$.ui.panes()` with it. */
+  isShown: boolean
+  /** Whether the person has given the sidekick's pane the keyboard; it has no bearing on whether the pane is shown. */
+  hasKeyboard: boolean
 }
 
 /** Stands beneath the mod as a project at `root` (spelled as the host spells it). */
@@ -96,6 +100,8 @@ export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}):
     opened: [],
     blits: [],
     painted: [],
+    isShown: true,
+    hasKeyboard: false,
   }
   on('session.root', () => {
     if (w.isRootGone) throw new Error('the session has no root')
@@ -141,6 +147,9 @@ export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}):
 
     return { value: { isPlaced: true } }
   })
+  on('ui.panes', () => ({
+    value: [{ id: 'sidekick', title: 'Sidekick', isShown: w.isShown, isFocused: w.hasKeyboard, isPlaced: true }],
+  }))
   on('ui.blit', (_, e) => {
     w.blits.push(e.key)
     w.painted.push('cells' in e ? e.cells : '')

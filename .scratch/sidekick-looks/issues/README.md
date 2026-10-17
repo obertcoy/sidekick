@@ -21,7 +21,7 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 | 13 | 09 Ambient motion with an off switch | 07, 08d | done |
 | 14 | 10 A multi-frame background cycles at rest | 09 | folded into 21 |
 | 15 | 11 A character replaces a state animation | 07 | done |
-| 16 | 13 Animations wait until the pane is shown | 09 | ready |
+| 16 | 13 Animations wait until the pane is shown | 09 | done |
 | 17 | 18 Moments and movesets, with plain defaults | 13 | ready |
 | 18 | 19 The stage fits the character, and a camera follows it | 18 | ready (golden re-record needs the owner) |
 | 19 | 20 The body moves and can change colour | 19 | ready |

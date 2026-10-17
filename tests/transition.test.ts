@@ -46,8 +46,8 @@ const off = (condition: Condition): Event => ({ type: 'set', condition, isOn: fa
 const queue = (e: Entry): Event => ({ type: 'queue', entry: e })
 
 const noAmbient: Ambient = () => []
-test('the phases are the five kinds, and a model starts resting with nothing to do', async () => {
-  expect(PHASES).toEqual(['resting', 'between', 'ambient', 'playing', 'holding'])
+test('the phases are the six kinds, and a model starts resting with nothing to do', async () => {
+  expect(PHASES).toEqual(['resting', 'between', 'ambient', 'playing', 'holding', 'away'])
   expect(INITIAL.isMotionOn).toBe(false)
   expect(CONDITIONS).toEqual(['turn', 'search'])
   expect(INITIAL.phase).toEqual({ kind: 'resting' })
@@ -349,4 +349,65 @@ test('a gap that arrives in any phase but the pending one does nothing', async (
   for (const model of [INITIAL, feed([queue(zap)]).model, feed([queue(entry('ticket-done', 2)), tick, tick]).model, mid]) {
     expect(transition(model, gap(0.9), playsFor, both), model.phase.kind).toEqual({ model, effects: [] })
   }
+})
+
+// The pane is not the one shown: nothing is drawn and no timer runs, and what is kept waits.
+const view = (isShown: boolean): Event => ({ type: 'view', isShown })
+const KEPT: Entry = { state: 'ticket-done', isKeptWhenHidden: true }
+const DROPPED: Entry = { state: 'searching' }
+
+test('hiding the pane stops the timer and draws nothing, whatever the sidekick was doing', async () => {
+  for (const model of [INITIAL, waiting(), feed([on('turn')]).model, feed([gap(0)], waiting(), playsFor, both).model]) {
+    const hidden = transition(model, view(false), playsFor, both)
+    expect(hidden.model.phase, model.phase.kind).toEqual({ kind: 'away' })
+    expect(hidden.effects, model.phase.kind).toEqual([{ do: 'stop' }])
+  }
+})
+
+test('hiding the pane ends an entry under way, once, and keeps no more of the queue than the kept entries', async () => {
+  const playing = feed([queue(KEPT), queue(DROPPED), queue(KEPT)]).model
+  const hidden = transition(playing, view(false), playsFor)
+  expect(hidden.effects).toEqual([{ do: 'stop' }, { do: 'end', entry: KEPT }])
+  expect(hidden.model.waiting).toEqual([KEPT])
+})
+
+test('while the pane is hidden nothing is drawn, no timer starts, ticks and gaps are ignored, and the conditions are followed', async () => {
+  const away = transition(INITIAL, view(false), playsFor).model
+  for (const event of [on('turn'), off('turn'), on('search'), tick, gap(0), { type: 'motion', isOn: true } as const, { type: 'look' } as const]) {
+    expect(transition(away, event, playsFor, both).effects, JSON.stringify(event)).toEqual([])
+  }
+  expect(feed([on('turn')], away).model.conditions.turn).toBe(true)
+  expect(feed([on('turn')], away).model.phase).toEqual({ kind: 'away' })
+})
+
+test('an entry that arrives while the pane is hidden waits when it is kept and is dropped when it is not', async () => {
+  const away = transition(INITIAL, view(false), playsFor).model
+  const { model, effects } = feed([queue(KEPT), queue(DROPPED), queue(entry('set-done'))], away)
+  expect(effects).toEqual([])
+  expect(model.waiting).toEqual([KEPT])
+})
+
+test('showing the pane begins what the conditions call for, or the rest; kept entries come first, in the order they arrived', async () => {
+  const away = transition(INITIAL, view(false), playsFor).model
+  const writing = feed([on('turn'), on('search')], away)
+  const shown = transition(writing.model, view(true), playsFor)
+  expect(shown.model.phase).toEqual({ kind: 'resting' })
+  expect(shown.effects).toEqual([{ do: 'stop' }, draw('working', 0), { do: 'every', ms: 100 }])
+
+  const ended = feed([on('turn'), off('turn')], away)
+  expect(transition(ended.model, view(true), playsFor).effects, 'a turn that came and went plays nothing').toEqual([{ do: 'stop' }, draw('resting', 0)])
+
+  const kept = feed([queue(KEPT), queue({ state: 'set-done', isKeptWhenHidden: true })], away)
+  const first = transition(kept.model, view(true), playsFor)
+  expect(first.effects).toEqual([{ do: 'stop' }, { do: 'start', entry: KEPT, steps: 2 }, draw('ticket-done', 0), { do: 'every', ms: 50 }])
+  expect(first.model.waiting.map(one => one.state)).toEqual(['set-done'])
+})
+
+test('showing the pane at rest with motion on arms a fresh gap; showing it twice, or hiding it twice, changes nothing', async () => {
+  const away = transition(waiting(), view(false), playsFor, both).model
+  expect(transition(away, view(false), playsFor, both)).toEqual({ model: away, effects: [] })
+  const shown = transition(away, view(true), playsFor, both)
+  expect(shown.model.phase).toEqual({ kind: 'between' })
+  expect(shown.effects).toEqual([{ do: 'stop' }, draw('resting', 0), WAIT])
+  expect(transition(shown.model, view(true), playsFor, both)).toEqual({ model: shown.model, effects: [] })
 })

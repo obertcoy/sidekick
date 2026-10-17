@@ -4,17 +4,17 @@
 
 **Blocked by:** 09: Ambient motion with an off switch
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] While the sidekick's pane is the shown pane, every animation plays as it did before this ticket, whether or not the pane has the keyboard
-- [ ] While the pane is not shown, no frame is painted and no animation or ambient timer is pending
-- [ ] A ticket that becomes done while the pane is not shown zaps once, with its strike, when the pane is next shown
-- [ ] A search that fails while the pane is not shown plays no shrug, then or when the pane is next shown
-- [ ] A ticket set that becomes all done while the pane is not shown cheers once when the pane is next shown, after its zap
-- [ ] Several once-only animations kept while the pane is not shown play in the order they arrived, each once
-- [ ] A turn or search that started and ended while the pane was not shown plays nothing when the pane is shown
-- [ ] A turn or search still running when the pane is shown plays its animation from then on
-- [ ] No ambient animation plays in the first 5 seconds after the pane is shown
-- [ ] With only the sidekick's pane open, behaviour is unchanged from before this ticket
-- [ ] The bare foxkit's golden frames are unchanged
-- [ ] Covered by whole-mod tests that hide and show the pane and advance the mock clock
+- [x] While the sidekick's pane is the shown pane, every animation plays as it did before this ticket, whether or not the pane has the keyboard
+- [x] While the pane is not shown, no frame is painted and no animation or ambient timer is pending
+- [x] A ticket that becomes done while the pane is not shown zaps once, with its strike, when the pane is next shown
+- [x] A search that fails while the pane is not shown plays no shrug, then or when the pane is next shown
+- [x] A ticket set that becomes all done while the pane is not shown cheers once when the pane is next shown, after its zap
+- [x] Several once-only animations kept while the pane is not shown play in the order they arrived, each once
+- [x] A turn or search that started and ended while the pane was not shown plays nothing when the pane is shown
+- [x] A turn or search still running when the pane is shown plays its animation from then on
+- [x] No ambient animation plays in the first 5 seconds after the pane is shown
+- [x] With only the sidekick's pane open, behaviour is unchanged from before this ticket
+- [x] The bare foxkit's golden frames are unchanged
+- [x] Covered by whole-mod tests that hide and show the pane and advance the mock clock

@@ -140,6 +140,18 @@ type Scene = {
 // One scene per pane, so what one pane shows is never read from another's.
 const scenes = new Map<string, Scene>()
 
+/**
+ * Whether the pane is the one shown, as against a tab behind another pane. It has nothing to do with the keyboard.
+ * The host raises no event when the shown pane changes, so this is asked. When it cannot be told the pane counts as shown, so that a failed ask never stills the sidekick.
+ */
+const isPaneShown = async ($: Dollar): Promise<boolean> => {
+  try {
+    return (await $.ui.panes()).find(pane => pane.id === PANE)?.isShown ?? true
+  } catch {
+    return true
+  }
+}
+
 const sceneOf = ($: Dollar): Scene => {
   const held = scenes.get(PANE)
   if (held !== undefined) return held
@@ -153,11 +165,17 @@ const sceneOf = ($: Dollar): Scene => {
       },
       playsFor,
       ambientFor,
+      () => isPaneShown($),
     ),
   }
   scenes.set(PANE, scene)
 
   return scene
+}
+
+/** Tells the sidekick whether its pane is the one shown now; asked wherever news arrives (a render, a refresh, a turn) so it never animates for a pane nobody sees. */
+const syncShown = async ($: Dollar): Promise<void> => {
+  sceneOf($).activity.setShown(await isPaneShown($))
 }
 
 /** Strikes the rows that just finished, after any strike already under way. */
@@ -175,6 +193,7 @@ const strikeRows = ($: Dollar, rows: Map<string, Was>): void => {
     state: 'ticket-done',
     // The strike has one more step than the animation has frames; the sidekick rests for the last one.
     restSteps: STRIKE_REST_STEPS,
+    isKeptWhenHidden: true,
     onStart: steps => {
       if (scene.pending === batch) scene.pending = undefined
       scene.strike = { rows: batch, step: 0, steps }
@@ -431,10 +450,10 @@ const show = async ($: Dollar, next: View): Promise<void> => {
     }
     // The sidekick animates the done ticket either way; the rows it can name are struck in step with it.
     if (finished.size > 0) strikeRows($, finished)
-    else sceneOf($).activity.queue({ state: 'ticket-done' })
+    else sceneOf($).activity.queue({ state: 'ticket-done', isKeptWhenHidden: true })
     // The set became all done: it was not at the previous refresh of this same set (`was` is that refresh, and a
     // first load or another set never gets here). The cheer waits behind the zap and its strike.
-    if (now.done === now.total && was.done < was.total) sceneOf($).activity.queue({ state: 'set-done' })
+    if (now.done === now.total && was.done < was.total) sceneOf($).activity.queue({ state: 'set-done', isKeptWhenHidden: true })
     $.ui.toast(now.next === null ? `✓ All ${now.total} tickets done` : `✓ ${now.done}/${now.total} done · next: ${shortTitle(now.next)}`)
   }
   const needsYou = next.summary?.needsYou ?? ''
@@ -445,6 +464,7 @@ const show = async ($: Dollar, next: View): Promise<void> => {
 
 /** Refreshes the pane. `isOffering` (a rescan) opens the set picker; a new session opens it by itself. */
 const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = false): Promise<View> => {
+  await syncShown($)
   await followProject($)
   if (isSearching) return read($, view)
   const root = await rootOf($)
@@ -841,6 +861,7 @@ export const register: Register = on => {
     }
     // The session may have moved to another project since the last refresh; draw that project's look.
     await followProject($)
+    await syncShown($)
     // A subagent run raises no turn.start, so this is always the main conversation's turn.
     const { activity } = sceneOf($)
     const isWriting = activity.has('turn')
@@ -853,6 +874,7 @@ export const register: Register = on => {
 
   on('turn.complete', async ($, e, next) => {
     const ended = await next(e)
+    await syncShown($)
     if (e.agentId === undefined) sceneOf($).activity.set('turn', false)
     // The first turn ended with no pick: the picker gives way to the hint line.
     if (e.agentId === undefined && isChoosing) {
@@ -870,6 +892,8 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    // The host draws the pane when it is shown, so a render is also the news that it is, before the picture is read.
+    await syncShown($)
     const table = $.ui.resolve(e)
     const { Box, Text, Button } = table
     // The mobile app draws no Select yet, so only the tables that declare one offer it.
