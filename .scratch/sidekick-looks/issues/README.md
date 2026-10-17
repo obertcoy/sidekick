@@ -24,7 +24,7 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 | 16 | 13 Animations wait until the pane is shown | 09 | done |
 | 17 | 18 Moments and movesets, with plain defaults | 13 | done |
 | 18 | 19 The stage fits the character, and a camera follows it | 18 | done (owner review of golden frames pending) |
-| 19 | 20 The body moves and can change colour | 19 | ready |
+| 19 | 20 The body moves and can change colour | 19 | done |
 | 20 | 21 Layers and an effects library (absorbs 10) | 20 | ready |
 | 21 | 22 The sidekick has a place and can walk | 21 | ready |
 | 22 | 23 The classic animations move onto the new engine | 22 | ready (golden re-record needs the owner) |

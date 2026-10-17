@@ -117,12 +117,30 @@ export type Patch = { readonly at: Point; readonly rows: readonly string[] }
 /** A pixel an animation lays over the body; `role` is a body role (taken from the character) or a prop role. */
 export type Dot = readonly [x: number, y: number, role: Role]
 
+/** Whether a stage pixel is covered by the character in a frame. */
+export type Mask = (x: number, y: number) => boolean
+
 /**
  * What one frame does: the head bob (in pixels, down), the poses laid over the body in order (a later one wins),
- * and the props and effects drawn on top. Accessories draw over posed pixels; anchors do not move with poses.
+ * how the whole character moves, and the props and effects drawn on top. Accessories draw over posed pixels; anchors do not move with poses.
  * A patch inside the character's `headRegion` bobs with the head.
+ *  - dx, dy: move the whole character, accessories included, by that many pixels (right, down); whole numbers.
+ *  - mirror: the character faces the other way, about the middle of its frame so it stays where it stands; accessories are turned with it.
+ *  - squash: whole rows; positive takes that many rows out just above the feet, negative repeats the row there that many times. The feet stay on the same row; the rest of the body, accessories included, moves to meet them.
+ *  - recolor: other colours for some body roles in this frame only; the next frame starts from the character's palette again.
+ *  - aimed: dots worked out from the character's mask (the pixels it covers in this frame, accessories included), such as an aura that hugs it; drawn with `dots`.
  */
-export type FramePlan = { readonly bob?: number; readonly poses?: readonly PoseName[]; readonly dots?: readonly Dot[] }
+export type FramePlan = {
+  readonly bob?: number
+  readonly poses?: readonly PoseName[]
+  readonly dx?: number
+  readonly dy?: number
+  readonly mirror?: boolean
+  readonly squash?: number
+  readonly recolor?: Readonly<Partial<Record<BodyRole, number>>>
+  readonly dots?: readonly Dot[]
+  readonly aimed?: (mask: Mask) => readonly Dot[]
+}
 
 export type Animation = {
   /** The anchors the frames read. A character that plays this animation and lacks one is refused at load (the registry checks). */

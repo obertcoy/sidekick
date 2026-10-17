@@ -4,12 +4,12 @@
 
 **Blocked by:** 19: The stage fits the character, and a camera follows it
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A frame with `dx`/`dy` draws the whole character, accessories included, moved by that many pixels
-- [ ] A mirrored frame draws the character facing the other way, anchors mirrored with it
-- [ ] Squash removes a row and stretch adds one, with the feet on the same row both times
-- [ ] A recolour changes only the named body roles for that frame; the next frame is back to the character's palette unless it recolours too
-- [ ] The mask of a frame is exactly the pixels the character covers in it
-- [ ] Every existing animation draws the same pixels as before (no golden change)
-- [ ] Covered at the pure level, frame by frame, for the classic and a test-only character
+- [x] A frame with `dx`/`dy` draws the whole character, accessories included, moved by that many pixels
+- [x] A mirrored frame draws the character facing the other way, anchors mirrored with it
+- [x] Squash removes a row and stretch adds one, with the feet on the same row both times
+- [x] A recolour changes only the named body roles for that frame; the next frame is back to the character's palette unless it recolours too
+- [x] The mask of a frame is exactly the pixels the character covers in it
+- [x] Every existing animation draws the same pixels as before (no golden change)
+- [x] Covered at the pure level, frame by frame, for the classic and a test-only character

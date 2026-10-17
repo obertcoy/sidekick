@@ -120,6 +120,14 @@ _Avoid_: Canvas, scene, sprite
 What the pane looks into the stage through. It keeps the character centred horizontally and stays inside the world; a narrow pane shows the part around the character, a wide one the whole world. When the pane has less height than the stage it trims the sky first, and never cuts into the character or the ground.
 _Avoid_: Viewport, window
 
+**Body motion**:
+What a frame can do to the whole character: move it (`dx`, `dy`, in pixels), turn it to face the other way (`mirror`, about the middle of its frame), squash it by a row or stretch it by a row (the feet stay on the same row), and recolour some of its body roles for that frame only. Accessories move, turn, squash and stretch with the body; a recolour reaches only the body, since an accessory has its own colours.
+_Avoid_: Transform, animation of the body
+
+**Mask**:
+The pixels the character covers in a frame, accessories included, after all its body motion; props and effects are not part of it. An effect that hugs the character, such as an aura, is aimed by it.
+_Avoid_: Silhouette, hitbox
+
 **Moment**:
 Something the mod can detect that the sidekick answers with an animation: a turn is working, a search runs, a search fails, a ticket is done, a set is done, the sidekick rests. The list is closed; one is added only together with a real event that produces it.
 _Avoid_: State, event, trigger

@@ -1,4 +1,21 @@
-import type { AnchorName, Anchors, Animation, Character, Edges, FramePlan, Layers, Needed, Patch, Point, PoseName, PropRole, Role, Slot } from './types'
+import type {
+  AnchorName,
+  Anchors,
+  Animation,
+  BodyRole,
+  Character,
+  Edges,
+  FramePlan,
+  Layers,
+  Mask,
+  Needed,
+  Patch,
+  Point,
+  PoseName,
+  PropRole,
+  Role,
+  Slot,
+} from './types'
 import { LIST_ANCHORS, OPTIONAL_POINT_ANCHORS, POSES, REQUIRED_ANCHORS, REQUIRED_BODY_ROLES, SLOTS } from './types'
 
 /** The most pixels a character may measure either way; a bigger one is refused at load. */
@@ -256,6 +273,17 @@ const inRegion = (point: Point, character: Character): boolean => {
 /** The order accessories are drawn in, back to front. */
 export const SLOT_ORDER = ['neck', 'face', 'head', 'held'] as const satisfies readonly Slot[]
 
+/**
+ * The rows the character's row `y` is drawn on once squashed: a positive `squash` takes that many rows out just above the feet, a negative one repeats the row above the feet that many times,
+ * so the feet row and every row below it stay where they are and the rest of the body moves down (squash) or up (stretch) to meet it.
+ */
+const rowsOf = (y: number, feet: number, squash: number): number[] => {
+  if (y >= feet) return [y]
+  if (squash >= 0) return y < feet - squash ? [y + squash] : []
+
+  return y === feet - 1 ? Array.from({ length: 1 - squash }, (_, k) => y + squash + k) : [y + squash]
+}
+
 const moved = (point: Point, by: Point): Point => ({ x: point.x + by.x, y: point.y + by.y })
 
 /** Anchors moved from the character's own pixels onto the stage. */
@@ -267,10 +295,10 @@ const placed = (anchors: Anchors, by: Point): Anchors =>
   ) as unknown as Anchors
 
 /**
- * One frame as stage pixels, in layer order: background, body (with the frame's head bob),
- * accessories (each on its slot's anchor, bobbing with it where the character declares the slot bobs;
+ * One frame as stage pixels, in layer order: background, body (with the frame's head bob, then its squash or stretch, mirror and move),
+ * accessories (each on its slot's anchor, which bobs where the character declares the slot bobs, and squashes, mirrors and moves with the body;
  * a slot the animation hides is skipped),
- * then the animation's props and effects.
+ * then the animation's props and effects. Also the frame's mask: the pixels the body and the accessories cover, before any props and effects.
  * The background has its own frame; by default it steps with the animation. `view` is what the pane looks at (the whole stage unless given):
  * the animation is told its edges, but the pixels returned are the whole stage. `onClip` hears of each opaque pixel drawn off the stage.
  */
@@ -281,19 +309,29 @@ const compose = (
   backgroundFrame: number,
   view: View | undefined,
   onClip: ((x: number, y: number) => void) | undefined,
-): Pixels => {
+): { readonly pixels: Pixels; readonly mask: Mask } => {
   const { character } = look
   const stage = stageOf(look)
   const at = placed(character.anchors, stage.offset)
   const plan = animation.frame(step, at, edgesOf(stage, view ?? wholeStage(stage)))
   const bob = plan.bob ?? 0
+  const dx = Math.round(plan.dx ?? 0)
+  const dy = Math.round(plan.dy ?? 0)
+  const feet = character.anchors.feet.y
+  // A body cannot lose more rows than it has above the feet.
+  const squash = Math.min(Math.trunc(plan.squash ?? 0), feet)
+  // Mirroring turns the character about the middle of its frame, so it stays where it stands.
+  const turn = (x: number): number => (plan.mirror === true ? stage.frame.left + stage.frame.right - x : x)
   const pixels: Pixels = Array.from({ length: stage.height }, () => new Array<number | undefined>(stage.width))
-  const put = (x: number, y: number, color: number | undefined): void => {
+  const covered = Array.from({ length: stage.height }, () => new Array<boolean>(stage.width).fill(false))
+  const put = (x: number, y: number, color: number | undefined, solid = false): void => {
     if (color === undefined) return
     if (x < 0 || x >= stage.width || y < 0 || y >= stage.height) onClip?.(x, y)
     else {
       const row = pixels[y]
       if (row !== undefined) row[x] = color
+      const mark = covered[y]
+      if (solid && mark !== undefined) mark[x] = true
     }
   }
 
@@ -312,20 +350,22 @@ const compose = (
     }
   }
 
-  // The body, with the head region moved down by the bob; what it leaves behind is transparent.
+  // The body, with the head region moved down by the bob; what it leaves behind is transparent. Its body roles may be recoloured for this frame.
   const region = character.headRegion
   const body = posed(character, plan.poses ?? [])
+  const paletteOf = (role: BodyRole): number | undefined => plan.recolor?.[role] ?? character.palette[role]
   const colorAt = (x: number, y: number): number | undefined => {
     const letter = body[y]?.[x]
     const role = letter === undefined ? undefined : character.legend[letter]
-    return role === undefined ? undefined : character.palette[role]
+    return role === undefined ? undefined : paletteOf(role)
   }
   for (let y = 0; y < body.length; y++) {
     for (let x = 0; x < (body[y]?.length ?? 0); x++) {
       const isMoved = bob !== 0 && inRegion({ x, y }, character)
       const fromY = isMoved ? y - bob : y
       const inside = !isMoved || (fromY >= region.top && fromY <= region.bottom)
-      put(x + stage.offset.x, y + stage.offset.y, inside ? colorAt(x, fromY) : undefined)
+      const color = inside ? colorAt(x, fromY) : undefined
+      for (const row of rowsOf(y, feet, squash)) put(turn(x + stage.offset.x) + dx, row + stage.offset.y + dy, color, true)
     }
   }
 
@@ -333,24 +373,32 @@ const compose = (
     const accessory = look.outfit[slot]
     const anchor = at[slot]
     if (accessory === undefined || anchor === undefined || animation.hides.includes(slot)) continue
-    const lift = character.bobs[slot] ? bob : 0
+    // The accessory is carried whole: its anchor moves with the body, and the pixels around it keep their shape (turned about the anchor when mirrored).
+    const lift = (character.bobs[slot] ? bob : 0) + (anchor.y - stage.offset.y < feet ? squash : 0)
+    const sign = plan.mirror === true ? -1 : 1
     accessory.pixels.forEach((row, y) => {
       for (const [x, letter] of [...row].entries()) {
-        put(anchor.x - accessory.origin.x + x, anchor.y - accessory.origin.y + y + lift, accessory.palette[letter])
+        put(turn(anchor.x) + dx + sign * (x - accessory.origin.x), anchor.y + lift + dy - accessory.origin.y + y, accessory.palette[letter], true)
       }
     })
   }
 
+  const mask: Mask = (x, y) => covered[y]?.[x] === true
   const colorOf = (role: Role): number | undefined =>
-    (character.palette as Partial<Record<Role, number>>)[role] ?? (PROPS as Partial<Record<Role, number>>)[role]
-  for (const [x, y, role] of plan.dots ?? []) put(x, y, colorOf(role))
+    (plan.recolor as Partial<Record<Role, number>> | undefined)?.[role] ??
+    (character.palette as Partial<Record<Role, number>>)[role] ??
+    (PROPS as Partial<Record<Role, number>>)[role]
+  for (const [x, y, role] of [...(plan.dots ?? []), ...(plan.aimed?.(mask) ?? [])]) put(x, y, colorOf(role))
 
-  return pixels
+  return { pixels, mask }
 }
 
 /** One frame as stage pixels (see `compose`): the whole stage, whatever the view; the view tells the animation where the camera's edges are. */
 export const composePixels = (look: Layers, animation: Animation, step: number, backgroundFrame: number = step, view?: View): Pixels =>
-  compose(look, animation, step, backgroundFrame, view, undefined)
+  compose(look, animation, step, backgroundFrame, view, undefined).pixels
+
+/** The pixels the character covers in one frame, body and accessories after all its moving (see `compose`); props and effects are not part of it. Off the stage it is false. */
+export const maskOf = (look: Layers, animation: Animation, step: number, view?: View): Mask => compose(look, animation, step, step, view, undefined).mask
 
 /** Every pixel one frame draws off the stage, as "x,y": none, for a character and parts that fit it. */
 export const offStage = (look: Layers, animation: Animation, step: number, view?: View): string[] => {
