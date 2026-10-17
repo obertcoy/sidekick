@@ -11,7 +11,7 @@ This track runs in parallel with `../../sidekick-looks/issues/` once that set's 
 | 3 | 03 Inbox and Tickets tabs | 02 | done |
 | 4 | 04 An item opens in a detail view | 02 | ready |
 | 5 | 05 Items move on by themselves | 01, 04 | ready |
-| 6 | 06 Working counts running agents | 02 | ready |
+| 6 | 06 Working counts running agents | 02 | done |
 | 7 | 07 The sidekick's own cost | — (after looks 13) | done |
 | 8 | 10 Reply from the inbox | 04, 05 | ready |
 | — | 08 Test results as evidence | 02 | later |
