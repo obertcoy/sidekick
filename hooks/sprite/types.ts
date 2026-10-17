@@ -71,7 +71,7 @@ export type Needed<N extends AnchorName> = Pick<Anchors, RequiredAnchor> & { rea
 
 /**
  * The named edges of the stage an animation may place things by, in stage pixels; never a fixed coordinate, so any character size works with any effect.
- *  - skyTop: the top row the camera shows.
+ *  - skyTop: the top row of the stage, whatever the camera shows: a camera that trims sky only crops what is drawn, it does not move the effects.
  *  - ground: the first ground row, the row under the feet.
  *  - left, right: the leftmost and rightmost columns the camera shows.
  */

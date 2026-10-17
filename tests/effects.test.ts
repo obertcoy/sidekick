@@ -175,6 +175,15 @@ test('an aura hugs the mask: it draws around the body, never on it, and licks up
   expect(aura({ seed: 5, frame: 0, region, size: 2, colors: [0x111111, 0x222222, 0x333333] })(body).every(dot => typeof dot[2] === 'number')).toBe(true)
 })
 
+test('an effect that has not begun draws nothing: a negative frame', async () => {
+  const region = { left: 10, right: 34, top: 0, bottom: 19 }
+  const body: Mask = (x, y) => x >= 20 && x <= 24 && y >= 10 && y <= 17
+  expect(crackle({ seed: 1, at: { x: 5, y: 5 }, frame: -1 })).toEqual([])
+  expect(aura({ seed: 1, frame: -1, region, size: 2 })(body)).toEqual([])
+  expect(crackle({ seed: 1, at: { x: 5, y: 5 }, frame: 0 }).length).toBe(4)
+  expect(aura({ seed: 1, frame: 0, region, size: 2 })(body).length).toBeGreaterThan(0)
+})
+
 test('a crackle is a short zigzag of lightning going down from a point, bright at its start', async () => {
   const at: Point = { x: 20, y: 8 }
   const zig = crackle({ seed: 4, at, frame: 2 })

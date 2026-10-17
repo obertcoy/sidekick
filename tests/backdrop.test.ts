@@ -132,6 +132,25 @@ test('an animation that plays takes the background with it: its timer stops and 
   expect(done.effects).toContainEqual({ do: 'cycle', ms: BACKGROUND_STEP_MS })
 })
 
+test('a hold is part of the entry: the background steps with its animation to the end, and its own timer starts only at rest', async () => {
+  const held: Entry = { moment: 'ticket-done', restSteps: 2 }
+  let model = transition(resting(), queue(held), playsFor, ambient, frames(3)).model
+  const effects: Effect[] = []
+  for (const event of [tick, tick, tick]) {
+    const result = transition(model, event, playsFor, ambient, frames(3))
+    model = result.model
+    effects.push(...result.effects)
+    if (model.phase.kind === 'holding') expect(model.isCycling, 'holding').toBe(false)
+  }
+  expect(model.phase.kind).toBe('holding')
+  expect(effects.some(effect => effect.do === 'cycle')).toBe(false)
+  expect(draws(effects).every(background => background === undefined)).toBe(true)
+  expect(transition(model, cycle, playsFor, ambient, frames(3)).effects, 'a step in the hold is ignored').toEqual([])
+  const over = transition(model, tick, playsFor, ambient, frames(3))
+  expect(over.model.phase.kind).toBe('between')
+  expect(over.effects).toContainEqual({ do: 'cycle', ms: BACKGROUND_STEP_MS })
+})
+
 test('the background keeps its place through an animation', async () => {
   let model = resting()
   for (const event of [cycle, cycle]) model = transition(model, event, playsFor, ambient, frames(3)).model

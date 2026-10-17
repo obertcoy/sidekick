@@ -1,8 +1,8 @@
 import { expect } from 'claude-code/testing'
 import { classic } from '../hooks/sprite/characters/classic'
 import { foxkit } from '../hooks/sprite/characters/foxkit'
-import { backgroundFrames, composePixels, edgesOf, maskOf, type Pixels, stageFor, stageOf, wholeStage } from '../hooks/sprite/compose'
-import { flash } from '../hooks/sprite/effects'
+import { backgroundFrames, cameraFor, composePixels, edgesOf, maskOf, type Pixels, stageFor, stageOf, wholeStage } from '../hooks/sprite/compose'
+import { confetti, flash } from '../hooks/sprite/effects'
 import { ANIMATIONS, BACKGROUNDS } from '../hooks/sprite/registry'
 import type { Animation, Background, Character, Dot, FramePlan, Layers } from '../hooks/sprite/types'
 import { BACK_LAYERS, LAYERS } from '../hooks/sprite/types'
@@ -142,6 +142,21 @@ test('a flash lights the sky layer and nothing else: far, ground, character, eff
   expect(frames[0]).toEqual(composePixels(bare(foxkit, background), doing({}), 0, 0))
   expect(frames[1]).not.toEqual(frames[0])
   expect(frames[2]).toEqual(frames[0])
+})
+
+test("confetti and a flash are told the stage's sky top and the camera's side edges: a pane that trims sky only crops them, a wider pane shows more", async () => {
+  const stage = stageOf(bare(foxkit))
+  const pane = (columns: number, rows: number) => cameraFor(stage, { columns, rows })
+  const [narrow, wide, short] = [pane(20, 13), pane(40, 13), pane(20, 7)]
+  expect(short.top).toBeGreaterThan(0)
+  const confettiOf = (view: typeof narrow) => confetti({ seed: 3, frame: 20, edges: edgesOf(stage, view), count: 12 })
+  // Trimming sky leaves the sky top where it is, so the same pieces fall the same way in both.
+  expect(edgesOf(stage, short).skyTop).toBe(0)
+  expect(confettiOf(short)).toEqual(confettiOf(narrow))
+  expect(flash({ edges: edgesOf(stage, short), level: 2 })).toEqual(flash({ edges: edgesOf(stage, narrow), level: 2 }))
+  // A wider pane has more sky to light.
+  expect(flash({ edges: edgesOf(stage, wide), level: 1 }).length).toBeGreaterThan(flash({ edges: edgesOf(stage, narrow), level: 1 }).length)
+  expect(confettiOf(wide)).not.toEqual(confettiOf(narrow))
 })
 
 test('a mark on the ground is there only in the frames that draw it: the picture at rest again has none', async () => {

@@ -1,7 +1,9 @@
 import type { Dot, Edges, Mask, Point, Region, Role } from './types'
 
 // The effects library: things an animation draws that are not the body, drawn from the character's anchors, its mask and the stage's edges, and from nothing else.
-// Every effect is a pure function of the frame number and a seed, and returns dots: the same frame and seed draw the same pixels, whatever was drawn before.
+// Every effect is a pure function of the frame number, a seed and what it is aimed by (anchors, a mask, the edges it is given), and returns dots: the same arguments draw the same pixels, whatever was drawn before.
+// An effect that takes the stage's edges reads the side edges the camera has (so a wider pane shows more of a shockwave or confetti), and the stage's own sky top, so a pane that trims sky only crops it.
+// `bolt` and `flash` take no frame: the animation owns their timing, by calling them in the frames that show them.
 // A frame number counts from when the effect begins; before it begins (negative) an effect draws nothing. The animation chooses the layer the dots go on (`FramePlan`).
 // The looks and numbers follow the motion prototype (variant C, `.scratch/sidekick/prototypes.html#motion`).
 
@@ -56,7 +58,7 @@ export const boltPath = (seed: number, from: Point, to: Point): Point[] => {
 
 /**
  * A bolt of lightning from `from` down to `to` (stage pixels), `core` on a glow of `glow` either side when given, and `branches` forks that leave the main bolt on the way down.
- * The glow is drawn first so the core is over it.
+ * The glow is drawn first so the core is over it. It takes no frame: the animation owns its timing and calls it in the frames that show it.
  */
 export const bolt = ({
   seed,
@@ -193,11 +195,12 @@ const AURA = [0xe8a400, 0xffd43b, 0xfff3a0] as const
 
 /**
  * A flickering aura `size` pixels thick around the pixels `mask` covers, with flames licking up off the top: an effect that hugs the body, so it is aimed by the mask and drawn as the plan's `aimed`.
- * It looks for the body only inside `region`, and draws only there; it never draws on the mask.
+ * It looks for the body only inside `region`, and draws only there; it never draws on the mask. Before it begins (a negative frame) it draws nothing.
  */
 export const aura =
   ({ seed, frame, region, size, colors = AURA }: { seed: number; frame: number; region: Region; size: number; colors?: readonly [Paint, Paint, Paint] }) =>
   (mask: Mask): Dot[] => {
+    if (frame < 0) return []
     const next = rng(seed + frame * 7)
     const dots: Dot[] = []
     for (let y = region.top; y <= region.bottom; y++) {
@@ -234,8 +237,9 @@ export const aura =
     return dots
   }
 
-/** A short zigzag of lightning going down from `at`, four pixels, bright at its start; its shape is new each frame. */
+/** A short zigzag of lightning going down from `at`, four pixels, bright at its start; its shape is new each frame; before it begins (a negative frame) it draws nothing. */
 export const crackle = ({ seed, at, frame }: { seed: number; at: Point; frame: number }): Dot[] => {
+  if (frame < 0) return []
   const next = rng(seed + frame * 31)
   let x = at.x
 

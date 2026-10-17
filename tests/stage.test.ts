@@ -213,11 +213,13 @@ test('nothing any animation, pose or accessory draws lands off the stage, for a 
   }
 })
 
-test('the edges an animation is told are the stage ground and the camera: its sky top, and its leftmost and rightmost columns', async () => {
+test('the edges an animation is told are the stage ground and sky top and the camera columns: its leftmost and rightmost', async () => {
   const stage = stageFor(foxkit)
   expect(edgesOf(stage, wholeStage(stage))).toEqual({ skyTop: 0, ground: stage.ground, left: 0, right: stage.width - 1 })
   const view = cameraFor(stage, { columns: 20, rows: 8 })
-  expect(edgesOf(stage, view)).toEqual({ skyTop: view.top, ground: stage.ground, left: view.left, right: view.left + 19 })
+  expect(edgesOf(stage, view)).toEqual({ skyTop: 0, ground: stage.ground, left: view.left, right: view.left + 19 })
+  // A camera that trims sky changes nothing of the edges but what it shows: the sky top is the stage's.
+  expect(view.top).toBeGreaterThan(0)
   // An animation sees them: the ground it is told is the row under the feet, wherever the character is.
   const seen: unknown[] = []
   const probe = {

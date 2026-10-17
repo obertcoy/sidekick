@@ -311,8 +311,8 @@ const reconsider = (m: Model, playsFor: Lookup, ambientOf: Ambient, cutsAmbient:
   }
 }
 
-/** Whether a phase shows a picture that stays as it is until something happens, as against an animation that is playing. */
-const isStill = (phase: Phase): boolean => phase.kind === 'resting' || phase.kind === 'between' || phase.kind === 'holding'
+/** Whether a phase shows a picture that stays as it is until something happens, as against an entry or an ambient animation (a hold included: the whole entry steps the background with its animation). */
+const isStill = (phase: Phase): boolean => phase.kind === 'resting' || phase.kind === 'between'
 
 /**
  * Whether the background moves by itself: motion is on, it has several frames, and the sidekick rests with a picture that does not move.

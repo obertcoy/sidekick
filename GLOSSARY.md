@@ -132,7 +132,7 @@ _Avoid_: Silhouette, hitbox
 One of the six planes a frame is drawn in, back to front: sky (it can be lit by a flash), far (things behind the hills, such as a distant bolt), ground (it can carry marks), character, effects and overlay (the check mark). The background draws a picture on the first three; an animation can put dots on every layer but the character's, and they are drawn after that layer's picture, so what is on a layer further back is hidden by what is in front of it (a far bolt by the hills).
 
 **Effect**:
-A thing an animation draws that is not the body, from the library of effects: bolt (with branches), burst (sparks under gravity), smoke, shockwave along the ground, aura around the mask, crackle, confetti, and flash. Each is a pure function of the frame number and a seed, aimed only by anchors, the mask and the stage's edges, so the same frame always draws the same pixels.
+A thing an animation draws that is not the body, from the library of effects: bolt (with branches), burst (sparks under gravity), smoke, shockwave along the ground, aura around the mask, crackle, confetti, and flash. Each is a pure function of the frame number and a seed, aimed only by anchors, the mask and the edges it is given (the stage's sky top and ground, the camera's left and right), so the same arguments always draw the same pixels. A pane that trims sky only crops it; a wider pane shows more of what runs sideways.
 _Avoid_: Animation
 
 **Flash**:

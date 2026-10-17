@@ -150,7 +150,7 @@ export const cameraFor = (stage: Stage, room?: { readonly columns: number; reado
 }
 
 /** The named edges an animation may place things by, for a stage seen through a view. */
-export const edgesOf = (stage: Stage, view: View): Edges => ({ skyTop: view.top, ground: stage.ground, left: view.left, right: view.left + view.columns - 1 })
+export const edgesOf = (stage: Stage, view: View): Edges => ({ skyTop: 0, ground: stage.ground, left: view.left, right: view.left + view.columns - 1 })
 
 /** Prop and effect colours, the same for every character. */
 export const PROPS: Readonly<Record<PropRole, number>> = {
