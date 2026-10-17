@@ -78,7 +78,7 @@ What the pane shows below the progress, most urgent first: NEEDS YOU (open inbox
 _Avoid_: Feed, notifications, Done/Next
 
 **Inbox item**:
-One thing the summary after a turn writes and the mod keeps per project until it is cleaned up: a needs-you question, a blocker, a change of direction, or a note (one line of a ticket's history). It belongs to one ticket or to none, and has a short line for the pane and a long explanation. Reviewed is the mod's display state only; Claude Code never reads it.
+One thing the summary after a turn writes and the mod keeps per project until it is cleaned up: a needs-you question, a blocker, a change of direction, or a note (one line of a ticket's history). It belongs to one ticket or to none, and has a short line for the pane and a long explanation. Reviewed is the mod's display state only; Claude Code never reads it. A question a later turn answered, or a blocker it shows gone, becomes reviewed by itself and keeps a receipt ("you said: …", "unblocked: …"); a change of direction is reviewed only by hand.
 _Avoid_: Message, notification, event
 
 **Sidekick**:

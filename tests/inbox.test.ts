@@ -4,6 +4,8 @@ import {
   activeSince,
   addItems,
   ago,
+  closableOf,
+  closeItems,
   detailOf,
   fit,
   goalOf,
@@ -12,6 +14,7 @@ import {
   inboxTitle,
   keyOf,
   markReviewed,
+  parseClosed,
   parseItems,
   readInbox,
   readReviewed,
@@ -354,4 +357,77 @@ test("an item's detail: its ticket's goal, its long explanation, the ticket's hi
   // An item that is gone has no detail; one already reviewed cannot be marked again.
   expect(detailOf(inbox, { item: 99 }, undefined)).toBeUndefined()
   expect(detailOf(markReviewed({ inbox, reviewed: [] }, { item: 3 }).inbox, { item: 3 }, TICKET_FILE)?.isReviewable).toBe(false)
+})
+
+const OPEN: Inbox = {
+  items: [
+    asking(1, 'needs-you', PAY, 'Which provider?'),
+    asking(2, 'blocked', null, 'Staging is down'),
+    asking(3, 'changed-direction', CART, 'Dropped the queue'),
+    asking(4, 'needs-you', CART, 'Keep the cart?', true),
+  ],
+  next: 5,
+}
+
+test('the summary is told of the open questions and blockers only, never changes of direction or reviewed items', () => {
+  expect(closableOf(OPEN).map(item => item.id)).toEqual([1, 2])
+})
+
+test('a reply says which open questions and blockers the turn closed, by id, in what the developer said or what unblocked it', () => {
+  const reply = `{"items":[],"closed":[
+    {"id":1,"said":"  Card,   it ships sooner "},
+    {"id":"2","said":"Staging is back up"},
+    {"id":3,"said":"fine"},
+    {"id":4,"said":"yes"},
+    {"id":99,"said":"what?"},
+    {"id":1,"said":"again"},
+    {"id":2},
+    "junk"
+  ]}`
+  // A change of direction is news to read, never closed by a summary; a reviewed item stays as the developer left it.
+  expect(parseClosed(reply, OPEN)).toEqual([
+    { id: 1, said: 'Card, it ships sooner' },
+    { id: 2, said: 'Staging is back up' },
+  ])
+  expect(parseClosed('{"items":[]}', OPEN)).toEqual([])
+  expect(parseClosed('{"items":[],"closed":"all"}', OPEN)).toEqual([])
+  expect(parseClosed('no json', OPEN)).toEqual([])
+})
+
+test('a closed question moves to REVIEWED with "you said: …"; a closed blocker with what unblocked it', () => {
+  const inbox: Inbox = {
+    items: [asking(1, 'needs-you', PAY, 'Which provider?'), asking(2, 'blocked', PAY, 'Staging is down'), asking(3, 'changed-direction', PAY, 'Dropped it')],
+    next: 4,
+  }
+  const closed = closeItems(inbox, [
+    { id: 1, said: 'card' },
+    { id: 2, said: 'staging is back' },
+    { id: 3, said: 'ok' },
+  ])
+  expect(closed.items.map(item => [item.id, item.isReviewed, item.receipt])).toEqual([
+    [1, true, 'you said: card'],
+    [2, true, 'unblocked: staging is back'],
+    [3, false, undefined],
+  ])
+  expect(sectionsOf(closed, [], {}).needsYou.map(item => item.id)).toEqual([3])
+  expect(sectionsOf(closed, [], {}).reviewed).toBe(2)
+  // The receipt is kept in the store and read back; an item with none reads back without one.
+  expect(readInbox(JSON.parse(JSON.stringify(closed))).items[0]?.receipt).toBe('you said: card')
+  expect(readInbox(JSON.parse(JSON.stringify(inbox))).items[0]).not.toHaveProperty('receipt')
+})
+
+test("a closed item's receipt is a line of its ticket's history", () => {
+  const inbox = closeItems(
+    addItems(
+      EMPTY,
+      [
+        { kind: 'note', ticket: PAY, short: 'Retries built', long: '' },
+        { kind: 'needs-you', ticket: PAY, short: 'Which provider?', long: '' },
+        { kind: 'note', ticket: PAY, short: 'Card wired up', long: '' },
+      ],
+      10,
+    ),
+    [{ id: 2, said: 'card' }],
+  )
+  expect(detailOf(inbox, { ticket: PAY }, undefined)?.happened).toEqual(['Card wired up', 'Which provider? · you said: card', 'Retries built'])
 })

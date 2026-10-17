@@ -23,6 +23,8 @@ export type Item = {
   at: number
   /** Sidekick's display state only; Claude Code never reads it. */
   isReviewed: boolean
+  /** Why it closed by itself, when a later turn's summary closed it: "you said: …" or "unblocked: …". */
+  receipt?: string
 }
 
 /** Oldest item first; `next` is the id the next item gets. */
@@ -78,6 +80,47 @@ export const addItems = (inbox: Inbox, drafts: readonly Draft[], at: number): In
   )
 
   return { items, next: inbox.next + added.length }
+}
+
+/** The items a later turn can close by itself: open questions and blockers. A change of direction is news to read, closed only by hand. */
+export const closableOf = (inbox: Inbox): Item[] => inbox.items.filter(item => (item.kind === 'needs-you' || item.kind === 'blocked') && !item.isReviewed)
+
+/** An item a turn closed, by id: for a question what the developer said, for a blocker what unblocked it. */
+export type Closed = { id: number; said: string }
+
+/**
+ * Reads which open items the model's reply says the turn closed (its `closed` list); an id that is not open now, a
+ * change of direction or an item already reviewed, is left out, as is the same id twice. Nothing readable: none.
+ */
+export const parseClosed = (reply: string, inbox: Inbox): Closed[] => {
+  const found = jsonIn(reply)
+  if (found === undefined || !Array.isArray(found.closed)) return []
+  const open = closableOf(inbox).map(item => item.id)
+  const closed: Closed[] = []
+  for (const raw of found.closed as unknown[]) {
+    if (typeof raw !== 'object' || raw === null) continue
+    const one = raw as Record<string, unknown>
+    const id = typeof one.id === 'number' ? one.id : typeof one.id === 'string' && /^\s*\d+\s*$/.test(one.id) ? Number(one.id) : Number.NaN
+    const said = text(one.said)
+    if (said !== '' && open.includes(id) && !closed.some(already => already.id === id)) closed.push({ id, said })
+  }
+
+  return closed
+}
+
+/** Moves the closed items to REVIEWED, each with its receipt; only open questions and blockers move. */
+export const closeItems = (inbox: Inbox, closed: readonly Closed[]): Inbox => {
+  const open = closableOf(inbox)
+
+  return {
+    ...inbox,
+    items: inbox.items.map(item => {
+      const one = closed.find(close => close.id === item.id)
+      if (one === undefined || !open.includes(item)) return item
+
+      return { ...item, isReviewed: true, receipt: `${item.kind === 'blocked' ? 'unblocked' : 'you said'}: ${one.said}` }
+    }),
+  }
 }
 
 /** A ticket's history (or that of no ticket): its notes, newest first. */
@@ -209,6 +252,14 @@ export type Detail = {
   isReviewable: boolean
 }
 
+/** What happened on a ticket, its newest `HISTORY_LINES`, newest first: its notes, and its items a later turn closed with their receipts. */
+const happenedOf = (inbox: Inbox, ticket: TicketRef): string[] =>
+  inbox.items
+    .filter(item => isSame(item.ticket, ticket) && (item.kind === 'note' || item.receipt !== undefined))
+    .reverse()
+    .slice(0, HISTORY_LINES)
+    .map(item => (item.kind === 'note' ? item.short : `${item.short} · ${item.receipt}`))
+
 /** Reviewed tickets, by `keyOf`; Sidekick's display state only, never written to a ticket file. */
 export type Reviewed = readonly string[]
 
@@ -228,7 +279,7 @@ export const detailOf = (inbox: Inbox, opened: Opened, file: string | undefined)
     short: ticket === null ? null : (item?.short ?? null),
     goal: ticket === null || file === undefined ? null : goalOf(file),
     long: item?.long ?? history.find(one => one.long !== '')?.long ?? '',
-    happened: history.map(one => one.short),
+    happened: ticket === null ? [] : happenedOf(inbox, ticket),
     ticked: boxes.filter(box => box.isTicked).map(box => box.text),
     boxes: boxes.length,
     isReviewable: item === undefined || !item.isReviewed,
@@ -280,6 +331,7 @@ const readItem = (value: unknown): Item[] => {
       long: typeof one.long === 'string' ? one.long : '',
       at: typeof one.at === 'number' ? one.at : 0,
       isReviewed: one.isReviewed === true,
+      ...(typeof one.receipt === 'string' ? { receipt: one.receipt } : {}),
     },
   ]
 }

@@ -10,10 +10,13 @@ import type { Detail, FileTicket, Inbox, Opened, TicketRef } from './inbox'
 import {
   activeSince,
   addItems,
+  closableOf,
+  closeItems,
   detailOf,
   fit,
   inboxTitle,
   markReviewed,
+  parseClosed,
   parseItems,
   readInbox,
   readReviewed,
@@ -114,8 +117,13 @@ Answer with one place to add to the places already known, never a replacement fo
 Documentation, changelogs and notes are not tickets.`
 
 const SUMMARY_RULES = `You keep the inbox of a software project for its developer: short items on what needs them and how each ticket is going.
-You get the project's tickets, numbered, the newest items already in the inbox, and what happened in the latest turn of their coding session.
-Write items only when the turn decided something, finished, started or found something in a piece of work, or asked something of the developer. A question answered, a file read, or small talk writes nothing. Never write again an item the inbox already holds.
+You get the project's tickets, numbered, the newest items already in the inbox, the questions and blockers still open, and what happened in the latest turn of their coding session.
+Write items only when the turn decided something, finished, started or found something in a piece of work, or asked something of the developer. A question answered, a file read, or small talk writes nothing. Never write again an item the inbox already holds, open or reviewed.
+
+Close the open items the turn dealt with, by their id:
+- a needs-you question the developer answered in their message: "said" is their answer, in their own words, at most 60 characters;
+- a blocker the turn shows is gone, the work going on: "said" is what unblocked it, at most 60 characters.
+Close nothing the turn did not settle, and never close an item that is not in the open list.
 
 Each item has:
 - "kind": "needs-you" when the developer must answer or decide something; "blocked" when work cannot go on until something outside it changes; "changed-direction" when the planned approach was dropped for another; "note" for progress on a ticket, one line of its history.
@@ -127,8 +135,8 @@ Good short lines: "Keep timed-out payments pending?", "Retry tests pass", "Waiti
 Bad short lines: "The agent has finished the retry logic and needs a decision on pending payments" (too long), "Update" (says nothing), "Needs your input" (repeats the kind, not the question).
 
 Answer with one JSON object and nothing else:
-{"items":[]}
-or {"items":[{"kind":"needs-you","ticket":3,"short":"<short line>","long":"<explanation>"}]}`
+{"items":[],"closed":[]}
+or {"items":[{"kind":"needs-you","ticket":3,"short":"<short line>","long":"<explanation>"}],"closed":[{"id":12,"said":"<their answer, or what unblocked it>"}]}`
 
 /** At most this many tickets are listed for the summary to name; the sets changed last come first. */
 const SUMMARY_TICKETS = 60
@@ -756,9 +764,14 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
   return next
 }
 
-/** How an item is told to the summary: its kind, its ticket and its short line. */
-const heldLine = (item: Inbox['items'][number]): string =>
-  `- ${item.kind}${item.ticket === null ? '' : ` (${labelOf(item.ticket.set)} · ${item.ticket.title})`}: ${item.short}`
+/** How an item's ticket is told to the summary: ` (set · title)`, or nothing for no ticket. */
+const ticketPart = (item: Inbox['items'][number]): string => (item.ticket === null ? '' : ` (${labelOf(item.ticket.set)} · ${item.ticket.title})`)
+
+/** How an item is told to the summary: its kind, its ticket, whether it was reviewed, and its short line. */
+const heldLine = (item: Inbox['items'][number]): string => `- ${item.kind}${ticketPart(item)}${item.isReviewed ? ', reviewed' : ''}: ${item.short}`
+
+/** How an open question or blocker is told to the summary, by the id it closes it with. */
+const openLine = (item: Inbox['items'][number]): string => `#${item.id} ${item.kind}${ticketPart(item)}: ${item.short}`
 
 /** Asks the small model what the turn moved, and adds the items it writes to the inbox. A call that fails adds nothing. */
 const summarize = async ($: Dollar, answer: string): Promise<void> => {
@@ -776,13 +789,16 @@ const summarize = async ($: Dollar, answer: string): Promise<void> => {
   if (answer.trim() === '' && tools.length === 0) return
   const root = await rootOf($)
   const tickets = (await ticketRefsOf($, root, (await setsOf($, root)).sets)).slice(0, SUMMARY_TICKETS)
-  const held = (await inboxOf($, root)).items.slice(-SUMMARY_HELD)
+  const before = await inboxOf($, root)
+  const held = before.items.slice(-SUMMARY_HELD)
+  const open = closableOf(before)
   const reply = await complete($, 'summary', {
     model: 'haiku',
     system: SUMMARY_RULES,
     prompt: [
       `Tickets:\n${tickets.length === 0 ? 'none' : tickets.map((one, at) => `${at + 1}. ${labelOf(one.set)} · ${one.title}`).join('\n')}`,
       `Items already in the inbox, newest last:\n${held.length === 0 ? 'none yet' : held.map(heldLine).join('\n')}`,
+      `Open questions and blockers, by id:\n${open.length === 0 ? 'none' : open.map(openLine).join('\n')}`,
       `The developer asked:\n${(turn[0]?.text ?? '').slice(0, 2000)}`,
       tools.length === 0 ? '' : `Tools used:\n${tools.slice(-40).join('\n')}`,
       `The assistant's final answer:\n${answer.slice(0, 4000)}`,
@@ -793,9 +809,12 @@ const summarize = async ($: Dollar, answer: string): Promise<void> => {
     timeoutMs: 60_000,
   })
   const drafts = reply.isAnswered ? parseItems(reply.text, tickets) : undefined
-  if (drafts === undefined || drafts.length === 0) return
-  // Read again: a refresh may have tidied the inbox while the model was answering.
-  await $.store.set(inboxKey(root), addItems(await inboxOf($, root), drafts, await $.clock.now()))
+  if (drafts === undefined) return
+  // Read again: a refresh may have tidied the inbox, or the developer marked an item reviewed, while the model was answering.
+  const now = await inboxOf($, root)
+  const closed = parseClosed(reply.isAnswered ? reply.text : '', now)
+  if (drafts.length === 0 && closed.length === 0) return
+  await $.store.set(inboxKey(root), addItems(closeItems(now, closed), drafts, await $.clock.now()))
   for (const draft of drafts) {
     if (draft.kind === 'needs-you') $.ui.toast(`Needs you: ${draft.short}`, { timeoutMs: 8000 })
   }
