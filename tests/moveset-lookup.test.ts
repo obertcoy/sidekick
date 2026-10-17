@@ -9,8 +9,8 @@ import { type Character, MOMENTS, type Moment } from '../hooks/sprite/types'
 import { BURNS, isStruck, STRIKE_REST_STEPS, strikeSteps } from '../hooks/strike'
 import { test } from './world'
 
-// What plays for a character that names its own animations. This file imports nothing that ticket 11 added,
-// so on code without replacements these tests fail by their assertions, not by a missing export.
+// What plays for a character with its own moveset. This file imports nothing that the moveset work added,
+// so on code without a moveset these tests fail by their assertions, not by a missing export.
 // They work on the parts directly: a character registered from a test is not seen by the running mod.
 
 const withMoveset = (name: string, moveset: Record<string, string>): Character => defineCharacter({ ...foxkit, name, moveset } as Character)
@@ -53,7 +53,7 @@ test('switching the character switches the animation played for the next moment,
   })
 })
 
-test('a strike for a moveset entry for "ticket done" draws the replacement frames in order, then ends after the steps of those frames and the rest step', async () => {
+test('a strike for a moveset entry for "ticket done" draws the frames of the named animation in order, then ends after the steps of those frames and the rest step', async () => {
   const owl = withMoveset('owl', { 'ticket-done': 'cheer' })
   const expectedSteps = ANIMATIONS.cheer.frames + STRIKE_REST_STEPS
   const ticks: (() => void)[] = []

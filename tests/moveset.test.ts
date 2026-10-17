@@ -6,13 +6,13 @@ import { type AnchorName, type Animation, type Character, MOMENTS, REQUIRED_ANCH
 import { BURNS, HITS, isStruck, MIN_STRIKE_FRAMES, strikeSteps } from '../hooks/strike'
 import { test } from './world'
 
-// The load checks for a character's moveset and for the library. What plays is in replacement-lookup.test.ts. These tests
+// The load checks for a character's moveset and for the library. What plays is in moveset-lookup.test.ts. These tests
 // call the checks directly: a character registered from a test is not seen by the running mod.
 
 type Moveset = NonNullable<Character['moveset']>
 const withMoveset = (name: string, moveset: Moveset): Character => defineCharacter({ ...foxkit, name, moveset })
 
-/** A replacement animation with the given number of frames, for the load checks only. */
+/** An animation with the given number of frames, for the load checks only. */
 const framesOf = (frames: number): Animation => ({ ...ANIMATIONS.cheer, frames })
 
 test('a moveset entry for "ticket done" with fewer frames than the strike has steps before the burn is refused, naming the animation and the needed frames', async () => {
@@ -132,5 +132,8 @@ test('a library animation that no moveset uses is checked against its own declar
   )
   expect(() => requireDeclaration('empty', { ...sneaky, frame: () => ({}), frames: 0 })).toThrow('the animation "empty" has 0 frames')
   expect(() => requireDeclaration('odd', { ...sneaky, frame: () => ({}), needs: ['wing' as AnchorName] })).toThrow('needs "wing", which is not an anchor')
+  // A read that does not throw is caught too: optional chaining on an anchor the animation does not declare.
+  const peeking: Animation = { ...sneaky, frame: (_step, at) => ({ bob: (at as { face?: { y: number } }).face?.y ?? 0 }) }
+  expect(() => requireDeclaration('peeking', peeking)).toThrow('the animation "peeking" fails at step 0')
   for (const [name, animation] of Object.entries(ANIMATIONS)) expect(() => requireDeclaration(name, animation), name).not.toThrow()
 })

@@ -698,7 +698,7 @@ test('a character lacking a pose that a played animation needs is refused, namin
   expect(() => requirePoses(armless, { idle: ANIMATIONS.idle, write: ANIMATIONS.write })).not.toThrow()
 })
 
-test('the load check goes through the state to animation lookup: zap is found as the animation of ticket-done, and anchors are still checked', async () => {
+test('the load check goes through the moment to animation lookup: zap is found as the animation of ticket-done, and anchors are still checked', async () => {
   expect(() => requirePlayed(armless)).toThrow('character "armless" has no pose "armUp", which the animation "zap (ticket-done)" needs')
   expect(() => requirePlayed(stageFrame('owl'))).toThrow('is missing the anchor')
   for (const character of Object.values(CHARACTERS)) expect(() => requirePlayed(character), character.name).not.toThrow()
@@ -942,7 +942,7 @@ test('a character that replaces ticket-done never plays zap, so it needs no armU
   const { armUp: _armUp, ...blinkOnly } = foxkit.poses ?? {}
   const owl = defineCharacter({ ...foxkit, name: 'owl', poses: blinkOnly, moveset: { 'ticket-done': 'cheer' }, ambient: ['blink'] })
   expect(() => requirePlayed(owl)).not.toThrow()
-  // Without the replacement it would play zap and be refused.
+  // Without the moveset entry it would play zap and be refused.
   expect(() => requirePlayed({ ...owl, moveset: foxkit.moveset })).toThrow('has no pose "armUp", which the animation "zap (ticket-done)" needs')
   // hoot is in a catalog but is neither a state's shared animation nor ambient, so it is not checked against foxkit.
   const hoot = defineAnimation({ needs: ['neck'], poses: [], frames: 1, msPerFrame: 1, once: false, hides: [], frame: () => ({}) })

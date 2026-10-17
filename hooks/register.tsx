@@ -228,7 +228,7 @@ const complete = async ($: Dollar, kind: CostKind, request: ModelCompleteRequest
   return reply ?? { isAnswered: false }
 }
 
-// The strike: when tickets finish, the critter zaps and a bolt lands on their rows, which flash and
+// The strike: when tickets finish, the critter plays its animation for the ticket-done moment (the zap and its bolt, for a character whose moveset names it) and the rows flash and
 // have the strike-through burn across them before they settle as done. One step per frame of the
 // animation that plays for the ticket-done moment; the beats are in ./strike.
 type Was = 'active' | 'open'
@@ -563,7 +563,7 @@ const show = async ($: Dollar, next: View): Promise<void> => {
     if (finished.size > 0) strikeRows($, finished)
     else sceneOf($).activity.queue({ moment: 'ticket-done', isKeptWhenHidden: true })
     // The set became all done: it was not at the previous refresh of this same set (`was` is that refresh, and a
-    // first load or another set never gets here). The cheer waits behind the zap and its strike.
+    // first load or another set never gets here). The set-done animation waits behind the ticket-done animation and its strike.
     if (now.done === now.total && was.done < was.total) sceneOf($).activity.queue({ moment: 'set-done', isKeptWhenHidden: true })
     $.ui.toast(now.next === null ? `✓ All ${now.total} tickets done` : `✓ ${now.done}/${now.total} done · next: ${shortTitle(now.next)}`)
   }

@@ -33,7 +33,7 @@ export type Shown = { readonly moment: Moment; readonly animation: Animation; re
 /** A once-only animation waiting its turn. */
 export type Entry = {
   readonly moment: Moment
-  /** Keeps the entry going this many steps past the last frame of the animation that plays when it starts: the ticket strike has one step more than the zap has frames. The sidekick rests meanwhile. */
+  /** Keeps the entry going this many steps past the last frame of the animation that plays when it starts: the ticket strike has one step more than the animation for the ticket-done moment has frames. The sidekick rests meanwhile. */
   readonly restSteps?: number
   /** Called when the entry starts to play, before its first frame is drawn, with the steps it will have in all (rest steps included). */
   readonly onStart?: (steps: number) => void

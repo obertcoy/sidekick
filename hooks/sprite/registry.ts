@@ -154,11 +154,18 @@ export const requireDeclaration = (name: string, animation: Animation): void => 
   for (const pose of animation.poses) {
     if (!(POSES as readonly string[]).includes(pose)) fail(`declares the pose "${pose}", which is not a pose; poses: ${POSES.join(', ')}`)
   }
-  // Only the declared anchors, each at one point of the stage: a frame that reads anything else gets nothing.
+  // Only the declared anchors, each at one point of the stage: a frame that reads any other anchor, even by optional chaining, throws.
   const point = { x: 0, y: 0 }
-  const given: Record<string, unknown> = Object.fromEntries(
+  const declared: Record<string, unknown> = Object.fromEntries(
     [...REQUIRED_ANCHORS, ...animation.needs].map(anchor => [anchor, (LIST_ANCHORS as readonly string[]).includes(anchor) ? [point] : point]),
   )
+  const given = new Proxy(declared, {
+    get: (target, key) => {
+      if (typeof key === 'string' && key !== 'then' && !Object.hasOwn(target, key)) throw new Error(`reads the undeclared anchor "${key}"`)
+
+      return Reflect.get(target, key)
+    },
+  })
   for (let step = 0; step < animation.frames; step++) {
     let plan: FramePlan
     try {
