@@ -1,13 +1,13 @@
 import type { EngineInterface, ModelCompleteRequest, ModelCompleteResult, Register } from 'claude-code'
 import { atom, read, update } from 'claude-code'
 
-import type { SetEntry, Summary, View } from '../types'
+import type { InboxView, SetEntry, View } from '../types'
 import type { Activity } from './activity'
 import { createActivity } from './activity'
 import type { CostKind, SavedSession } from './cost'
 import { addCall, costReport, dollarsOf, parseSession, parseTotals, shortDollars, totalOf } from './cost'
-import type { Inbox, TicketRef } from './inbox'
-import { addItems, fit, parseItems, readInbox, summaryOf, tidy } from './inbox'
+import type { FileTicket, Inbox, TicketRef } from './inbox'
+import { activeSince, addItems, fit, inboxTitle, parseItems, readInbox, readSince, reviewLine, sectionsOf, tidy, workingLine } from './inbox'
 import type { Target } from './look'
 import { changeLook, lookReport, parseSaved, targetOf } from './look'
 import { changeMotion, MOTION, motionReport, parseMotion } from './motion'
@@ -69,6 +69,14 @@ const isSkipped = (name: string): boolean => SKIPPED.has(name) || name.startsWit
 const LISTED = /(\.(md|mdx|markdown|txt|org|ya?ml|json|toml)|^[^.]+)$/i
 const LIKELY = /issue|ticket|task|todo|backlog|plan|roadmap|scratch|stor(y|ies)|spec|kanban|board/i
 const GLYPH = { done: '✓', active: '◐', open: '○' } as const
+/** A glyph and its colour; the glyph alone tells the kind, so it never rests on colour. */
+type Mark = { glyph: string; color: 'warning' | 'error' | 'success' | 'claude' | 'suggestion' }
+/** How NEEDS YOU marks each kind: a question, a blocker, a change of direction. */
+const ASKED = {
+  'needs-you': { glyph: '?', color: 'warning' },
+  blocked: { glyph: '✗', color: 'error' },
+  'changed-direction': { glyph: '!', color: 'warning' },
+} as const satisfies Record<string, Mark>
 const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'MultiEdit'])
 // Reading or editing a ticket file is a touch; writing one (maybe a new ticket) is not.
 const TOUCH_TOOLS = new Set(['Read', 'Edit', 'MultiEdit'])
@@ -115,7 +123,7 @@ const view = atom(
   {
     project: '',
     isSearching: false,
-    summary: null,
+    inbox: { needsYou: [], review: [], working: [], reviewed: 0 },
     progress: null,
     sets: [],
     current: '',
@@ -512,31 +520,44 @@ const inboxKey = (root: string): string => `inbox:${root}`
 
 const inboxOf = async ($: Dollar, root: string): Promise<Inbox> => readInbox(await $.store.get(inboxKey(root)))
 
-/** The summary the pane draws: read from the newest items, or, for a project whose inbox was never written, the last Done/Next pair. */
-const summaryFor = async ($: Dollar, root: string): Promise<Summary | null> => {
-  const stored = await $.store.get(inboxKey(root))
-  if (stored !== undefined) return summaryOf(readInbox(stored))
+// When the mod first saw each ticket active, for WORKING's time active; one entry per project.
+const sinceKey = (root: string): string => `active-since:${root}`
 
-  return ((await $.store.get(`summary:${root}`)) ?? null) as Summary | null
-}
-
-/** Every ticket of the sets, the sets in the order given. */
-const ticketRefsOf = async ($: Dollar, root: string, sets: TicketSet[]): Promise<TicketRef[]> =>
+/** Every ticket of the sets as its file says, the sets in the order given. */
+const fileTicketsOf = async ($: Dollar, root: string, sets: TicketSet[]): Promise<FileTicket[]> =>
   (
     await Promise.all(
-      sets.map(async set =>
-        (await Promise.all(set.files.map(file => ticketsOf($, root, set.place, file)))).flat().map(one => ({ set: set.id, title: one.title })),
-      ),
+      sets.map(async set => (await Promise.all(set.files.map(file => ticketsOf($, root, set.place, file)))).flat().map(one => ({ ...one, set: set.id }))),
     )
   ).flat()
 
-/** Drops the items whose ticket is in no set any more. With no set read at all nothing is dropped: a project that cannot be read now has not lost its tickets. */
+/** Every ticket of the sets, as the inbox names it. */
+const ticketRefsOf = async ($: Dollar, root: string, sets: TicketSet[]): Promise<TicketRef[]> =>
+  (await fileTicketsOf($, root, sets)).map(({ set, title }) => ({ set, title }))
+
+/**
+ * Drops the items whose ticket is in no set any more, and keeps when each active ticket went active.
+ * With no set read at all nothing changes: a project that cannot be read now has not lost its tickets.
+ */
 const tidyInbox = async ($: Dollar, root: string, sets: TicketSet[]): Promise<void> => {
-  if (sets.length === 0 || (await $.store.get(inboxKey(root))) === undefined) return
-  const held = await inboxOf($, root)
-  const kept = tidy(held, await ticketRefsOf($, root, sets))
-  if (kept.items.length !== held.items.length) await $.store.set(inboxKey(root), kept)
+  if (sets.length === 0) return
+  const tickets = await fileTicketsOf($, root, sets)
+  const held = readSince(await $.store.get(sinceKey(root)))
+  const since = activeSince(
+    held,
+    tickets.filter(one => one.isActive),
+    await $.clock.now(),
+  )
+  if (JSON.stringify(since) !== JSON.stringify(held)) await $.store.set(sinceKey(root), since)
+  if ((await $.store.get(inboxKey(root))) === undefined) return
+  const inbox = await inboxOf($, root)
+  const kept = tidy(inbox, tickets)
+  if (kept.items.length !== inbox.items.length) await $.store.set(inboxKey(root), kept)
 }
+
+/** The inbox the pane draws: the items, and the tickets of the active set (none when no set is active). */
+const inboxViewOf = async ($: Dollar, root: string, set: TicketSet | undefined): Promise<InboxView> =>
+  sectionsOf(await inboxOf($, root), set === undefined ? [] : await fileTicketsOf($, root, [set]), readSince(await $.store.get(sinceKey(root))))
 
 /** Refreshes the pane. `isOffering` (a rescan) opens the set picker; a new session opens it by itself. */
 const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = false): Promise<View> => {
@@ -545,7 +566,6 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
   if (isSearching) return read($, view)
   const root = await rootOf($)
   const project = root.slice(root.lastIndexOf('/') + 1)
-  const summary = await summaryFor($, root)
   const previous = await recipeOf($, root)
   let recipe = previous
   // A place that holds no files drops out; the rest stay.
@@ -567,7 +587,7 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
     activity.set('search', true)
     let isFailed = true
     try {
-      await show($, { ...(await read($, view)), project, isSearching: true, summary, progress: null })
+      await show($, { ...(await read($, view)), project, isSearching: true, progress: null })
       const found = await search($, root, hint ?? '', recipe, cover)
       recipe = found.recipe
       isKept = found.isKept
@@ -608,13 +628,15 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
   const next: View = {
     project,
     isSearching: false,
-    summary: await summaryFor($, root),
+    inbox: await inboxViewOf($, root, set),
     progress: set === undefined || tickets.length === 0 ? null : progressOf(tickets, set.id),
     sets: sets.length < 2 ? [] : await entriesOf($, root, sets),
     current: set?.id ?? '',
     isChoosing: isChoosing && sets.length > 1,
   }
   await show($, next)
+  // WORKING's time active moves on while nothing else changes, so the pane is drawn again at every refresh.
+  if (next.inbox.working.length > 0) $.ui.invalidate('ui.render')
 
   return next
 }
@@ -1001,7 +1023,7 @@ export const register: Register = on => {
     const { Box, Text, Button } = table
     // The mobile app draws no Select yet, so only the tables that declare one offer it.
     const Select = 'Select' in table ? table.Select : undefined
-    const { project, isSearching: isLooking, summary, progress, sets, current, isChoosing: isListed } = await read($, view)
+    const { project, isSearching: isLooking, inbox, progress, sets, current, isChoosing: isListed } = await read($, view)
     // One column of padding on each side; the bar and rules span what is left.
     const columns = Math.max(12, e.props.bodyColumns - 2)
     const rows = progress?.rows ?? []
@@ -1069,7 +1091,23 @@ export const register: Register = on => {
     const isComplete = progress !== null && progress.done === progress.total
     const accent = isComplete ? 'success' : 'claude'
     const filled = progress === null ? 0 : Math.round((progress.done / progress.total) * columns)
-    const needsYou = summary?.needsYou ?? ''
+    const isInboxEmpty = inbox.needsYou.length + inbox.review.length + inbox.working.length + inbox.reviewed === 0
+    const now = await $.clock.now()
+    // Every inbox line is cut to the pane's width: a heading; a glyph and a title; a detail indented under it.
+    const heading = (text: string, color: Mark['color']) => (
+      <Text bold color={color}>
+        {fit(text, columns)}
+      </Text>
+    )
+    const entry = (key: string, mark: Mark, title: string, detail?: string) => (
+      <Box key={key} flexDirection="column">
+        <Text>
+          <Text color={mark.color}>{mark.glyph} </Text>
+          {fit(title, columns - 2)}
+        </Text>
+        {detail !== undefined && <Text>{`  ${fit(detail, columns - 2)}`}</Text>}
+      </Box>
+    )
     const dropped = leftOut()
     // Only the terminal has a cell grid to draw the character on.
     const buddy =
@@ -1177,45 +1215,40 @@ export const register: Register = on => {
             )}
           </Box>
         )}
-        <Box flexDirection="column" marginTop={1}>
+        <Box key="inbox" flexDirection="column" marginTop={1}>
           <Text dimColor>{'─'.repeat(columns)}</Text>
-          {summary === null && <Text dimColor>The summary appears after a turn that moves something.</Text>}
-          {summary !== null && summary.happened !== '' && (
-            <Box flexDirection="row">
-              <Box width={6} flexShrink={0}>
-                <Text bold color="suggestion">
-                  Done
-                </Text>
-              </Box>
-              <Box flexGrow={1} flexShrink={1}>
-                <Text>{fit(summary.happened, columns - 6)}</Text>
-              </Box>
+          {isInboxEmpty && <Text dimColor>{fit('Nothing in the inbox yet.', columns)}</Text>}
+          {inbox.needsYou.length > 0 && (
+            <Box flexDirection="column">
+              {heading(`NEEDS YOU · ${inbox.needsYou.length}`, 'warning')}
+              {inbox.needsYou.map((one, at) =>
+                // An item of no ticket is its short line alone; one of a ticket has the ticket above it.
+                one.ticket === null ? entry(`ask-${at}`, ASKED[one.kind], one.short) : entry(`ask-${at}`, ASKED[one.kind], inboxTitle(one.ticket), one.short),
+              )}
             </Box>
           )}
-          {summary !== null && summary.next !== '' && (
-            <Box flexDirection="row" marginTop={1}>
-              <Box width={6} flexShrink={0}>
-                <Text bold color="suggestion">
-                  Next
-                </Text>
-              </Box>
-              <Box flexGrow={1} flexShrink={1}>
-                <Text>{summary.next}</Text>
-              </Box>
+          {inbox.review.length > 0 && (
+            <Box flexDirection="column" marginTop={inbox.needsYou.length > 0 ? 1 : 0}>
+              {heading(`READY TO REVIEW · ${inbox.review.length}`, 'suggestion')}
+              {inbox.review.map((one, at) => {
+                const { glyph, text } = reviewLine(one)
+
+                return entry(`review-${at}`, { glyph, color: glyph === '✓' ? 'success' : 'warning' }, inboxTitle(one.title), text)
+              })}
+            </Box>
+          )}
+          {inbox.working.length > 0 && (
+            <Box flexDirection="column" marginTop={inbox.needsYou.length + inbox.review.length > 0 ? 1 : 0}>
+              {heading(`WORKING · ${inbox.working.length} ${inbox.working.length === 1 ? 'ticket' : 'tickets'}`, 'claude')}
+              {inbox.working.map((one, at) => entry(`working-${at}`, { glyph: GLYPH.active, color: 'claude' }, inboxTitle(one.title), workingLine(one, now)))}
+            </Box>
+          )}
+          {inbox.reviewed > 0 && (
+            <Box marginTop={inbox.needsYou.length + inbox.review.length + inbox.working.length > 0 ? 1 : 0}>
+              <Text dimColor>{fit(`REVIEWED · ${inbox.reviewed}`, columns)}</Text>
             </Box>
           )}
         </Box>
-        {needsYou !== '' && (
-          <Box marginTop={1}>
-            <Text>
-              <Text bold color="inverseText" backgroundColor="warning">
-                {' NEEDS YOU '}
-              </Text>{' '}
-              {/* The badge and its space take 12 columns; the short line has the rest. */}
-              {fit(needsYou, columns - 12)}
-            </Text>
-          </Box>
-        )}
         {progress !== null && (
           <Box marginTop={1}>
             <Text dimColor wrap="truncate-start">

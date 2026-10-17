@@ -1,7 +1,26 @@
-export type Summary = {
-  happened: string
-  next: string
-  needsYou: string
+/** A NEEDS YOU line of the inbox: a question, a blocker or a change of direction, with its ticket's title or none. */
+export type Asking = {
+  kind: 'needs-you' | 'blocked' | 'changed-direction'
+  ticket: string | null
+  short: string
+}
+
+/** A ticket in the inbox with its checkboxes, `ticked` of `boxes` (0 of 0 when it has none). */
+export type Checked = {
+  title: string
+  ticked: number
+  boxes: number
+}
+
+/** The inbox as the pane draws it, each section in its order; an empty one is not drawn. */
+export type InboxView = {
+  needsYou: Asking[]
+  /** Tickets done in their files. */
+  review: Checked[]
+  /** Tickets active in their files, with when the mod first saw each active (null: just now). */
+  working: (Checked & { since: number | null })[]
+  /** How many items have been reviewed. */
+  reviewed: number
 }
 
 export type TicketRow = {
@@ -27,7 +46,7 @@ export type SetEntry = {
 export type View = {
   project: string
   isSearching: boolean
-  summary: Summary | null
+  inbox: InboxView
   progress: Progress | null
   /** Every ticket set, most recently changed first, and the id of the session's active one ('' when none is). */
   sets: SetEntry[]

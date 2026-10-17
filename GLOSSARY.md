@@ -73,6 +73,14 @@ _Avoid_: Menu, list, chooser
 **Progress**:
 The tickets of the active ticket set, each done, in progress or open, with the count of done ones and the next ticket that isn't done.
 
+**Inbox**:
+What the pane shows below the progress, most urgent first: NEEDS YOU (open inbox items that ask something of the user, block the work or change its direction), READY TO REVIEW (tickets of the active ticket set done in their files), WORKING (its tickets in progress) and REVIEWED (a count). The ticket files decide READY TO REVIEW and WORKING; the model only writes the items. It never says work is verified: beside what a ticket says it shows evidence the user can check, its ticked boxes.
+_Avoid_: Feed, notifications, Done/Next
+
+**Inbox item**:
+One thing the summary after a turn writes and the mod keeps per project until it is cleaned up: a needs-you question, a blocker, a change of direction, or a note (one line of a ticket's history). It belongs to one ticket or to none, and has a short line for the pane and a long explanation. Reviewed is the mod's display state only; Claude Code never reads it.
+_Avoid_: Message, notification, event
+
 **Sidekick**:
 The pixel creature in the pane's header. Where the difference matters, the mod itself is "the Sidekick mod".
 _Avoid_: Critter, buddy, sprite, mascot

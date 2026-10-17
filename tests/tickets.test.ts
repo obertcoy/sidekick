@@ -60,8 +60,13 @@ test('the status line decides when a ticket has one, else its checkboxes do', as
     title: '01: Cart',
     isDone: false,
     isActive: false,
+    ticked: 1,
+    boxes: 2,
   })
   expect(parseTicketFile('02.md', '# Pay\nStatus: claimed\n', files).isActive).toBe(true)
+  // The boxes are counted whatever decides the state: they are the evidence beside it.
+  expect(parseTicketFile('03.md', '# Ship\n**Status:** done\n- [x] a\n* [X] b\n- [ ] c\n', files)).toMatchObject({ isDone: true, ticked: 2, boxes: 3 })
+  expect(parseTicketFile('03.md', '# Ship\n**Status:** done\n', files)).toMatchObject({ ticked: 0, boxes: 0 })
   expect(parseTicketFile('03.md', '# Ship\n**Status:** Resolved\n- [ ] x\n', files).isDone).toBe(true)
   expect(parseTicketFile('04.md', '# Boxes\n- [x] a\n- [X] b\n', files).isDone).toBe(true)
   expect(parseTicketFile('05.md', '# Boxes\n- [x] a\n- [ ] b\n', files).isDone).toBe(false)
@@ -105,9 +110,10 @@ test('two tickets: a resolved one with trailing text and a ready one count 1/2 d
 
 test('a checklist has one ticket per line', async () => {
   expect(parseChecklist('# Todo\n- [x] first\n- [~] second\n* [ ] third\nnot a ticket\n')).toEqual([
-    { title: 'first', isDone: true, isActive: false },
-    { title: 'second', isDone: false, isActive: true },
-    { title: 'third', isDone: false, isActive: false },
+    // A checklist line is a ticket with no boxes of its own.
+    { title: 'first', isDone: true, isActive: false, ticked: 0, boxes: 0 },
+    { title: 'second', isDone: false, isActive: true, ticked: 0, boxes: 0 },
+    { title: 'third', isDone: false, isActive: false, ticked: 0, boxes: 0 },
   ])
 })
 
@@ -172,9 +178,9 @@ test('a prompt names a set by label or id, ignoring case and - _ spaces; two mat
 })
 
 test('progress counts done tickets and names the one in progress, else the first open', async () => {
-  const done = { title: 'a', isDone: true, isActive: false }
-  const open = { title: 'b', isDone: false, isActive: false }
-  const active = { title: 'c', isDone: false, isActive: true }
+  const done = { title: 'a', isDone: true, isActive: false, ticked: 0, boxes: 0 }
+  const open = { title: 'b', isDone: false, isActive: false, ticked: 0, boxes: 0 }
+  const active = { title: 'c', isDone: false, isActive: true, ticked: 0, boxes: 0 }
   expect(progressOf([done, open, active], 'x')).toEqual({
     done: 1,
     total: 3,

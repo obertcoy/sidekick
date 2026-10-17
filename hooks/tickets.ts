@@ -14,7 +14,8 @@ export type Place =
 /** A project's saved places; empty once searched and nothing found. */
 export type Recipe = { places: Place[] }
 
-export type Ticket = { title: string; isDone: boolean; isActive: boolean }
+/** A ticket as its file says: done, in progress or neither, and its checkboxes (`ticked` of `boxes`; a checklist line has none). */
+export type Ticket = { title: string; isDone: boolean; isActive: boolean; ticked: number; boxes: number }
 
 export type FileInfo = { path: string; mtimeMs: number }
 
@@ -218,16 +219,18 @@ export const parseTicketFile = (name: string, text: string, recipe: Extract<Plac
   const lines = text.split(/\r?\n/)
   const title = titleOf(name, lines)
   const status = recipe.statusLabel === null ? undefined : statusOf(lines, recipe.statusLabel)
+  // The boxes are counted whatever decides the state: the inbox shows them as evidence beside it.
+  const marks = lines.flatMap(line => CHECKBOX.exec(line)?.[1] ?? [])
+  const ticked = marks.filter(box => box.toLowerCase() === 'x').length
+  const boxes = marks.length
   // A status that names neither state is no answer: the checkboxes decide.
   if (status !== undefined) {
     const isDone = hasValue(status, recipe.doneValues)
     const isActive = !isDone && hasValue(status, recipe.activeValues)
-    if (isDone || isActive) return { title, isDone, isActive }
+    if (isDone || isActive) return { title, isDone, isActive, ticked, boxes }
   }
-  const boxes = lines.flatMap(line => CHECKBOX.exec(line)?.[1] ?? [])
-  const ticked = boxes.filter(box => box.toLowerCase() === 'x').length
 
-  return { title, isDone: boxes.length > 0 && ticked === boxes.length, isActive: false }
+  return { title, isDone: boxes > 0 && ticked === boxes, isActive: false, ticked, boxes }
 }
 
 /** One ticket per checklist line. */
@@ -238,7 +241,7 @@ export const parseChecklist = (text: string): Ticket[] =>
     if (found === null || title === '') return []
     const mark = (found[1] ?? ' ').toLowerCase()
 
-    return [{ title, isDone: mark === 'x', isActive: mark === '~' || mark === '/' || mark === '-' }]
+    return [{ title, isDone: mark === 'x', isActive: mark === '~' || mark === '/' || mark === '-', ticked: 0, boxes: 0 }]
   })
 
 /** The id of the set a path belongs to in the first place that reads it, or undefined. */

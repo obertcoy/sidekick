@@ -12,7 +12,7 @@ const FIRST = items(
   { kind: 'note', ticket: null, short: 'Built the cart.', long: 'The cart adds and removes lines.' },
   { kind: 'needs-you', ticket: null, short: 'Pick a payment provider?', long: 'Stripe or Adyen; the cart is ready for either.' },
 )
-const SECOND = items({ kind: 'note', ticket: null, short: 'Dropped the cart.', long: 'The developer wants to start over.' })
+const SECOND = items({ kind: 'changed-direction', ticket: null, short: 'Dropped the cart.', long: 'The developer wants to start over.' })
 
 const ANSWERED = { answer: 'Built it.', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as const
 
@@ -37,8 +37,10 @@ const withSummary = async ($: Engine, clock: MockClock, w: World, store: Store):
 const expectSummary = async ($: Engine, store: Store): Promise<void> => {
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect(await ui.find({ type: 'Text', text: 'Built the cart.' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /NEEDS YOU\s+Pick a payment provider\?/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'NEEDS YOU · 1' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '? Pick a payment provider?' })).toBeDefined()
+    // A note is a line of history, not news for the inbox.
+    expect(await ui.find({ type: 'Text', text: 'Built the cart.' })).toBeUndefined()
     expect(await ui.find({ type: 'Text', text: 'Dropped the cart.' })).toBeUndefined()
     await ui.unmount()
   }
@@ -165,7 +167,7 @@ test("the turn's own result reaches the engine unchanged and is not delayed by s
   await clock.settle()
   expect(w.asked.length).toBe(1)
   const before = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await before.find({ type: 'Text', text: 'Built the cart.' })).toBeUndefined()
+  expect(await before.find({ type: 'Text', text: 'Pick a payment provider?' })).toBeUndefined()
   await before.unmount()
 
   release(answered(FIRST))
@@ -187,14 +189,14 @@ test('the summary prompt asks for items with a kind, a ticket or none, a short l
   expect(rules).toContain('Good short lines')
   expect(rules).toContain('Bad short lines')
   expect(rules).toContain('Keep timed-out payments pending?')
-  // A turn that moved nothing writes nothing, and the pane still waits for its first summary.
+  // A turn that moved nothing writes nothing, and the inbox stays empty.
   expect(await inboxOf(store)).toBeUndefined()
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: /The summary appears after a turn/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'Nothing in the inbox yet.' })).toBeDefined()
   await ui.unmount()
 })
 
-test('items survive the next turn: the pane shows the newest news and the open question it did not answer', async ($, on) => {
+test('items survive the next turn: the pane shows the new change of direction and the open question it did not answer', async ($, on) => {
   const clock = mock.clock(on)
   const store = openStore(on)
   const w = world(on, ROOT)
@@ -206,8 +208,9 @@ test('items survive the next turn: the pane shows the newest news and the open q
   // The prompt carries the items already held, so the model does not write them again.
   expect(w.asked[1]).toContain('Pick a payment provider?')
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: 'Dropped the cart.' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /NEEDS YOU\s+Pick a payment provider\?/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'NEEDS YOU · 2' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '? Pick a payment provider?' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '! Dropped the cart.' })).toBeDefined()
   await ui.unmount()
 })
 
@@ -255,9 +258,8 @@ test('a short line longer than the pane is cut with an ellipsis when drawn, and 
   await endTurn($, clock)
   expect((await inboxOf(store))?.items.map(item => item.short)).toEqual([done, question])
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  // 40 columns less the padding: 38, of which the NEEDS YOU badge takes 12 and the Done label 6.
-  expect(await ui.find({ type: 'Text', text: /NEEDS YOU\s+Keep timed-out payments p…$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'Retries now reuse the original …' })).toBeDefined()
+  // 40 columns less the padding: 38, of which the glyph and its space take 2.
+  expect(await ui.find({ type: 'Text', text: /^\? Keep timed-out payments pending for…$/ })).toBeDefined()
   await ui.unmount()
 })
 

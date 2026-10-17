@@ -1,7 +1,9 @@
 // The inbox: what the summary after each turn writes, kept per project in the mod's store.
 // Each item has a kind, the ticket it belongs to or none, a short line for the pane and a long explanation for its detail.
+// The pane draws the inbox in sections: NEEDS YOU from the items, READY TO REVIEW and WORKING from the ticket files.
 
-import type { Summary } from '../types'
+import type { Asking, Checked, InboxView } from '../types'
+import type { Ticket } from './tickets'
 import { jsonIn } from './tickets'
 
 export const ITEM_KINDS = ['needs-you', 'blocked', 'changed-direction', 'note'] as const
@@ -88,17 +90,77 @@ export const tidy = (inbox: Inbox, live: readonly TicketRef[]): Inbox => ({
   items: inbox.items.filter(item => (item.ticket === null ? !item.isReviewed : live.some(ticket => isSame(ticket, item.ticket)))),
 })
 
-/** The current summary as the pane draws it until the inbox has its own: the newest news, and the newest open question. */
-export const summaryOf = (inbox: Inbox): Summary | null => {
-  if (inbox.items.length === 0) return null
-  const newest = [...inbox.items].reverse()
+/** A ticket of the active set as its file says, named as the inbox names it. */
+export type FileTicket = TicketRef & Omit<Ticket, 'title'>
+
+/** When the mod first saw each ticket active, by `keyOf` the ticket, in milliseconds since the epoch. */
+export type Since = Record<string, number>
+
+/** NEEDS YOU, in this order of kinds. */
+const ASKING: readonly Asking['kind'][] = ['needs-you', 'blocked', 'changed-direction']
+
+const isAsking = (kind: ItemKind): kind is Asking['kind'] => ASKING.includes(kind as Asking['kind'])
+
+/** One key per ticket, for the store; a title in another set is another ticket. */
+export const keyOf = (ticket: TicketRef): string => `${ticket.set}\n${ticket.title}`
+
+const checkedOf = ({ title, ticked, boxes }: FileTicket): Checked => ({ title, ticked, boxes })
+
+/**
+ * The inbox's sections. NEEDS YOU: the open questions, blockers and changes of direction, those of no ticket first,
+ * then by kind, newest first. READY TO REVIEW: the tickets done in their files, those with boxes unticked first.
+ * WORKING: the tickets active in their files. REVIEWED: how many items were reviewed (a note is history, never one).
+ */
+export const sectionsOf = (inbox: Inbox, tickets: readonly FileTicket[], since: Since): InboxView => {
+  const open = inbox.items.filter((item): item is Item & { kind: Asking['kind'] } => isAsking(item.kind) && !item.isReviewed)
+  const needsYou = open
+    .sort((a, b) => Number(a.ticket !== null) - Number(b.ticket !== null) || ASKING.indexOf(a.kind) - ASKING.indexOf(b.kind) || b.id - a.id)
+    .map(item => ({ kind: item.kind, ticket: item.ticket?.title ?? null, short: item.short }))
+  const done = tickets.filter(ticket => ticket.isDone)
+  const isShort = (ticket: FileTicket): boolean => ticket.ticked < ticket.boxes
 
   return {
-    happened: newest.find(item => item.kind !== 'needs-you')?.short ?? '',
-    next: '',
-    needsYou: newest.find(item => item.kind === 'needs-you' && !item.isReviewed)?.short ?? '',
+    needsYou,
+    review: [...done.filter(isShort), ...done.filter(ticket => !isShort(ticket))].map(checkedOf),
+    working: tickets.filter(ticket => ticket.isActive).map(ticket => ({ ...checkedOf(ticket), since: since[keyOf(ticket)] ?? null })),
+    reviewed: inbox.items.filter(item => item.isReviewed && item.kind !== 'note').length,
   }
 }
+
+/** When each active ticket went active: the time held for one seen before, `now` for one seen the first time; a ticket no longer active is dropped. */
+export const activeSince = (held: Since, active: readonly TicketRef[], now: number): Since =>
+  Object.fromEntries(active.map(ticket => [keyOf(ticket), held[keyOf(ticket)] ?? now]))
+
+/** The times the store holds; anything unreadable is left out. */
+export const readSince = (stored: unknown): Since =>
+  typeof stored !== 'object' || stored === null || Array.isArray(stored)
+    ? {}
+    : Object.fromEntries(Object.entries(stored).filter((entry): entry is [string, number] => typeof entry[1] === 'number'))
+
+/** How long, in the largest whole unit: `<1m`, `12m`, `3h`, `2d`. */
+export const ago = (ms: number): string => {
+  const minutes = Math.floor(ms / 60_000)
+  if (minutes < 1) return '<1m'
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+
+  return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`
+}
+
+/** A ticket ready to review: what its file says beside the evidence, its ticked boxes. Never a verdict. */
+export const reviewLine = (ticket: Checked): { glyph: '✓' | '◐'; text: string } => {
+  if (ticket.boxes === 0) return { glyph: '✓', text: 'agent says done' }
+  if (ticket.ticked === ticket.boxes) return { glyph: '✓', text: `agent says done · ${ticket.ticked}/${ticket.boxes}` }
+
+  return { glyph: '◐', text: `agent says done · ${ticket.ticked}/${ticket.boxes} ticked` }
+}
+
+/** A working ticket: its ticked boxes and how long it has been active at `now`. */
+export const workingLine = (ticket: InboxView['working'][number], now: number): string =>
+  [ticket.boxes === 0 ? '' : `${ticket.ticked}/${ticket.boxes} ticked`, `active ${ago(now - (ticket.since ?? now))}`].filter(part => part !== '').join(' · ')
+
+/** A ticket's title as the inbox shows it: its number kept, without the colon ("08: Payment" is "08 Payment"). */
+export const inboxTitle = (title: string): string => title.replace(/^#?(\d+)\s*[:.)-]\s+/, '$1 ')
 
 const readRef = (value: unknown): TicketRef | null | undefined => {
   if (value === null) return null

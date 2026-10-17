@@ -40,7 +40,7 @@ const RUN = {
   presentation: { isFullscreen: true, columns: 160 },
 } as const
 
-test('a rescan finds the tickets once, and the pane then shows progress and the summary', async ($, on) => {
+test('a rescan finds the tickets once, and the pane then shows progress and the inbox', async ($, on) => {
   const clock = mock.clock(on)
   mock.store(on)
   const asked: string[] = []
@@ -84,7 +84,10 @@ test('a rescan finds the tickets once, and the pane then shows progress and the 
     expect(await ui.find({ type: 'Text', text: '✓ Cart' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '○ Shipping' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '◐ Payment' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /summary appears/ })).toBeDefined()
+    // The inbox reads the ticket files before any summary: one done, one active.
+    expect(await ui.find({ type: 'Text', text: 'READY TO REVIEW · 1' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'WORKING · 1 ticket' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'NEEDS YOU' })).toBeUndefined()
     await ui.unmount()
   }
 
@@ -94,8 +97,9 @@ test('a rescan finds the tickets once, and the pane then shows progress and the 
   await clock.advance(0)
   expect(asked.length).toBe(2)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: 'Built the cart.' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /NEEDS YOU\s+Pick a payment provider\./ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'NEEDS YOU · 1' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '? 02 Payment' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '  Pick a payment provider.' })).toBeDefined()
   await ui.unmount()
 
   reply = '{"items":[]}'
@@ -103,6 +107,6 @@ test('a rescan finds the tickets once, and the pane then shows progress and the 
   await clock.advance(0)
   expect(asked.length).toBe(3)
   const kept = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await kept.find({ type: 'Text', text: 'Built the cart.' })).toBeDefined()
+  expect(await kept.find({ type: 'Text', text: 'Pick a payment provider.' })).toBeDefined()
   await kept.unmount()
 })

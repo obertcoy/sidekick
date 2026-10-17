@@ -1,6 +1,22 @@
 import { expect } from 'claude-code/testing'
-import type { Draft, Inbox, TicketRef } from '../hooks/inbox'
-import { addItems, fit, HISTORY_LINES, historyOf, parseItems, readInbox, summaryOf, tidy } from '../hooks/inbox'
+import type { Draft, FileTicket, Inbox, Item, TicketRef } from '../hooks/inbox'
+import {
+  activeSince,
+  addItems,
+  ago,
+  fit,
+  HISTORY_LINES,
+  historyOf,
+  inboxTitle,
+  keyOf,
+  parseItems,
+  readInbox,
+  readSince,
+  reviewLine,
+  sectionsOf,
+  tidy,
+  workingLine,
+} from '../hooks/inbox'
 import { test } from './world'
 
 const CART: TicketRef = { set: '.scratch/shop/issues', title: '01: Cart' }
@@ -95,17 +111,120 @@ test('cleanup drops items of tickets in no set and reviewed items of no ticket, 
   expect(tidy(inbox, [CART, PAY]).next).toBe(5)
 })
 
-test('the current summary is read from the newest items', () => {
-  expect(summaryOf(EMPTY)).toBeNull()
-  const inbox = addItems(
-    addItems(EMPTY, [{ kind: 'needs-you', ticket: null, short: 'Which provider?', long: '' }, note('Cart built')], 1),
-    [note('Cart styled')],
-    2,
-  )
-  expect(summaryOf(inbox)).toEqual({ happened: 'Cart styled', next: '', needsYou: 'Which provider?' })
-  // A reviewed question no longer needs the developer.
-  const reviewed = { ...inbox, items: inbox.items.map(item => ({ ...item, isReviewed: item.kind === 'needs-you' })) }
-  expect(summaryOf(reviewed)).toEqual({ happened: 'Cart styled', next: '', needsYou: '' })
+const asking = (id: number, kind: Item['kind'], ticket: TicketRef | null, short: string, isReviewed = false): Item => ({
+  id,
+  kind,
+  ticket,
+  short,
+  long: '',
+  at: id,
+  isReviewed,
+})
+
+const fromFile = (title: string, state: Partial<FileTicket>): FileTicket => ({
+  set: CART.set,
+  title,
+  isDone: false,
+  isActive: false,
+  ticked: 0,
+  boxes: 0,
+  ...state,
+})
+
+test('NEEDS YOU holds the open questions, blockers and changes of direction: no ticket first, then by kind, newest first', () => {
+  const inbox: Inbox = {
+    items: [
+      asking(1, 'changed-direction', CART, 'Dropped the queue'),
+      asking(2, 'needs-you', PAY, 'Which provider?'),
+      asking(3, 'note', CART, 'Cart built'),
+      asking(4, 'blocked', PAY, 'Waiting on the API key'),
+      asking(5, 'needs-you', CART, 'Keep the old cart?'),
+      asking(6, 'blocked', null, 'Staging is down'),
+      asking(7, 'needs-you', null, 'Ship on Friday?'),
+      asking(8, 'needs-you', PAY, 'Refund by card?', true),
+      asking(9, 'note', PAY, 'Payment reviewed', true),
+    ],
+    next: 10,
+  }
+  const { needsYou, reviewed } = sectionsOf(inbox, [], {})
+  expect(needsYou.map(one => one.short)).toEqual([
+    'Ship on Friday?',
+    'Staging is down',
+    'Keep the old cart?',
+    'Which provider?',
+    'Waiting on the API key',
+    'Dropped the queue',
+  ])
+  expect(needsYou[0]).toEqual({ kind: 'needs-you', ticket: null, short: 'Ship on Friday?' })
+  expect(needsYou[2]).toEqual({ kind: 'needs-you', ticket: '01: Cart', short: 'Keep the old cart?' })
+  // Notes are a ticket's history, not news for the inbox; a reviewed question is counted in REVIEWED.
+  expect(reviewed).toBe(1)
+})
+
+test('READY TO REVIEW holds the tickets done in their files, some boxes unticked first; WORKING the active ones with when they went active', () => {
+  const tickets = [
+    fromFile('01: Cart', { isActive: true, ticked: 2, boxes: 4 }),
+    fromFile('02: Payment', { isDone: true, ticked: 3, boxes: 3 }),
+    fromFile('03: Emails', { isDone: true, ticked: 1, boxes: 3 }),
+    fromFile('04: Docs', { isDone: true }),
+    fromFile('05: Ship', {}),
+    fromFile('06: Tax', { isActive: true }),
+  ]
+  const since = { [keyOf({ set: CART.set, title: '01: Cart' })]: 100 }
+  const { review, working, needsYou, reviewed } = sectionsOf(EMPTY, tickets, since)
+  expect(review).toEqual([
+    { title: '03: Emails', ticked: 1, boxes: 3 },
+    { title: '02: Payment', ticked: 3, boxes: 3 },
+    { title: '04: Docs', ticked: 0, boxes: 0 },
+  ])
+  // A ticket with no time held went active just now.
+  expect(working).toEqual([
+    { title: '01: Cart', ticked: 2, boxes: 4, since: 100 },
+    { title: '06: Tax', ticked: 0, boxes: 0, since: null },
+  ])
+  expect(needsYou).toEqual([])
+  expect(reviewed).toBe(0)
+})
+
+test('when each active ticket went active is kept; one no longer active is dropped', () => {
+  const cart = { set: CART.set, title: '01: Cart' }
+  const tax = { set: 'docs/tasks', title: 'Tax' }
+  const held = activeSince({}, [cart], 100)
+  expect(held).toEqual({ [keyOf(cart)]: 100 })
+  const later = activeSince(held, [cart, tax], 500)
+  expect(later).toEqual({ [keyOf(cart)]: 100, [keyOf(tax)]: 500 })
+  expect(activeSince(later, [tax], 900)).toEqual({ [keyOf(tax)]: 500 })
+  expect(readSince({ a: 1, b: 'x', c: null })).toEqual({ a: 1 })
+  expect(readSince('junk')).toEqual({})
+  expect(readSince([3])).toEqual({})
+})
+
+test('the evidence beside a ticket is its ticked boxes, never a verdict', () => {
+  expect(reviewLine({ title: 'x', ticked: 7, boxes: 7 })).toEqual({ glyph: '✓', text: 'agent says done · 7/7' })
+  expect(reviewLine({ title: 'x', ticked: 3, boxes: 6 })).toEqual({ glyph: '◐', text: 'agent says done · 3/6 ticked' })
+  expect(reviewLine({ title: 'x', ticked: 0, boxes: 0 })).toEqual({ glyph: '✓', text: 'agent says done' })
+  expect(workingLine({ title: 'x', ticked: 2, boxes: 6, since: 0 }, 12 * 60_000)).toBe('2/6 ticked · active 12m')
+  expect(workingLine({ title: 'x', ticked: 0, boxes: 0, since: null }, 5)).toBe('active <1m')
+  for (const line of [reviewLine({ title: 'x', ticked: 7, boxes: 7 }).text, workingLine({ title: 'x', ticked: 7, boxes: 7, since: 0 }, 1)]) {
+    expect(line).not.toMatch(/verified/i)
+  }
+})
+
+test('how long, in the largest whole unit', () => {
+  expect(ago(0)).toBe('<1m')
+  expect(ago(59_999)).toBe('<1m')
+  expect(ago(60_000)).toBe('1m')
+  expect(ago(59 * 60_000)).toBe('59m')
+  expect(ago(60 * 60_000)).toBe('1h')
+  expect(ago(23 * 3_600_000 + 59 * 60_000)).toBe('23h')
+  expect(ago(24 * 3_600_000)).toBe('1d')
+  expect(ago(-5)).toBe('<1m')
+})
+
+test("a ticket's title in the inbox keeps its number, without the colon", () => {
+  expect(inboxTitle('08: Payment retries')).toBe('08 Payment retries')
+  expect(inboxTitle('#12. Checkout')).toBe('12 Checkout')
+  expect(inboxTitle('Checkout')).toBe('Checkout')
 })
 
 test('a stored inbox is read back, and anything else reads as an empty one', () => {
