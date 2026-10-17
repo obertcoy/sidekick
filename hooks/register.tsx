@@ -1,9 +1,11 @@
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, ModelCompleteRequest, ModelCompleteResult, Register } from 'claude-code'
 import { atom, read, update } from 'claude-code'
 
 import type { SetEntry, Summary, View } from '../types'
 import type { Activity } from './activity'
 import { createActivity } from './activity'
+import type { CostKind, SavedSession } from './cost'
+import { addCall, costReport, dollarsOf, parseSession, parseTotals, shortDollars, totalOf } from './cost'
 import type { Inbox, TicketRef } from './inbox'
 import { addItems, fit, parseItems, readInbox, summaryOf, tidy } from './inbox'
 import type { Target } from './look'
@@ -137,6 +139,40 @@ const ASK_OPTIONS = 4
 const parsed = new Map<string, { mtimeMs: number; tickets: Ticket[] }>()
 
 type Dollar = EngineInterface
+
+// The sidekick's own cost: every call it makes to the small model adds its usage to this session's totals and to the
+// project's all-time ones, in the store. The header shows the session's in estimated dollars (./cost).
+const costKey = (root: string): string => `cost:${root}`
+// One entry per project, holding the session it is for: another session starts over.
+const sessionCostKey = (root: string): string => `cost-session:${root}`
+let sessionDollars = 0
+// Calls are added one after another, so two that end together never lose one another's usage.
+let costWrites: Promise<void> = Promise.resolve()
+
+const countCall = ($: Dollar, kind: CostKind, usage: ModelCompleteResult['usage'] | undefined): Promise<void> => {
+  costWrites = costWrites
+    .then(async () => {
+      const root = await rootOf($)
+      const session = await $.session.id()
+      const allTime = addCall(parseTotals(await $.store.get(costKey(root))), kind, usage)
+      const totals = addCall(parseSession(await $.store.get(sessionCostKey(root)), session), kind, usage)
+      await $.store.set(costKey(root), allTime)
+      await $.store.set(sessionCostKey(root), { session, totals } satisfies SavedSession)
+      sessionDollars = dollarsOf(totalOf(totals))
+      $.ui.invalidate('ui.render')
+    })
+    .catch(error => $.ui.log(`sidekick: ${String(error)}`, { to: 'debug' }))
+
+  return costWrites
+}
+
+/** A call to the small model whose usage is counted whatever came of it; one that threw counts with no usage and reads as unanswered. */
+const complete = async ($: Dollar, kind: CostKind, request: ModelCompleteRequest): Promise<ModelCompleteResult | { isAnswered: false }> => {
+  const reply = await $.model.complete(request).catch(() => undefined)
+  await countCall($, kind, reply?.usage)
+
+  return reply ?? { isAnswered: false }
+}
 
 // The strike: when tickets finish, the critter zaps and a bolt lands on their rows, which flash and
 // have the strike-through burn across them before they settle as done. One step per frame of the
@@ -410,9 +446,7 @@ const search = async (
     .filter(part => part !== '')
     .join('\n\n')
   // A call that threw failed as surely as one answered with an error: neither is an answer.
-  const reply = await $.model
-    .complete({ model: 'haiku', system: SEARCH_RULES, prompt, maxTokens: 400, timeoutMs: 60_000 })
-    .catch(() => ({ isAnswered: false }) as const)
+  const reply = await complete($, 'search', { model: 'haiku', system: SEARCH_RULES, prompt, maxTokens: 400, timeoutMs: 60_000 })
   const place = reply.isAnswered ? parsePlace(reply.text) : undefined
   const found = place === undefined || place === 'none' ? [] : await filesIn($, root, place)
   const isFound = found.length > 0 && (cover === undefined || found.some(file => file.path === cover))
@@ -550,6 +584,7 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
   const sets = recipe === undefined ? [] : orderSets(groupSets(recipe, files))
   await tidyInbox($, root, sets)
   const session = await $.session.id()
+  sessionDollars = dollarsOf(totalOf(parseSession(await $.store.get(sessionCostKey(root)), session)))
   const key = activeKey(root, session)
   let active = (await $.store.get(key)) as string | undefined
   if (!sets.some(set => set.id === active)) active = undefined
@@ -605,7 +640,7 @@ const summarize = async ($: Dollar, answer: string): Promise<void> => {
   const root = await rootOf($)
   const tickets = (await ticketRefsOf($, root, (await setsOf($, root)).sets)).slice(0, SUMMARY_TICKETS)
   const held = (await inboxOf($, root)).items.slice(-SUMMARY_HELD)
-  const reply = await $.model.complete({
+  const reply = await complete($, 'summary', {
     model: 'haiku',
     system: SUMMARY_RULES,
     prompt: [
@@ -725,6 +760,10 @@ export const register: Register = on => {
       name: 'sidekick-motion',
       description: "Turn the sidekick's ambient motion off or on, for all projects",
       argumentHint: '[off|on]',
+    })
+    await $.command.register({
+      name: 'sidekick-cost',
+      description: "Show what the sidekick's own model calls cost, this session and all time",
     })
     // A session that ended mid-turn may never have raised turn.complete; the new one starts with no turn running.
     sceneOf($).activity.set('turn', false)
@@ -864,6 +903,16 @@ export const register: Register = on => {
     activity.setMotion(change.isOn)
 
     return { text: change.text }
+  })
+
+  on('command.run', { command: 'sidekick-cost' }, async $ => {
+    const root = await rootOrNone($)
+    if (root === undefined) return { text: 'Could not find the project.' }
+    // Calls still being added are waited for, so the report includes them.
+    await costWrites
+    const session = parseSession(await $.store.get(sessionCostKey(root)), await $.session.id())
+
+    return { text: costReport(session, parseTotals(await $.store.get(costKey(root)))) }
   })
 
   on('tool.call', async ($, e, next) => {
@@ -1042,6 +1091,8 @@ export const register: Register = on => {
             <Text bold wrap="truncate-end">
               {project}
             </Text>
+            {/* On a line of its own, so a long project name never pushes it out of a narrow pane. */}
+            {sessionDollars > 0 && <Text dimColor>{shortDollars(sessionDollars)}</Text>}
             {progress !== null && (
               <Text bold color={accent}>
                 {isComplete ? '✓ ' : ''}
