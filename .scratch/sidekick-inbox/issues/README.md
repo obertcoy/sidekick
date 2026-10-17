@@ -6,7 +6,7 @@ This track runs in parallel with `../../sidekick-looks/issues/` once that set's 
 
 | Order | Ticket | Blocked by | Status |
 |---|---|---|---|
-| 1 | 01 The summary writes inbox items | looks 13 | ready |
+| 1 | 01 The summary writes inbox items | looks 13 | done |
 | 2 | 02 The inbox replaces the Done/Next block | 01 | ready |
 | 3 | 03 Inbox and Tickets tabs | 02 | ready |
 | 4 | 04 An item opens in a detail view | 02 | ready |

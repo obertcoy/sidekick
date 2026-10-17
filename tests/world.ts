@@ -60,6 +60,8 @@ export type World = {
   files: Record<string, string>
   /** Every prompt the small model was sent. */
   asked: string[]
+  /** The system prompt of each of those calls, in the same order. */
+  told: string[]
   /** Every path the mod listed or read. */
   touched: string[]
   /** How the small model answers the next call. */
@@ -78,6 +80,8 @@ export type World = {
   isShown: boolean
   /** Whether the person has given the sidekick's pane the keyboard; it has no bearing on whether the pane is shown. */
   hasKeyboard: boolean
+  /** Every toast the mod popped, in order. */
+  toasts: { text: string; timeoutMs?: number }[]
 }
 
 /** Stands beneath the mod as a project at `root` (spelled as the host spells it). */
@@ -90,6 +94,7 @@ export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}):
     tree,
     files: {},
     asked: [],
+    told: [],
     touched: [],
     answer: () => answered('{"kind":"none"}'),
     messages: [
@@ -102,6 +107,7 @@ export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}):
     painted: [],
     isShown: true,
     hasKeyboard: false,
+    toasts: [],
   }
   on('session.root', () => {
     if (w.isRootGone) throw new Error('the session has no root')
@@ -135,12 +141,17 @@ export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}):
   })
   on('model.complete', async (_, e) => {
     w.asked.push(e.prompt)
+    w.told.push(e.system ?? '')
 
     return { value: await w.answer(e.prompt) }
   })
   on('session.messages', () => ({ value: w.messages }))
   on('turn.complete', (_, e) => w.endTurn(e))
-  on('ui.toast', () => ({ value: undefined }))
+  on('ui.toast', (_, e) => {
+    w.toasts.push({ text: e.text, timeoutMs: e.timeoutMs })
+
+    return { value: undefined }
+  })
   on('ui.log', () => ({ value: undefined }))
   on('ui.open', (_, e) => {
     w.opened.push({ id: e.id, focus: e.focus })
@@ -238,4 +249,27 @@ export const counting = (
   }
 
   return { on: hooked as unknown as On, running: () => waits, gaps: () => pendingGaps, gapLengths }
+}
+
+/**
+ * Answers `$.store` as `mock.store` does, and hands the test what it holds, so a test can read what the mod stored.
+ * Each value is copied in and out, as the engine's store keeps no reference to what it was given.
+ */
+export const openStore = (on: On, entries: Readonly<Record<string, unknown>> = {}): Map<string, unknown> => {
+  const copy = (value: unknown): unknown => (value === undefined ? undefined : structuredClone(value))
+  const held = new Map(Object.entries(entries).map(([key, value]) => [key, copy(value)]))
+  on('store.get', (_, e) => ({ value: copy(held.get(e.key)) }))
+  on('store.set', (_, e) => {
+    held.set(e.key, copy(e.value))
+
+    return { value: undefined }
+  })
+  on('store.delete', (_, e) => {
+    held.delete(e.key)
+
+    return { value: undefined }
+  })
+  on('store.keys', () => ({ value: [...held.keys()] }))
+
+  return held
 }

@@ -88,7 +88,8 @@ test('a rescan finds the tickets once, and the pane then shows progress and the 
     await ui.unmount()
   }
 
-  reply = '{"change":true,"happened":"Built the cart.","next":"Add payment.","needsYou":"Pick a payment provider."}'
+  reply =
+    '{"items":[{"kind":"note","ticket":1,"short":"Built the cart.","long":""},{"kind":"needs-you","ticket":2,"short":"Pick a payment provider.","long":""}]}'
   await $.turn.complete({ answer: 'Built it.', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
   await clock.advance(0)
   expect(asked.length).toBe(2)
@@ -97,7 +98,7 @@ test('a rescan finds the tickets once, and the pane then shows progress and the 
   expect(await ui.find({ type: 'Text', text: /NEEDS YOU\s+Pick a payment provider\./ })).toBeDefined()
   await ui.unmount()
 
-  reply = '{"change":false}'
+  reply = '{"items":[]}'
   await $.turn.complete({ answer: 'Sure.', durationMs: 1, isAborted: false, turnId: 't2', reason: 'answer' })
   await clock.advance(0)
   expect(asked.length).toBe(3)

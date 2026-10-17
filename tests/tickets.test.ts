@@ -13,7 +13,6 @@ import {
   orderSets,
   parseChecklist,
   parsePlace,
-  parseSummary,
   parseTicketFile,
   progressOf,
   readRecipe,
@@ -196,16 +195,6 @@ test('a path is made relative to the project on Windows and POSIX alike', async 
   expect(toRelative('/home/me/app', '/home/me/app/TODO.md')).toBe('TODO.md')
   expect(toRelative('/home/me/app', '/home/me/other/TODO.md')).toBeUndefined()
   expect(toRelative('/home/me/app', './TODO.md')).toBe('TODO.md')
-})
-
-test('the summary is kept unless the model says something moved', async () => {
-  expect(parseSummary('{"change":false}')).toBeUndefined()
-  expect(parseSummary('nothing')).toBeUndefined()
-  expect(parseSummary('{"change":true,"happened":"Built the cart.","next":"Add payment.","needsYou":""}')).toEqual({
-    happened: 'Built the cart.',
-    next: 'Add payment.',
-    needsYou: '',
-  })
 })
 
 test('a long ticket list is cut to the room it has, around the next ticket', async () => {

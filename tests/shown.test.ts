@@ -79,7 +79,7 @@ const start = async ($: Engine, on: On, tickets: Record<string, string> = TICKET
   let release: ((reply: Reply) => void) | undefined
   let isHeld = false
   w.answer = prompt =>
-    prompt.startsWith('Current status') ? answered('{"change":false}') : isHeld ? new Promise<Reply>(resolve => (release = resolve)) : answered(RECIPE)
+    prompt.startsWith('Tickets:') ? answered('{"items":[]}') : isHeld ? new Promise<Reply>(resolve => (release = resolve)) : answered(RECIPE)
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
   await clock.settle()
   let drawn: Mounted | undefined = await $.ui.mount({ ...PANE, surface: 'terminal' })

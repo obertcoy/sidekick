@@ -1,4 +1,4 @@
-import type { Progress, Summary } from '../types'
+import type { Progress } from '../types'
 
 /** One place tickets are kept, and how to read them there. */
 export type Place =
@@ -103,7 +103,8 @@ const words = (value: unknown, fallback: string[]): string[] => {
   return [...new Set([...given, ...fallback].map(one => one.trim().toLowerCase()))].filter(one => one !== '' && one.length <= 40).slice(0, 24)
 }
 
-const jsonIn = (text: string): Record<string, unknown> | undefined => {
+/** The first JSON object in a model's reply, or undefined when there is none that parses. */
+export const jsonIn = (text: string): Record<string, unknown> | undefined => {
   const start = text.indexOf('{')
   const end = text.lastIndexOf('}')
   if (start < 0 || end <= start) return undefined
@@ -169,21 +170,6 @@ export const addPlace = (recipe: Recipe, place: Place): Recipe => {
   if (at < 0) return { places: [...recipe.places, place] }
 
   return { places: recipe.places.map((one, index) => (index === at ? place : one)) }
-}
-
-const clip = (value: unknown): string => (typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, 240) : '')
-
-/** Reads the model's reply to a turn: a new summary, or undefined to keep the old one. */
-export const parseSummary = (text: string): Summary | undefined => {
-  const found = jsonIn(text)
-  if (found === undefined || found.change !== true) return undefined
-  const summary = {
-    happened: clip(found.happened),
-    next: clip(found.next),
-    needsYou: clip(found.needsYou),
-  }
-
-  return summary.happened === '' && summary.next === '' ? undefined : summary
 }
 
 const statusOf = (lines: string[], label: string): string | undefined => {

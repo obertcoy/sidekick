@@ -4,6 +4,8 @@ import { atom, read, update } from 'claude-code'
 import type { SetEntry, Summary, View } from '../types'
 import type { Activity } from './activity'
 import { createActivity } from './activity'
+import type { Inbox, TicketRef } from './inbox'
+import { addItems, fit, parseItems, readInbox, summaryOf, tidy } from './inbox'
 import type { Target } from './look'
 import { changeLook, lookReport, parseSaved, targetOf } from './look'
 import { changeMotion, MOTION, motionReport, parseMotion } from './motion'
@@ -26,7 +28,6 @@ import {
   orderSets,
   parseChecklist,
   parsePlace,
-  parseSummary,
   parseTicketFile,
   progressOf,
   readRecipe,
@@ -85,12 +86,27 @@ Answer with one place to add to the places already known, never a replacement fo
 
 Documentation, changelogs and notes are not tickets.`
 
-const SUMMARY_RULES = `You keep a three-line status of a software project for its developer.
-You get the current status and what happened in the latest turn of their coding session.
-Change the status only when the turn decided something, finished or started a piece of work, or changed what the developer must do next. A question answered, a file read, or small talk changes nothing.
+const SUMMARY_RULES = `You keep the inbox of a software project for its developer: short items on what needs them and how each ticket is going.
+You get the project's tickets, numbered, the newest items already in the inbox, and what happened in the latest turn of their coding session.
+Write items only when the turn decided something, finished, started or found something in a piece of work, or asked something of the developer. A question answered, a file read, or small talk writes nothing. Never write again an item the inbox already holds.
+
+Each item has:
+- "kind": "needs-you" when the developer must answer or decide something; "blocked" when work cannot go on until something outside it changes; "changed-direction" when the planned approach was dropped for another; "note" for progress on a ticket, one line of its history.
+- "ticket": the number of the ticket it belongs to, from the list, or null when it belongs to none.
+- "short": one line of at most 36 characters, to fit a narrow pane. For needs-you it is the question itself.
+- "long": up to four sentences for a developer who has forgotten the ticket: what it is about, what happened or was found, and the choice or trade-off when there is one.
+
+Good short lines: "Keep timed-out payments pending?", "Retry tests pass", "Waiting on the staging API key", "Dropped the queue for a cron job".
+Bad short lines: "The agent has finished the retry logic and needs a decision on pending payments" (too long), "Update" (says nothing), "Needs your input" (repeats the kind, not the question).
+
 Answer with one JSON object and nothing else:
-{"change":false}
-or {"change":true,"happened":"<what was done or decided, one short sentence>","next":"<the next step, one short sentence>","needsYou":"<what the developer must do or decide, or empty>"}`
+{"items":[]}
+or {"items":[{"kind":"needs-you","ticket":3,"short":"<short line>","long":"<explanation>"}]}`
+
+/** At most this many tickets are listed for the summary to name; the sets changed last come first. */
+const SUMMARY_TICKETS = 60
+/** The newest items the summary is shown, so it does not write them again. */
+const SUMMARY_HELD = 10
 
 const view = atom(
   { plugin: 'sidekick', key: 'view' } as const,
@@ -456,10 +472,36 @@ const show = async ($: Dollar, next: View): Promise<void> => {
     if (now.done === now.total && was.done < was.total) sceneOf($).activity.queue({ state: 'set-done', isKeptWhenHidden: true })
     $.ui.toast(now.next === null ? `✓ All ${now.total} tickets done` : `✓ ${now.done}/${now.total} done · next: ${shortTitle(now.next)}`)
   }
-  const needsYou = next.summary?.needsYou ?? ''
-  if (needsYou !== '' && needsYou !== (held.summary?.needsYou ?? '')) {
-    $.ui.toast(`Needs you: ${needsYou}`, { timeoutMs: 8000 })
-  }
+}
+
+const inboxKey = (root: string): string => `inbox:${root}`
+
+const inboxOf = async ($: Dollar, root: string): Promise<Inbox> => readInbox(await $.store.get(inboxKey(root)))
+
+/** The summary the pane draws: read from the newest items, or, for a project whose inbox was never written, the last Done/Next pair. */
+const summaryFor = async ($: Dollar, root: string): Promise<Summary | null> => {
+  const stored = await $.store.get(inboxKey(root))
+  if (stored !== undefined) return summaryOf(readInbox(stored))
+
+  return ((await $.store.get(`summary:${root}`)) ?? null) as Summary | null
+}
+
+/** Every ticket of the sets, the sets in the order given. */
+const ticketRefsOf = async ($: Dollar, root: string, sets: TicketSet[]): Promise<TicketRef[]> =>
+  (
+    await Promise.all(
+      sets.map(async set =>
+        (await Promise.all(set.files.map(file => ticketsOf($, root, set.place, file)))).flat().map(one => ({ set: set.id, title: one.title })),
+      ),
+    )
+  ).flat()
+
+/** Drops the items whose ticket is in no set any more. With no set read at all nothing is dropped: a project that cannot be read now has not lost its tickets. */
+const tidyInbox = async ($: Dollar, root: string, sets: TicketSet[]): Promise<void> => {
+  if (sets.length === 0 || (await $.store.get(inboxKey(root))) === undefined) return
+  const held = await inboxOf($, root)
+  const kept = tidy(held, await ticketRefsOf($, root, sets))
+  if (kept.items.length !== held.items.length) await $.store.set(inboxKey(root), kept)
 }
 
 /** Refreshes the pane. `isOffering` (a rescan) opens the set picker; a new session opens it by itself. */
@@ -469,7 +511,7 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
   if (isSearching) return read($, view)
   const root = await rootOf($)
   const project = root.slice(root.lastIndexOf('/') + 1)
-  const summary = ((await $.store.get(`summary:${root}`)) ?? null) as Summary | null
+  const summary = await summaryFor($, root)
   const previous = await recipeOf($, root)
   let recipe = previous
   // A place that holds no files drops out; the rest stay.
@@ -506,6 +548,7 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
   }
   files ??= recipe === undefined ? [] : await filesOf($, root, recipe)
   const sets = recipe === undefined ? [] : orderSets(groupSets(recipe, files))
+  await tidyInbox($, root, sets)
   const session = await $.session.id()
   const key = activeKey(root, session)
   let active = (await $.store.get(key)) as string | undefined
@@ -530,7 +573,7 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
   const next: View = {
     project,
     isSearching: false,
-    summary,
+    summary: await summaryFor($, root),
     progress: set === undefined || tickets.length === 0 ? null : progressOf(tickets, set.id),
     sets: sets.length < 2 ? [] : await entriesOf($, root, sets),
     current: set?.id ?? '',
@@ -541,7 +584,11 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
   return next
 }
 
-/** Asks the small model whether the turn moved anything, and keeps the old summary when it didn't. */
+/** How an item is told to the summary: its kind, its ticket and its short line. */
+const heldLine = (item: Inbox['items'][number]): string =>
+  `- ${item.kind}${item.ticket === null ? '' : ` (${labelOf(item.ticket.set)} · ${item.ticket.title})`}: ${item.short}`
+
+/** Asks the small model what the turn moved, and adds the items it writes to the inbox. A call that fails adds nothing. */
 const summarize = async ($: Dollar, answer: string): Promise<void> => {
   const messages = await $.session.messages()
   if (!Array.isArray(messages)) return
@@ -556,23 +603,30 @@ const summarize = async ($: Dollar, answer: string): Promise<void> => {
     })
   if (answer.trim() === '' && tools.length === 0) return
   const root = await rootOf($)
-  const held = ((await $.store.get(`summary:${root}`)) ?? null) as Summary | null
+  const tickets = (await ticketRefsOf($, root, (await setsOf($, root)).sets)).slice(0, SUMMARY_TICKETS)
+  const held = (await inboxOf($, root)).items.slice(-SUMMARY_HELD)
   const reply = await $.model.complete({
     model: 'haiku',
     system: SUMMARY_RULES,
     prompt: [
-      `Current status: ${held === null ? 'none yet' : JSON.stringify(held)}`,
+      `Tickets:\n${tickets.length === 0 ? 'none' : tickets.map((one, at) => `${at + 1}. ${labelOf(one.set)} · ${one.title}`).join('\n')}`,
+      `Items already in the inbox, newest last:\n${held.length === 0 ? 'none yet' : held.map(heldLine).join('\n')}`,
       `The developer asked:\n${(turn[0]?.text ?? '').slice(0, 2000)}`,
       tools.length === 0 ? '' : `Tools used:\n${tools.slice(-40).join('\n')}`,
       `The assistant's final answer:\n${answer.slice(0, 4000)}`,
     ]
       .filter(part => part !== '')
       .join('\n\n'),
-    maxTokens: 300,
+    maxTokens: 1000,
     timeoutMs: 60_000,
   })
-  const summary = reply.isAnswered ? parseSummary(reply.text) : undefined
-  if (summary !== undefined) await $.store.set(`summary:${root}`, summary)
+  const drafts = reply.isAnswered ? parseItems(reply.text, tickets) : undefined
+  if (drafts === undefined || drafts.length === 0) return
+  // Read again: a refresh may have tidied the inbox while the model was answering.
+  await $.store.set(inboxKey(root), addItems(await inboxOf($, root), drafts, await $.clock.now()))
+  for (const draft of drafts) {
+    if (draft.kind === 'needs-you') $.ui.toast(`Needs you: ${draft.short}`, { timeoutMs: 8000 })
+  }
 }
 
 /** The project root, or undefined (logged) when the session cannot say; a look command then has no project to work on. */
@@ -1075,7 +1129,7 @@ export const register: Register = on => {
         <Box flexDirection="column" marginTop={1}>
           <Text dimColor>{'─'.repeat(columns)}</Text>
           {summary === null && <Text dimColor>The summary appears after a turn that moves something.</Text>}
-          {summary !== null && (
+          {summary !== null && summary.happened !== '' && (
             <Box flexDirection="row">
               <Box width={6} flexShrink={0}>
                 <Text bold color="suggestion">
@@ -1083,7 +1137,7 @@ export const register: Register = on => {
                 </Text>
               </Box>
               <Box flexGrow={1} flexShrink={1}>
-                <Text>{summary.happened}</Text>
+                <Text>{fit(summary.happened, columns - 6)}</Text>
               </Box>
             </Box>
           )}
@@ -1106,7 +1160,8 @@ export const register: Register = on => {
               <Text bold color="inverseText" backgroundColor="warning">
                 {' NEEDS YOU '}
               </Text>{' '}
-              {needsYou}
+              {/* The badge and its space take 12 columns; the short line has the rest. */}
+              {fit(needsYou, columns - 12)}
             </Text>
           </Box>
         )}

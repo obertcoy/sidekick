@@ -3,7 +3,7 @@
 A Claude Code mod that shows where the current project stands in a pane beside the conversation, so you don't have to ask the chat for a recap.
 
 - **Ticket checklist**: the tickets of the set you're working on, marked done, in progress or open, with a count and a progress bar.
-- **Summary**: what happened, what's next, and what needs you. It changes only when a turn decides something or moves the work.
+- **Summary**: what happened and what needs you. After a turn that decides something or moves the work, a small model writes inbox items (a question for you, a blocker, a change of direction, or a note on a ticket); they are kept per project, and the pane shows the newest.
 - **Any local ticket layout**: the first time the mod sees a project, a small model looks once for where the tickets are (one file per ticket, a checklist file, or files with a status field) and saves the answer. After that, plain code reads the tickets.
 - **A pixel character** in the header that writes while Claude works and zaps when a ticket is finished.
 

@@ -87,7 +87,7 @@ const open = async ($: Engine, on: On, tickets: Record<string, string> = TICKETS
   on('tool.call', () => ({ result: { ok: true } }))
   let release: ((reply: Reply) => void) | undefined
   // Only the search is held; a turn's summary is answered at once, as it is not what these tests are about.
-  w.answer = prompt => (prompt.startsWith('Current status') ? answered('{"change":false}') : new Promise<Reply>(resolve => (release = resolve)))
+  w.answer = prompt => (prompt.startsWith('Tickets:') ? answered('{"items":[]}') : new Promise<Reply>(resolve => (release = resolve)))
   await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
   await clock.settle()
   const answerSearch = async (reply: Reply): Promise<void> => {
