@@ -7,17 +7,17 @@
 // and it is the one place that draws a random number (the length of the gap between ambient animations, and which one plays).
 import type { Timer } from 'claude-code'
 
-import type { State } from './sprite/registry'
+import type { Moment } from './sprite/registry'
 import type { Animation } from './sprite/types'
 
-export type { State }
+export type { Moment }
 
 /** The things that can be going on at the same time; each is either on or off. */
 export const CONDITIONS = ['turn', 'search'] as const
 export type Condition = (typeof CONDITIONS)[number]
 
-/** Answers what plays for a state. Given, not imported, so the activity and the pane cannot disagree. Asked once when something starts; the answer is kept and never asked again for that run. */
-export type Lookup = (state: State) => Animation
+/** Answers what plays for a moment. Given, not imported, so the activity and the pane cannot disagree. Asked once when something starts; the answer is kept and never asked again for that run. */
+export type Lookup = (moment: Moment) => Animation
 
 /** Answers which ambient animations the character in use plays on its own; empty for a character with none. Given, like `Lookup`, and asked again whenever the answer matters. */
 export type Ambient = () => readonly Animation[]
@@ -27,12 +27,12 @@ const noAmbient: Ambient = () => []
 export const AMBIENT_GAP_MS = { min: 5_000, max: 15_000 } as const
 const gapMs = (): number => AMBIENT_GAP_MS.min + Math.floor(Math.random() * (AMBIENT_GAP_MS.max - AMBIENT_GAP_MS.min + 1))
 
-/** A picture to show: the animation resolved when it began, and the frame of it. `state` says what the sidekick is doing. */
-export type Shown = { readonly state: State; readonly animation: Animation; readonly frame: number }
+/** A picture to show: the animation resolved when it began, and the frame of it. `moment` says what the sidekick is doing. */
+export type Shown = { readonly moment: Moment; readonly animation: Animation; readonly frame: number }
 
 /** A once-only animation waiting its turn. */
 export type Entry = {
-  readonly state: State
+  readonly moment: Moment
   /** Keeps the entry going this many steps past the last frame of the animation that plays when it starts: the ticket strike has one step more than the zap has frames. The sidekick rests meanwhile. */
   readonly restSteps?: number
   /** Called when the entry starts to play, before its first frame is drawn, with the steps it will have in all (rest steps included). */
@@ -63,7 +63,7 @@ export type Activity = {
   lookChanged: () => void
   /** Draws what is shown now again, for a change that is not the activity's own (a new look), and asks again what ambient motion the character has. */
   repaint: () => void
-  /** What is shown now: the state, the animation that was resolved for it and its frame. */
+  /** What is shown now: the moment, the animation that was resolved for it and its frame. */
   shown: () => Shown
 }
 
@@ -99,7 +99,7 @@ export type Model = {
   readonly isMotionOn: boolean
   readonly waiting: readonly Entry[]
   readonly phase: Phase
-  /** While holding or between this is always the resting state at frame 0, so leaving it for rest needs no draw. */
+  /** While holding or between this is always the resting moment at frame 0, so leaving it for rest needs no draw. */
   readonly shown: Shown
 }
 
@@ -134,21 +134,21 @@ export const initial = (playsFor: Lookup): Model => ({
   isMotionOn: false,
   waiting: [],
   phase: { kind: 'resting' },
-  shown: { state: 'resting', animation: playsFor('resting'), frame: 0 },
+  shown: { moment: 'resting', animation: playsFor('resting'), frame: 0 },
 })
 
 const unreachable = (value: never): never => {
   throw new Error(`activity: unhandled ${JSON.stringify(value)}`)
 }
 
-const restingOf = (conditions: Model['conditions']): State => (conditions.turn ? 'working' : conditions.search ? 'searching' : 'resting')
+const restingOf = (conditions: Model['conditions']): Moment => (conditions.turn ? 'working' : conditions.search ? 'searching' : 'resting')
 const same = (model: Model): Result => ({ model, effects: [] })
 const show = (model: Model, shown: Shown): Result => ({ model: { ...model, shown }, effects: [{ do: 'draw', shown }] })
 /** Shows the resting animation for the conditions now, resolving it afresh. */
 const showRest = (model: Model, playsFor: Lookup): Result => {
-  const state = restingOf(model.conditions)
+  const moment = restingOf(model.conditions)
 
-  return show(model, { state, animation: playsFor(state), frame: 0 })
+  return show(model, { moment, animation: playsFor(moment), frame: 0 })
 }
 
 /** Whether a phase already shows the resting frame, so that leaving it for rest needs no draw (the invariant of `Model.shown`). */
@@ -199,9 +199,9 @@ const waitsAt = (m: Model, animation: Animation, ambientOf: Ambient): boolean =>
 const begin = (m: Model, playsFor: Lookup, ambientOf: Ambient, isShown: boolean): Result => {
   const [entry, ...waiting] = m.waiting
   if (entry === undefined) {
-    const state = restingOf(m.conditions)
-    const animation = isShown ? m.shown.animation : playsFor(state)
-    const shown: Shown = { state, animation, frame: 0 }
+    const moment = restingOf(m.conditions)
+    const animation = isShown ? m.shown.animation : playsFor(moment)
+    const shown: Shown = { moment, animation, frame: 0 }
     // A single frame does not move, so it needs no timer.
     const loop: Effect[] = animation.frames > 1 ? [{ do: 'every', ms: animation.msPerFrame }] : []
     const isWaiting = waitsAt(m, animation, ambientOf)
@@ -211,9 +211,9 @@ const begin = (m: Model, playsFor: Lookup, ambientOf: Ambient, isShown: boolean)
       effects: [{ do: 'stop' }, ...(isShown ? [] : [{ do: 'draw', shown } as const]), ...loop, ...(isWaiting ? [{ do: 'wait' } as const] : [])],
     }
   }
-  const animation = playsFor(entry.state)
+  const animation = playsFor(entry.moment)
   const steps = animation.frames + (entry.restSteps ?? 0)
-  const shown: Shown = { state: entry.state, animation, frame: 0 }
+  const shown: Shown = { moment: entry.moment, animation, frame: 0 }
 
   return {
     model: { ...m, waiting, phase: { kind: 'playing', entry, animation, step: 0, steps }, shown },
@@ -235,7 +235,7 @@ const advance = (m: Model, p: Extract<Phase, { kind: 'playing' | 'holding' }>, p
       // The sidekick rests once the animation is over while the rest of the entry runs out; until then it shows the entry's frames.
       const drawn =
         step < p.animation.frames
-          ? show({ ...m, phase: { ...p, step } }, { state: p.entry.state, animation: p.animation, frame: step })
+          ? show({ ...m, phase: { ...p, step } }, { moment: p.entry.moment, animation: p.animation, frame: step })
           : showRest({ ...m, phase: { ...p, kind: 'holding', step } }, playsFor)
 
       return { model: drawn.model, effects: [hook, ...drawn.effects] }
@@ -252,7 +252,7 @@ const startAmbient = (m: Model, roll: number, ambientOf: Ambient): Result => {
   const choices = ambientOf()
   const animation = choices[Math.min(choices.length - 1, Math.floor(roll * choices.length))]
   if (animation === undefined) return { model: { ...m, phase: { kind: 'resting' } }, effects: [{ do: 'stop' }] }
-  const shown: Shown = { state: 'resting', animation, frame: 0 }
+  const shown: Shown = { moment: 'resting', animation, frame: 0 }
 
   return {
     model: { ...m, phase: { kind: 'ambient', animation, step: 0, steps: animation.frames }, shown },
@@ -265,7 +265,7 @@ const advanceAmbient = (m: Model, p: Extract<Phase, { kind: 'ambient' }>, playsF
   const step = p.step + 1
   if (step >= p.steps) return begin(m, playsFor, ambientOf, false)
 
-  return show({ ...m, phase: { ...p, step } }, { state: 'resting', animation: p.animation, frame: step })
+  return show({ ...m, phase: { ...p, step } }, { moment: 'resting', animation: p.animation, frame: step })
 }
 
 /**
@@ -297,7 +297,7 @@ export const transition = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambi
       const next = { ...m, conditions: { ...m.conditions, [e.condition]: e.isOn } }
       const rest = restingOf(next.conditions)
       // A change that leaves the resting animation as it is (a search ending while a turn writes) must not restart it.
-      if (rest === m.shown.state) return same(next)
+      if (rest === m.shown.moment) return same(next)
       switch (m.phase.kind) {
         case 'resting':
         case 'between':

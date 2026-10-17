@@ -109,8 +109,22 @@ _Avoid_: Item, hat (a hat is an accessory in the head slot)
 A place on the sidekick where one accessory goes: head, face, neck or held. Every character has the head slot; a character may lack any of the others.
 
 **Animation**:
-A short motion of the sidekick. A state animation marks something that happened in the project; every character shares the same ones unless a character replaces one with its own.
+A short motion of the sidekick. Every animation is in the library, whether or not any character plays it.
 _Avoid_: Mode, effect
+
+**Moment**:
+Something the mod can detect that the sidekick answers with an animation: a turn is working, a search runs, a search fails, a ticket is done, a set is done, the sidekick rests. The list is closed; one is added only together with a real event that produces it.
+_Avoid_: State, event, trigger
+
+**Library**:
+Every animation the mod has, by name. An animation can sit in it without being played for any moment.
+
+**Moveset**:
+What a character plays: for each moment it names, the library animation. A moment it leaves out plays that moment's plain default.
+_Avoid_: Animation set, replacements
+
+**Plain default**:
+The animation that plays for a moment when a character's moveset leaves it out. It uses only what every character has (its head and feet), so any character can play it and a knight is never handed the bolt.
 
 **Ambient motion**:
 Animations the sidekick plays on its own while nothing is happening, such as a blink. Each character names its own; the user can turn all of it off.

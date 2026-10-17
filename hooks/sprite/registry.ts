@@ -9,6 +9,7 @@ import { cheer } from './animations/cheer'
 import { earFlick } from './animations/earFlick'
 import { idle } from './animations/idle'
 import { look } from './animations/look'
+import { bounce, dip, hop, nod, sink } from './animations/plain'
 import { shrug } from './animations/shrug'
 import { tailFlick } from './animations/tailFlick'
 import { write } from './animations/write'
@@ -16,8 +17,8 @@ import { zap } from './animations/zap'
 import { dusk } from './backgrounds/dusk'
 import { classic } from './characters/classic'
 import { foxkit } from './characters/foxkit'
-import type { Accessory, Animation, Background, Character, Look, Slot, State } from './types'
-import { REPLACEABLE_STATES, STATE_NAMES } from './types'
+import type { Accessory, Anchors, Animation, Background, Character, FramePlan, Look, Moment, Slot } from './types'
+import { ANCHOR_NAMES, LIST_ANCHORS, MOMENTS, POSES, REQUIRED_ANCHORS } from './types'
 
 // The part catalog: every part by name, and the rules that hold between parts. Immutable; the look in
 // use (what was chosen, what is drawn) is in ./look-in-use.ts. Adding a character, animation, accessory
@@ -25,70 +26,154 @@ import { REPLACEABLE_STATES, STATE_NAMES } from './types'
 
 export const CHARACTERS: Readonly<Record<string, Character>> = { foxkit, classic }
 
-export const ANIMATIONS = { idle, write, zap, look, shrug, cheer, blink, tailFlick, earFlick, cheekSpark } as const satisfies Record<string, Animation>
+export const ANIMATIONS = {
+  idle,
+  write,
+  zap,
+  look,
+  shrug,
+  cheer,
+  blink,
+  tailFlick,
+  earFlick,
+  cheekSpark,
+  nod,
+  dip,
+  sink,
+  hop,
+  bounce,
+} as const satisfies Record<string, Animation>
 
-/** What the sidekick is shown doing, and the animation that plays for each. */
-export const STATES = {
-  working: 'write',
-  searching: 'look',
-  'search-failed': 'shrug',
-  'ticket-done': 'zap',
-  'set-done': 'cheer',
+/**
+ * The plain default of each moment: the library animation that plays for it when a character's moveset leaves it out. Each uses only the anchors
+ * every character has and no pose (`requirePlainDefaults` checks that at load). Resting is stillness.
+ */
+export const PLAIN = {
+  working: 'nod',
+  searching: 'dip',
+  'search-failed': 'sink',
+  'ticket-done': 'hop',
+  'set-done': 'bounce',
   resting: 'idle',
-} as const satisfies Record<State, keyof typeof ANIMATIONS>
+} as const satisfies Record<Moment, keyof typeof ANIMATIONS>
 
-export type { State }
+export type { Moment }
 
 /** The part named `name` in a catalog map, or undefined; only its own names count. */
 export const found = <T>(registry: Readonly<Record<string, T>>, name: string): T | undefined => (Object.hasOwn(registry, name) ? registry[name] : undefined)
 
-/** The name of the animation that plays for a state, for a character: its own replacement, else the shared one. */
-export const animationNameOf = (character: Character, state: State): string => character.animations?.[state] ?? STATES[state]
+/** The name of the library animation that plays for a moment, for a character: the one its moveset names, else the moment's plain default. */
+export const animationNameOf = (character: Character, moment: Moment): string => character.moveset?.[moment] ?? PLAIN[moment]
 
 /**
- * What plays for a state, for a character. The one lookup: the activity times by it and the pane draws by it.
- * A character that names an animation for the state plays that one; otherwise the shared one. The names are checked at load (`requireReplacements`).
+ * What plays for a moment, for a character. The one lookup: the activity times by it and the pane draws by it.
+ * The names are checked at load (`requireMoveset`).
  */
-export const animationOf = (character: Character, state: State): Animation => ANIMATIONS[animationNameOf(character, state) as keyof typeof ANIMATIONS]
+export const animationOf = (character: Character, moment: Moment): Animation => ANIMATIONS[animationNameOf(character, moment) as keyof typeof ANIMATIONS]
 
-/** The fewest frames an animation needs to play for each replaceable state. */
+/** The fewest frames an animation needs to play for each moment. */
 const MIN_FRAMES = {
   working: 1,
   searching: 1,
   'search-failed': 1,
   'ticket-done': MIN_STRIKE_FRAMES,
   'set-done': 1,
-} as const satisfies Record<(typeof REPLACEABLE_STATES)[number], number>
+  resting: 1,
+} as const satisfies Record<Moment, number>
 
 /**
- * Refuses a character whose replacements cannot play: a state it cannot replace, an animation that does not exist
- * (the message names the ones that do), or one with too few frames for its state. Checked against `catalog`, the shared animations unless given.
+ * Refuses a moveset that cannot play: a moment that does not exist, an animation that is not in the library (the message names the ones that are),
+ * or one with too few frames for its moment. Checked against `catalog`, the library unless given.
  */
-export const requireReplacements = (character: Character, catalog: Readonly<Record<string, Animation>> = ANIMATIONS): void => {
-  for (const [state, name] of Object.entries(character.animations ?? {})) {
-    // A state left undefined names nothing, as one left out does.
+export const requireMoveset = (character: Character, catalog: Readonly<Record<string, Animation>> = ANIMATIONS): void => {
+  for (const [moment, name] of Object.entries(character.moveset ?? {})) {
+    // A moment left undefined names nothing, as one left out does.
     if (name === undefined) continue
-    const replaceable = REPLACEABLE_STATES.find(one => one === state)
-    if (replaceable === undefined) {
-      const why = (STATE_NAMES as readonly string[]).includes(state)
-        ? `cannot replace "${state}"`
-        : `names the state "${state}"; there is no state named "${state}"`
-      throw new Error(`sprite: character "${character.name}" ${why}; replaceable: ${REPLACEABLE_STATES.join(', ')}`)
+    const known = MOMENTS.find(one => one === moment)
+    if (known === undefined) {
+      throw new Error(
+        `sprite: character "${character.name}" names the moment "${moment}"; there is no moment named "${moment}"; moments: ${MOMENTS.join(', ')}`,
+      )
     }
     const animation = found(catalog, name)
     if (animation === undefined) {
       throw new Error(
-        `sprite: character "${character.name}" names the animation "${name}" for "${state}", which does not exist; known: ${Object.keys(catalog).join(', ')}`,
+        `sprite: character "${character.name}" names the animation "${name}" for "${moment}", which does not exist; known: ${Object.keys(catalog).join(', ')}`,
       )
     }
-    const least = MIN_FRAMES[replaceable]
+    const least = MIN_FRAMES[known]
     if (animation.frames < least) {
       throw new Error(
-        `sprite: character "${character.name}" replaces "${state}" with "${name}", which has ${animation.frames} frames; "${state}" needs at least ${least}`,
+        `sprite: character "${character.name}" plays "${name}" for "${moment}", which has ${animation.frames} frames; "${moment}" needs at least ${least}`,
       )
     }
   }
 }
+
+/**
+ * Refuses a plain default that not every character could play: one that is not in the library, needs an anchor beyond the required ones or a pose,
+ * or has too few frames for its moment. Checked against `catalog` and `plain`, the library and the defaults unless given.
+ */
+export const requirePlainDefaults = (catalog: Readonly<Record<string, Animation>> = ANIMATIONS, plain: Readonly<Record<Moment, string>> = PLAIN): void => {
+  for (const moment of MOMENTS) {
+    const name = plain[moment]
+    const animation = found(catalog, name)
+    if (animation === undefined) {
+      throw new Error(`sprite: the plain default for "${moment}" is "${name}", which does not exist; known: ${Object.keys(catalog).join(', ')}`)
+    }
+    const extra = animation.needs.filter(need => !(REQUIRED_ANCHORS as readonly string[]).includes(need))
+    if (extra.length > 0) {
+      throw new Error(
+        `sprite: the plain default for "${moment}" ("${name}") needs the anchors ${extra.join(', ')}; a plain default may need only ${REQUIRED_ANCHORS.join(', ')}`,
+      )
+    }
+    if (animation.poses.length > 0) {
+      throw new Error(`sprite: the plain default for "${moment}" ("${name}") asks for the poses ${animation.poses.join(', ')}; a plain default asks for none`)
+    }
+    if (animation.frames < MIN_FRAMES[moment]) {
+      throw new Error(`sprite: the plain default for "${moment}" ("${name}") has ${animation.frames} frames; "${moment}" needs at least ${MIN_FRAMES[moment]}`)
+    }
+  }
+}
+requirePlainDefaults()
+
+/**
+ * Refuses a library animation that does not keep its own declaration, whether or not any moveset plays it: its frame count and pace, the anchors it
+ * needs (known names), and the poses it asks for at each step (declared ones). Its frames are worked out from the declared anchors alone, so a frame
+ * that reads another anchor fails here.
+ */
+export const requireDeclaration = (name: string, animation: Animation): void => {
+  const fail = (why: string): never => {
+    throw new Error(`sprite: the animation "${name}" ${why}`)
+  }
+  if (!Number.isInteger(animation.frames) || animation.frames < 1) fail(`has ${animation.frames} frames; it needs a whole number, at least 1`)
+  if (!(animation.msPerFrame > 0)) fail(`has ${animation.msPerFrame} ms per frame; it needs more than 0`)
+  for (const need of animation.needs) {
+    if (!(ANCHOR_NAMES as readonly string[]).includes(need)) fail(`needs "${need}", which is not an anchor; anchors: ${ANCHOR_NAMES.join(', ')}`)
+  }
+  for (const pose of animation.poses) {
+    if (!(POSES as readonly string[]).includes(pose)) fail(`declares the pose "${pose}", which is not a pose; poses: ${POSES.join(', ')}`)
+  }
+  // Only the declared anchors, each at one point of the stage: a frame that reads anything else gets nothing.
+  const point = { x: 0, y: 0 }
+  const given: Record<string, unknown> = Object.fromEntries(
+    [...REQUIRED_ANCHORS, ...animation.needs].map(anchor => [anchor, (LIST_ANCHORS as readonly string[]).includes(anchor) ? [point] : point]),
+  )
+  for (let step = 0; step < animation.frames; step++) {
+    let plan: FramePlan
+    try {
+      plan = animation.frame(step, given as Anchors)
+    } catch {
+      throw new Error(
+        `sprite: the animation "${name}" fails at step ${step} when given only the anchors it needs (${animation.needs.join(', ') || 'none'}); it reads one it does not declare`,
+      )
+    }
+    for (const pose of plan.poses ?? []) {
+      if (!animation.poses.includes(pose)) fail(`asks for the pose "${pose}" at step ${step}, but does not declare it`)
+    }
+  }
+}
+for (const [name, animation] of Object.entries(ANIMATIONS)) requireDeclaration(name, animation)
 
 /**
  * Refuses a character that lacks an anchor one of the given animations needs; the animations are those it plays, by name.
@@ -147,16 +232,16 @@ export const ambientAnimationsOf = (character: Character): Animation[] =>
     return animation === undefined || !(AMBIENT as readonly string[]).includes(name) ? [] : [animation]
   })
 
-// Checked at load for each character: its replacements first, then the anchors and poses of exactly what it plays. That is the animation
-// of each state through the lookup (named with its state, "zap (ticket-done)"), plus each ambient one the character lists (by plain name).
-// An animation that the character displaces (the shared zap, for a character with its own ticket-done) or does not list is not played, so it is not checked.
+// Checked at load for each character: its moveset first, then the anchors and poses of exactly what it plays. That is the animation
+// of each moment through the lookup (named with its moment, "zap (ticket-done)"), plus each ambient one the character lists (by plain name).
+// An animation the character's moveset does not name for any moment, and does not list as ambient, is not played, so it is not checked here (the library check covers its own declaration).
 // `ambient` is the names that count as ambient animations; the characters list only from it.
 export const requirePlayed = (character: Character, catalog: Readonly<Record<string, Animation>> = ANIMATIONS, ambient: readonly string[] = AMBIENT): void => {
-  requireReplacements(character, catalog)
-  const byState = STATE_NAMES.flatMap(state => {
-    const name = animationNameOf(character, state)
+  requireMoveset(character, catalog)
+  const byMoment = MOMENTS.flatMap(moment => {
+    const name = animationNameOf(character, moment)
     const animation = found(catalog, name)
-    return animation === undefined ? [] : [[`${name} (${state})`, animation] as const]
+    return animation === undefined ? [] : [[`${name} (${moment})`, animation] as const]
   })
   const byAmbient = (character.ambient ?? []).map(name => {
     const animation = ambient.includes(name) ? found(catalog, name) : undefined
@@ -165,7 +250,7 @@ export const requirePlayed = (character: Character, catalog: Readonly<Record<str
     }
     return [name, animation] as const
   })
-  const played = Object.fromEntries([...byState, ...byAmbient])
+  const played = Object.fromEntries([...byMoment, ...byAmbient])
   requireAnchors(character, played)
   requirePoses(character, played)
   requireDeclaredPoses(character, played)

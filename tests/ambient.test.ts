@@ -297,7 +297,7 @@ test('no ambient animation plays, and no gap is pending, while a once-only anima
   expect(gaps(), 'the gap is back after the strike').toBe(1)
 })
 
-test('a state animation that arrives during an ambient animation starts at once, and the ambient one does not go on', async ($, on) => {
+test('an animation for a moment that arrives during an ambient animation starts at once, and the ambient one does not go on', async ($, on) => {
   const { clock, w, gaps } = await start($, on)
   const waited = await untilPainted(clock, w, AMBIENT_GAP_MS.max + 100)
   expect(waited, 'an ambient animation started').toBeDefined()

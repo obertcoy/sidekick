@@ -230,7 +230,7 @@ const complete = async ($: Dollar, kind: CostKind, request: ModelCompleteRequest
 
 // The strike: when tickets finish, the critter zaps and a bolt lands on their rows, which flash and
 // have the strike-through burn across them before they settle as done. One step per frame of the
-// animation that plays for the ticket-done state; the beats are in ./strike.
+// animation that plays for the ticket-done moment; the beats are in ./strike.
 type Was = 'active' | 'open'
 /** The steps are those the running entry has, told by the activity when the strike starts. */
 type Strike = { rows: Map<string, Was>; step: number; steps: number }
@@ -296,7 +296,7 @@ const strikeRows = ($: Dollar, rows: Map<string, Was>): void => {
   const batch = new Map(rows)
   scene.pending = batch
   scene.activity.queue({
-    state: 'ticket-done',
+    moment: 'ticket-done',
     // The strike has one more step than the animation has frames; the sidekick rests for the last one.
     restSteps: STRIKE_REST_STEPS,
     isKeptWhenHidden: true,
@@ -561,10 +561,10 @@ const show = async ($: Dollar, next: View): Promise<void> => {
     }
     // The sidekick animates the done ticket either way; the rows it can name are struck in step with it.
     if (finished.size > 0) strikeRows($, finished)
-    else sceneOf($).activity.queue({ state: 'ticket-done', isKeptWhenHidden: true })
+    else sceneOf($).activity.queue({ moment: 'ticket-done', isKeptWhenHidden: true })
     // The set became all done: it was not at the previous refresh of this same set (`was` is that refresh, and a
     // first load or another set never gets here). The cheer waits behind the zap and its strike.
-    if (now.done === now.total && was.done < was.total) sceneOf($).activity.queue({ state: 'set-done', isKeptWhenHidden: true })
+    if (now.done === now.total && was.done < was.total) sceneOf($).activity.queue({ moment: 'set-done', isKeptWhenHidden: true })
     $.ui.toast(now.next === null ? `✓ All ${now.total} tickets done` : `✓ ${now.done}/${now.total} done · next: ${shortTitle(now.next)}`)
   }
 }
@@ -795,7 +795,7 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
     } finally {
       isSearching = false
       // The shrug is queued first, so the sidekick goes from looking straight into it.
-      if (isFailed || (files ?? []).length === 0) activity.queue({ state: 'search-failed' })
+      if (isFailed || (files ?? []).length === 0) activity.queue({ moment: 'search-failed' })
       activity.set('search', false)
     }
   }

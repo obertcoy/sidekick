@@ -970,3 +970,28 @@ test('the flag stays drawn through the cheer that ends a set, in every frame, wh
   expect(w.painted.at(-1)).toBe(resting)
   await ui.unmount()
 })
+
+test('the classic plays its moveset in the mod: writing in a turn, the zap on a done ticket and the cheer when the set is done', async ($, on) => {
+  on('tool.call', () => ({ result: { ok: true } }))
+  const { clock, w } = await started($, on)
+  await $.command.run({ ...LOOK, args: 'character=classic' })
+  const classic = dressed('classic')
+  w.painted.length = 0
+
+  await $.turn.start({ text: 'Build it.', turnId: 't1' })
+  expect(w.painted.at(-1)).toBe(render(classic, ANIMATIONS.write, 0))
+  await $.turn.complete({ answer: 'Done.', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+  expect(w.painted.at(-1)).toBe(render(classic, ANIMATIONS.idle, 0))
+
+  w.answer = () => answered(RECIPE)
+  addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'in-progress') }, 5)
+  await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
+  await clock.advance(SETTLED)
+  addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'done') }, 9)
+  await $.tool.call({ tool: 'Read', file_path: `${ROOT}/.scratch/checkout/issues/01-cart.md` })
+  await clock.settle()
+  await clock.advance(STRIKE_STEPS * ANIMATIONS.zap.msPerFrame + ANIMATIONS.cheer.frames * ANIMATIONS.cheer.msPerFrame)
+  // The one ticket finishing is the ticket and then the set: the zap, then the cheer, each from the classic's moveset.
+  expect(w.painted).toContain(render(classic, ANIMATIONS.zap, 0))
+  expect(w.painted).toContain(render(classic, ANIMATIONS.cheer, 1))
+})

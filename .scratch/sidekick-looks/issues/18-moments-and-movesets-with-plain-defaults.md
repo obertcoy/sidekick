@@ -6,14 +6,14 @@ Design notes: owner discussion on 2026-10-17 (session after the C prototype, `..
 
 **Blocked by:** 13: Animations wait until the pane is shown
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Moments are an `as const` list with a derived type; the activity state machine produces moments, not animation names
-- [ ] A character's moveset maps moments to library animations; a moment it leaves out plays that moment's plain default
-- [ ] Each moment's plain default uses only anchors every character has
-- [ ] A moveset that names an unknown animation, or one whose anchors or poses the character lacks, is refused at load, naming what is missing
-- [ ] Whatever plays for "ticket done" has at least `MIN_STRIKE_FRAMES` frames, and the strike stays in step with it
-- [ ] An animation in the library that no moveset uses is still checked against its own declaration at load and is not played
-- [ ] The foxkit and the classic behave as before; their golden frames are unchanged
-- [ ] Ticket 11's tests still pass, renamed to the new vocabulary where needed
-- [ ] Covered at the pure level (moveset lookup, defaults, load refusals) and by whole-mod tests for the classic
+- [x] Moments are an `as const` list with a derived type; the activity state machine produces moments, not animation names
+- [x] A character's moveset maps moments to library animations; a moment it leaves out plays that moment's plain default
+- [x] Each moment's plain default uses only anchors every character has
+- [x] A moveset that names an unknown animation, or one whose anchors or poses the character lacks, is refused at load, naming what is missing
+- [x] Whatever plays for "ticket done" has at least `MIN_STRIKE_FRAMES` frames, and the strike stays in step with it
+- [x] An animation in the library that no moveset uses is still checked against its own declaration at load and is not played
+- [x] The foxkit and the classic behave as before; their golden frames are unchanged
+- [x] Ticket 11's tests still pass, renamed to the new vocabulary where needed
+- [x] Covered at the pure level (moveset lookup, defaults, load refusals) and by whole-mod tests for the classic

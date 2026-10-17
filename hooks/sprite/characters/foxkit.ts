@@ -66,6 +66,8 @@ export const foxkit = defineCharacter({
     // Each ear tip gains an outline pixel above it, at (0,2) and (14,2), so the ears look lifted. The left one is outside the headRegion, the right one inside it, so an animation that bobs would tear them apart; the ear flick has no bob.
     earsUp: { at: { x: 0, y: 2 }, rows: ['o             o'] },
   },
+  // What it plays for each moment: the shared animations drawn for it. A moment left out would play its plain default.
+  moveset: { working: 'write', searching: 'look', 'search-failed': 'shrug', 'ticket-done': 'zap', 'set-done': 'cheer' },
   // The ambient animations it plays while it rests; each needs anchors and poses it has.
   ambient: ['blink', 'tailFlick', 'earFlick', 'cheekSpark'],
   // Columns 0-2 hold the ear tip and the tail, which stay put while the head bobs.

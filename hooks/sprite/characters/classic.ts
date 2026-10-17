@@ -64,6 +64,8 @@ export const classic = defineCharacter({
     // Each ear tip gains an outline pixel above it, at (2,2) and (9,2), so the ears look lifted. Both are above the headRegion (top row 3); the ear flick has no bob.
     earsUp: { at: { x: 2, y: 2 }, rows: ['k      k'] },
   },
+  // What it plays for each moment: the shared animations drawn for it. A moment left out would play its plain default.
+  moveset: { working: 'write', searching: 'look', 'search-failed': 'shrug', 'ticket-done': 'zap', 'set-done': 'cheer' },
   // The ambient animations it plays while it rests; each needs anchors and poses it has.
   ambient: ['blink', 'tailFlick', 'earFlick', 'cheekSpark'],
   // Columns 0-1 hold the tail, which stays put while the head bobs.

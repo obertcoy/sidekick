@@ -14,14 +14,14 @@ const FAKE: Record<string, Animation> = {
   'ticket-done': fake(2, 50),
   'set-done': fake(4, 70),
 }
-const playsFor: Lookup = state => FAKE[state] ?? fake(1, 1)
+const playsFor: Lookup = moment => FAKE[moment] ?? fake(1, 1)
 const INITIAL = initial(playsFor)
 
-const entry = (state: Entry['state'], restSteps?: number): Entry => ({ state, ...(restSteps === undefined ? {} : { restSteps }) })
+const entry = (moment: Entry['moment'], restSteps?: number): Entry => ({ moment, ...(restSteps === undefined ? {} : { restSteps }) })
 const zap = entry('ticket-done')
 
-/** A draw effect for a state at a frame, with the animation the fake lookup gives. */
-const draw = (state: Shown['state'], frame: number): Effect => ({ do: 'draw', shown: { state, animation: playsFor(state), frame } })
+/** A draw effect for a moment at a frame, with the animation the fake lookup gives. */
+const draw = (moment: Shown['moment'], frame: number): Effect => ({ do: 'draw', shown: { moment, animation: playsFor(moment), frame } })
 
 /** Applies the events in order, collecting every effect. */
 const feed = (
@@ -51,7 +51,7 @@ test('the phases are the six kinds, and a model starts resting with nothing to d
   expect(INITIAL.isMotionOn).toBe(false)
   expect(CONDITIONS).toEqual(['turn', 'search'])
   expect(INITIAL.phase).toEqual({ kind: 'resting' })
-  expect(INITIAL.shown).toEqual({ state: 'resting', animation: playsFor('resting'), frame: 0 })
+  expect(INITIAL.shown).toEqual({ moment: 'resting', animation: playsFor('resting'), frame: 0 })
 })
 
 test('queueing at rest starts the entry: stop, start, draw its first frame, then its timer', async () => {
@@ -81,7 +81,7 @@ test('the steps are the frames of the animation that plays when the entry starts
   expect(stepsOf(entry('ticket-done', 1))).toBe(3)
   expect(stepsOf(entry('set-done', 3))).toBe(7)
   // Another animation answered by the lookup is followed: the count is not fixed when the entry is made.
-  const longer: Lookup = state => (state === 'ticket-done' ? fake(5, 50) : playsFor(state))
+  const longer: Lookup = moment => (moment === 'ticket-done' ? fake(5, 50) : playsFor(moment))
   expect(stepsOf(entry('ticket-done', 1), longer)).toBe(6)
 })
 
@@ -103,10 +103,10 @@ test('an entry whose animation is over rests while its rest steps run out, then 
 test('a run keeps the animation it began with: holding never draws a frame of the entry, whatever the lookup says later', async () => {
   const e = entry('ticket-done', 3)
   let frames = 2
-  const moving: Lookup = state => (state === 'ticket-done' ? fake(frames, 50) : playsFor(state))
+  const moving: Lookup = moment => (moment === 'ticket-done' ? fake(frames, 50) : playsFor(moment))
   const held = feed([queue(e), tick, tick], INITIAL, moving).model
   expect(held.phase.kind).toBe('holding')
-  expect(held.shown).toEqual({ state: 'resting', animation: playsFor('resting'), frame: 0 })
+  expect(held.shown).toEqual({ moment: 'resting', animation: playsFor('resting'), frame: 0 })
   // The lookup now answers a longer animation, as when the character changes under a running entry.
   frames = 4
   const next = transition(held, tick, moving)
@@ -121,8 +121,8 @@ test('a condition that changes the resting animation during the hold redraws the
   const result = transition(held, on('turn'), playsFor)
   expect(result.effects).toEqual([draw('working', 0)])
   expect(result.model.phase).toBe(held.phase)
-  expect(result.model.shown).toEqual({ state: 'working', animation: playsFor('working'), frame: 0 })
-  // The hold ends at the new rest, with no draw and a timer for the new state.
+  expect(result.model.shown).toEqual({ moment: 'working', animation: playsFor('working'), frame: 0 })
+  // The hold ends at the new rest, with no draw and a timer for the new moment.
   const over = feed([tick, tick, tick], result.model)
   expect(over.effects.filter(effect => effect.do === 'draw')).toEqual([])
   expect(over.effects.at(-1)).toEqual({ do: 'every', ms: 100 })
@@ -149,7 +149,7 @@ test('at rest a condition restarts the rest loop, and a single-frame rest has no
   expect(turn.effects).toEqual([{ do: 'stop' }, draw('working', 0), { do: 'every', ms: 100 }])
   const ended = feed([off('turn')], turn.model)
   expect(ended.effects).toEqual([{ do: 'stop' }, draw('resting', 0)])
-  // The loop wraps around the frames of the state.
+  // The loop wraps around the frames of the moment.
   expect(feed([tick, tick, tick, tick], turn.model).model.shown.frame).toBe(1)
 })
 
@@ -157,7 +157,7 @@ test('what is queued plays in order, each once, and the rest comes back after th
   const a = entry('ticket-done')
   const b = entry('set-done')
   const { effects, model } = feed([queue(a), queue(b), tick, tick, tick, tick, tick, tick])
-  const kinds = effects.flatMap(effect => (effect.do === 'start' || effect.do === 'end' ? [`${effect.do}:${effect.entry.state}`] : []))
+  const kinds = effects.flatMap(effect => (effect.do === 'start' || effect.do === 'end' ? [`${effect.do}:${effect.entry.moment}`] : []))
   expect(kinds).toEqual(['start:ticket-done', 'end:ticket-done', 'start:set-done', 'end:set-done'])
   expect(model.phase).toEqual({ kind: 'resting' })
   expect(model.waiting).toEqual([])
@@ -177,14 +177,14 @@ test('a hook that queues from onEnd is handled after the effects now running, ne
   const clock = { every, after: every }
   const log: string[] = []
   const first: Entry = {
-    state: 'ticket-done',
+    moment: 'ticket-done',
     onEnd: () => {
       log.push('end')
-      activity.queue({ state: 'set-done', onStart: () => log.push('start after') })
+      activity.queue({ moment: 'set-done', onStart: () => log.push('start after') })
       log.push('end returned')
     },
   }
-  const activity = createActivity(clock, ({ state, frame }) => void log.push(`draw ${state} ${frame}`), playsFor)
+  const activity = createActivity(clock, ({ moment, frame }) => void log.push(`draw ${moment} ${frame}`), playsFor)
   activity.queue(first)
   timers
     .filter(timer => timer.isOn)
@@ -217,7 +217,7 @@ const motion = (isOn: boolean): Event => ({ type: 'motion', isOn })
 const gap = (roll: number): Event => ({ type: 'gap', roll })
 const look: Event = { type: 'look' }
 const WAIT: Effect = { do: 'wait' }
-const drawAmbient = (animation: Animation, frame: number): Effect => ({ do: 'draw', shown: { state: 'resting', animation, frame } })
+const drawAmbient = (animation: Animation, frame: number): Effect => ({ do: 'draw', shown: { moment: 'resting', animation, frame } })
 
 /** A model that rests with motion on, a gap pending. */
 const waiting = (): Model => feed([motion(true)], INITIAL, playsFor, both).model
@@ -262,7 +262,7 @@ test('an ambient animation plays each frame once, then the rest comes back and t
   const over = transition(frames.model, tick, playsFor, both)
   expect(over.effects).toEqual([{ do: 'stop' }, draw('resting', 0), WAIT])
   expect(over.model.phase).toEqual({ kind: 'between' })
-  expect(over.model.shown).toEqual({ state: 'resting', animation: playsFor('resting'), frame: 0 })
+  expect(over.model.shown).toEqual({ moment: 'resting', animation: playsFor('resting'), frame: 0 })
 })
 
 test('a gap that finds nothing to play (the character changed) goes back to rest and stops waiting', async () => {
@@ -271,7 +271,7 @@ test('a gap that finds nothing to play (the character changed) goes back to rest
   expect(result.effects).toEqual([{ do: 'stop' }])
 })
 
-test('a state animation that arrives during an ambient one starts at once, and nothing of the ambient one is left', async () => {
+test('an animation for a moment that arrives during an ambient one starts at once, and nothing of the ambient one is left', async () => {
   const mid = feed([gap(0), tick], waiting(), playsFor, both).model
   const result = transition(mid, queue(zap), playsFor, both)
   expect(result.model.phase).toEqual({ kind: 'playing', entry: zap, animation: playsFor('ticket-done'), step: 0, steps: 2 })
@@ -282,7 +282,7 @@ test('a state animation that arrives during an ambient one starts at once, and n
   expect(turn.effects).toEqual([{ do: 'stop' }, draw('working', 0), { do: 'every', ms: 100 }])
 })
 
-test('a state animation that arrives while the gap is pending starts at once and cancels the gap; ambient motion comes back after the rest', async () => {
+test('an animation for a moment that arrives while the gap is pending starts at once and cancels the gap; ambient motion comes back after the rest', async () => {
   const queued = transition(waiting(), queue(zap), playsFor, both)
   expect(queued.effects[0]).toEqual({ do: 'stop' })
   expect(queued.model.phase.kind).toBe('playing')
@@ -353,8 +353,8 @@ test('a gap that arrives in any phase but the pending one does nothing', async (
 
 // The pane is not the one shown: nothing is drawn and no timer runs, and what is kept waits.
 const view = (isShown: boolean): Event => ({ type: 'view', isShown })
-const KEPT: Entry = { state: 'ticket-done', isKeptWhenHidden: true }
-const DROPPED: Entry = { state: 'searching' }
+const KEPT: Entry = { moment: 'ticket-done', isKeptWhenHidden: true }
+const DROPPED: Entry = { moment: 'searching' }
 
 test('hiding the pane stops the timer and draws nothing, whatever the sidekick was doing', async () => {
   for (const model of [INITIAL, waiting(), feed([on('turn')]).model, feed([gap(0)], waiting(), playsFor, both).model]) {
@@ -397,10 +397,10 @@ test('showing the pane begins what the conditions call for, or the rest; kept en
   const ended = feed([on('turn'), off('turn')], away)
   expect(transition(ended.model, view(true), playsFor).effects, 'a turn that came and went plays nothing').toEqual([{ do: 'stop' }, draw('resting', 0)])
 
-  const kept = feed([queue(KEPT), queue({ state: 'set-done', isKeptWhenHidden: true })], away)
+  const kept = feed([queue(KEPT), queue({ moment: 'set-done', isKeptWhenHidden: true })], away)
   const first = transition(kept.model, view(true), playsFor)
   expect(first.effects).toEqual([{ do: 'stop' }, { do: 'start', entry: KEPT, steps: 2 }, draw('ticket-done', 0), { do: 'every', ms: 50 }])
-  expect(first.model.waiting.map(one => one.state)).toEqual(['set-done'])
+  expect(first.model.waiting.map(one => one.moment)).toEqual(['set-done'])
 })
 
 test('showing the pane at rest with motion on arms a fresh gap; showing it twice, or hiding it twice, changes nothing', async () => {

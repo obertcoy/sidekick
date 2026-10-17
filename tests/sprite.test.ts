@@ -1,6 +1,5 @@
 import { expect } from 'claude-code/testing'
 import { changeLook } from '../hooks/look'
-import type { State } from '../hooks/sprite'
 import { cellsOf, leftOut, playsFor, SPRITE } from '../hooks/sprite'
 import { classic } from '../hooks/sprite/characters/classic'
 import { foxkit } from '../hooks/sprite/characters/foxkit'
@@ -18,15 +17,15 @@ import {
   BACKGROUNDS,
   CHARACTERS,
   DEFAULT_LOOK,
+  PLAIN,
   requireAnchors,
   requireDeclaredPoses,
   requirePlayed,
   requirePoses,
-  STATES,
   slotRefusal,
 } from '../hooks/sprite/registry'
 import type { Accessory, Animation, Background, Character, Layers, PoseName, Slot } from '../hooks/sprite/types'
-import { POSES, SLOTS, STATE_NAMES } from '../hooks/sprite/types'
+import { MOMENTS, POSES, SLOTS } from '../hooks/sprite/types'
 import { isStruck, strikeSteps } from '../hooks/strike'
 import { GOLDEN } from './sprite-golden'
 import { test } from './world'
@@ -447,10 +446,14 @@ test('looking, shrugging and cheering hide no slot, and what they draw is on the
   }
 })
 
-test('the cheer plays once for the set-done state, and every state still plays an animation that exists', async () => {
-  expect(STATES['set-done']).toBe('cheer')
+test('the cheer plays once for the set-done moment, and every moment still plays an animation that exists', async () => {
+  expect(animationNameOf(foxkit, 'set-done')).toBe('cheer')
   expect(ANIMATIONS.cheer.once).toBe(true)
-  for (const [state, mode] of Object.entries(STATES)) expect(ANIMATIONS[mode], state).toBeDefined()
+  for (const moment of MOMENTS) {
+    expect(ANIMATIONS[PLAIN[moment]], moment).toBeDefined()
+    for (const character of Object.values(CHARACTERS))
+      expect(ANIMATIONS[animationNameOf(character, moment) as keyof typeof ANIMATIONS], `${character.name} ${moment}`).toBeDefined()
+  }
 })
 
 // Animations declare the anchors they need; the registry refuses a character that lacks one.
@@ -510,10 +513,13 @@ test('every shipped character has every anchor the shipped animations need', asy
 
 // One lookup for what plays; the background's own frame; the closed sets; the slot rule.
 
-test('one lookup answers what plays for a state, for each shipped character, and every state has an animation', async () => {
-  for (const [state, name] of Object.entries(STATES)) {
-    for (const character of Object.values(CHARACTERS)) expect(animationOf(character, state as State), `${character.name} ${state}`).toBe(ANIMATIONS[name])
-    expect(playsFor(state as State), state).toBe(ANIMATIONS[name])
+test('one lookup answers what plays for a moment, for each shipped character, and every moment has an animation', async () => {
+  for (const moment of MOMENTS) {
+    for (const character of Object.values(CHARACTERS)) {
+      expect(animationOf(character, moment), `${character.name} ${moment}`).toBe(ANIMATIONS[animationNameOf(character, moment) as keyof typeof ANIMATIONS])
+    }
+    // The look in use is the foxkit.
+    expect(playsFor(moment), moment).toBe(animationOf(foxkit, moment))
   }
 })
 
@@ -902,9 +908,9 @@ test('glasses hide the blink: with them on, every blink frame equals rest, also 
 })
 
 test('no state plays the blink, for any character', async () => {
-  expect(Object.values(STATES)).not.toContain('blink')
+  expect(Object.values(PLAIN)).not.toContain('blink')
   for (const character of Object.values(CHARACTERS)) {
-    for (const state of STATE_NAMES) expect(animationNameOf(character, state), `${character.name} ${state}`).not.toBe('blink')
+    for (const state of MOMENTS) expect(animationNameOf(character, state), `${character.name} ${state}`).not.toBe('blink')
   }
 })
 
@@ -934,17 +940,17 @@ test('the load check covers the animations a character plays: one per state, plu
 
 test('a character that replaces ticket-done never plays zap, so it needs no armUp; an animation only some character replaces with is not checked against the rest', async () => {
   const { armUp: _armUp, ...blinkOnly } = foxkit.poses ?? {}
-  const owl = defineCharacter({ ...foxkit, name: 'owl', poses: blinkOnly, animations: { 'ticket-done': 'cheer' }, ambient: ['blink'] })
+  const owl = defineCharacter({ ...foxkit, name: 'owl', poses: blinkOnly, moveset: { 'ticket-done': 'cheer' }, ambient: ['blink'] })
   expect(() => requirePlayed(owl)).not.toThrow()
   // Without the replacement it would play zap and be refused.
-  expect(() => requirePlayed({ ...owl, animations: {} })).toThrow('has no pose "armUp", which the animation "zap (ticket-done)" needs')
+  expect(() => requirePlayed({ ...owl, moveset: foxkit.moveset })).toThrow('has no pose "armUp", which the animation "zap (ticket-done)" needs')
   // hoot is in a catalog but is neither a state's shared animation nor ambient, so it is not checked against foxkit.
   const hoot = defineAnimation({ needs: ['neck'], poses: [], frames: 1, msPerFrame: 1, once: false, hides: [], frame: () => ({}) })
   const { neck: _neck, ...withoutNeck } = foxkit.anchors
   const neckless = defineCharacter({ ...foxkit, name: 'neckless', anchors: withoutNeck, bobs: { head: true, face: true, held: false } })
   expect(() => requirePlayed(neckless, { ...ANIMATIONS, hoot })).not.toThrow()
   // ...but a character that does replace a state with it is refused when it lacks the anchor.
-  expect(() => requirePlayed({ ...neckless, animations: { working: 'hoot' } }, { ...ANIMATIONS, hoot })).toThrow(
+  expect(() => requirePlayed({ ...neckless, moveset: { working: 'hoot' } }, { ...ANIMATIONS, hoot })).toThrow(
     'sprite: character "neckless" is missing the anchor "neck", which the animation "hoot (working)" needs',
   )
 })
@@ -973,12 +979,13 @@ const poseChanges = (character: Character, pose: PoseName): string[] => {
 }
 const frameCount = (animation: Animation): number[] => Array.from({ length: animation.frames }, (_, step) => step)
 
-test('the catalog holds four ambient animations, each in the animation catalog, once-only, and mapped to no state', async () => {
+test('the catalog holds four ambient animations, each in the animation catalog, once-only, and mapped to no moment', async () => {
   expect(AMBIENT).toHaveLength(4)
   for (const name of AMBIENT) {
     expect(ANIMATIONS[name], name).toBeDefined()
     expect(ANIMATIONS[name].once, name).toBe(true)
-    expect(Object.values(STATES), name).not.toContain(name)
+    expect(Object.values(PLAIN), name).not.toContain(name)
+    for (const character of Object.values(CHARACTERS)) expect(Object.values(character.moveset ?? {}), `${character.name} ${name}`).not.toContain(name)
   }
 })
 
@@ -1123,27 +1130,29 @@ test('a character that lists an ambient animation without an anchor or a pose it
   const { cheeks: _cheeks, ...withoutCheeks } = foxkit.anchors
   // The cheer needs no cheeks and no tail, so these characters play no zap and the only thing in question is the ambient animation.
   const cheerful = { 'ticket-done': 'cheer' } as const
-  const cheekless = defineCharacter({ ...foxkit, name: 'cheekless', anchors: withoutCheeks, animations: cheerful })
+  const cheekless = defineCharacter({ ...foxkit, name: 'cheekless', anchors: withoutCheeks, moveset: cheerful })
   expect(() => requirePlayed({ ...cheekless, ambient: ['cheekSpark'] })).toThrow(
     'sprite: character "cheekless" is missing the anchor "cheeks", which the animation "cheekSpark" needs',
   )
   const { tailUp: _tailUp, ...withoutTailUp } = foxkit.poses ?? {}
-  const flat = defineCharacter({ ...foxkit, name: 'flat', poses: withoutTailUp, animations: cheerful })
+  const flat = defineCharacter({ ...foxkit, name: 'flat', poses: withoutTailUp, moveset: cheerful })
   expect(() => requirePlayed({ ...flat, ambient: ['tailFlick'] })).toThrow(
     'sprite: character "flat" has no pose "tailUp", which the animation "tailFlick" needs',
   )
   const { tail: _tail, ...withoutTail } = foxkit.anchors
-  const tailless = defineCharacter({ ...foxkit, name: 'tailless', anchors: withoutTail, animations: cheerful })
+  const tailless = defineCharacter({ ...foxkit, name: 'tailless', anchors: withoutTail, moveset: cheerful })
   expect(() => requirePlayed({ ...tailless, ambient: ['tailFlick'] })).toThrow('is missing the anchor "tail", which the animation "tailFlick" needs')
 })
 
 test('a character that does not list an animation needs none of its anchors or poses; a character with an empty or no list has no ambient motion', async () => {
   const { cheeks: _cheeks, ...withoutCheeks } = foxkit.anchors
-  const cheekless = defineCharacter({ ...foxkit, name: 'cheekless', anchors: withoutCheeks, animations: { 'ticket-done': 'cheer' }, ambient: ['blink'] })
+  const cheekless = defineCharacter({ ...foxkit, name: 'cheekless', anchors: withoutCheeks, moveset: { 'ticket-done': 'cheer' }, ambient: ['blink'] })
   expect(() => requirePlayed(cheekless)).not.toThrow()
   expect(ambientAnimationsOf(cheekless)).toEqual([ANIMATIONS.blink])
   // The state animations still need their anchors: the shared zap needs the cheeks.
-  expect(() => requirePlayed({ ...cheekless, animations: {} })).toThrow('is missing the anchor "cheeks", which the animation "zap (ticket-done)" needs')
+  expect(() => requirePlayed({ ...cheekless, moveset: foxkit.moveset })).toThrow(
+    'is missing the anchor "cheeks", which the animation "zap (ticket-done)" needs',
+  )
   expect(ambientAnimationsOf({ ...foxkit, ambient: [] })).toEqual([])
   const { ambient: _ambient, ...unlisted } = foxkit
   expect(ambientAnimationsOf(unlisted)).toEqual([])

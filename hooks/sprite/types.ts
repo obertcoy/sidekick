@@ -55,20 +55,20 @@ export type Needed<N extends AnchorName> = Pick<Anchors, RequiredAnchor> & { rea
 /** An inclusive rectangle of pixels. */
 export type Region = { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number }
 
-/** What the sidekick is shown doing. The registry says which shared animation plays for each. */
-export const STATE_NAMES = ['working', 'searching', 'search-failed', 'ticket-done', 'set-done', 'resting'] as const
-export type State = (typeof STATE_NAMES)[number]
-
-/** The states a character may play its own animation for: every one but resting, which stays the shared stillness. */
-export const REPLACEABLE_STATES = ['working', 'searching', 'search-failed', 'ticket-done', 'set-done'] as const satisfies readonly State[]
+/**
+ * Something the mod can detect, which the sidekick answers with an animation. The list is closed: a moment is added only together with a real event that produces it.
+ * Which animation plays for a moment is the character's moveset, else the moment's plain default (the registry).
+ */
+export const MOMENTS = ['working', 'searching', 'search-failed', 'ticket-done', 'set-done', 'resting'] as const
+export type Moment = (typeof MOMENTS)[number]
 
 export type Character = {
   readonly name: string
   /**
-   * Per state, the name of the animation this character plays in place of the shared one; a state left out plays the shared one.
-   * The registry refuses, at load, a name that is not an animation or a replacement the strike cannot keep in step with.
+   * Per moment, the name of the library animation this character plays for it; a moment left out plays that moment's plain default.
+   * The registry refuses, at load, a name that is not in the library, an animation whose anchors or poses the character lacks, or one the strike cannot keep in step with.
    */
-  readonly animations?: Readonly<Partial<Record<State, string>>>
+  readonly moveset?: Readonly<Partial<Record<Moment, string>>>
   /**
    * The ambient animations this character plays on its own while it rests, by name (the registry's `AMBIENT` catalog); left out or empty means none.
    * The registry refuses, at load, a name that is not an ambient animation, and one whose anchors or poses the character lacks.

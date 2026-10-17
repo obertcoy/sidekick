@@ -3,17 +3,17 @@
 // ./sprite/look-in-use.ts resolves what is worn now.
 import { render, STAGE } from './sprite/compose'
 import { characterInUse, drawable } from './sprite/look-in-use'
-import { ambientAnimationsOf, animationOf, type State } from './sprite/registry'
+import { ambientAnimationsOf, animationOf, type Moment } from './sprite/registry'
 import type { Animation } from './sprite/types'
 
 export { leftOut } from './sprite/look-in-use'
-export type { State }
+export type { Moment }
 
 /** The fixed stage in cells, so the pane's layout never changes with the look. */
 export const SPRITE = { columns: STAGE.columns, rows: STAGE.rows } as const
 
-/** The animation that plays for a state, for the character drawn now. The activity times by it and the pane draws it. */
-export const playsFor = (state: State): Animation => animationOf(characterInUse(), state)
+/** The animation that plays for a moment, for the character drawn now. The activity times by it and the pane draws it. */
+export const playsFor = (moment: Moment): Animation => animationOf(characterInUse(), moment)
 
 /** The ambient animations the character drawn now plays on its own; none when it lists none. The activity asks again whenever the answer matters. */
 export const ambientFor = (): Animation[] => ambientAnimationsOf(characterInUse())
