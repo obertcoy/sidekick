@@ -18,3 +18,11 @@
 - [x] With only the sidekick's pane open, behaviour is unchanged from before this ticket
 - [x] The bare foxkit's golden frames are unchanged
 - [x] Covered by whole-mod tests that hide and show the pane and advance the mock clock
+
+## As built (2026-10-17)
+
+- "Shown" is `UiPane.isShown` from `$.ui.panes()`; `isFocused` (the keyboard) is ignored. The activity machine has an explicit `away` phase.
+- The host raises no event when the shown pane changes, so the mod asks: before each timer fires, and on a render, refresh, `turn.start` and `turn.complete`. A render is how it learns the pane is shown again. If the ask fails, the pane counts as shown.
+- So after the pane is hidden, the one timer already pending (a frame, or an ambient gap of up to 15 s) fires once, finds the pane hidden, draws nothing and sets no other. Nothing visible plays meanwhile. The 20 s pane refresh is a separate timer and keeps running.
+- A zap already playing when the pane is hidden stops and is not replayed (it began while the pane was seen); its strike is cleared. Owner accepted this, 2026-10-17.
+- Whether the terminal app itself is focused or minimised is not known to the plugin API, so the sidekick keeps animating then.

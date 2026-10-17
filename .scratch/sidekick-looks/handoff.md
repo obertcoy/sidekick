@@ -14,8 +14,8 @@ Written 2026-10-16. Supersedes the temp-folder handoffs. Order, status and decis
 
 ## Next
 
-- Update 2026-10-17: **13** next (rewritten: the zap and the set-done cheer wait while the pane is hidden; ambient and the shrug are dropped). Then the engine track **18–24** (ticket 10 is folded into 21), then **12** last; see `issues/README.md`.
-- In parallel after 13: the inbox track in `../sidekick-inbox/issues/README.md` (01–07 and 10 ready; 08, 09 later).
+- Update 2026-10-17: **13** done (578b696; notes in the ticket's "As built"). Next the engine track **18–24** (ticket 10 is folded into 21), then **12** last; see `issues/README.md`.
+- In parallel: the inbox track in `../sidekick-inbox/issues/README.md` (01–07 and 10 ready; 08, 09 later).
 - Known pre-existing issue (no ticket yet): after a look change the resting picture keeps the old character until the next state.
 
 ## Open decisions (ask the owner)
