@@ -2,12 +2,11 @@ import type { On } from 'claude-code'
 import type { Engine, MockClock } from 'claude-code/testing'
 import { expect, mock } from 'claude-code/testing'
 import { AMBIENT_GAP_MS } from '../hooks/activity'
-import { render } from '../hooks/sprite/compose'
 import { layersOf } from '../hooks/sprite/look-in-use'
 import { ANIMATIONS, ambientAnimationsOf, CHARACTERS } from '../hooks/sprite/registry'
 import { strikeSteps } from '../hooks/strike'
 import type { Reply, World } from './world'
-import { addSet, answered, counting, failed, RECIPE, RUN, test, ticket, world } from './world'
+import { addSet, answered, counting, failed, RECIPE, RUN, paneRender as render, test, ticket, world } from './world'
 
 // Ambient motion, whole-mod: the mock clock moves on, the store holds the setting, and what the mod paints is read back.
 const ROOT = '/work/shop'

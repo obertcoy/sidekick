@@ -1,10 +1,10 @@
 import { expect } from 'claude-code/testing'
 import { changeLook } from '../hooks/look'
-import { cellsOf, leftOut, playsFor, SPRITE } from '../hooks/sprite'
+import { cellsOf, leftOut, playsFor } from '../hooks/sprite'
 import { classic } from '../hooks/sprite/characters/classic'
 import { foxkit } from '../hooks/sprite/characters/foxkit'
 import type { Pixels } from '../hooks/sprite/compose'
-import { composePixels, defineAnimation, defineCharacter, posed, render, SLOT_ORDER, STAGE } from '../hooks/sprite/compose'
+import { composePixels, defineAnimation, defineCharacter, MAX_CHARACTER, posed, render, SLOT_ORDER, stageFor } from '../hooks/sprite/compose'
 import { currentLook, drawable, droppedOf, layersOf, setSavedLook } from '../hooks/sprite/look-in-use'
 import {
   ACCESSORIES,
@@ -31,11 +31,26 @@ import { GOLDEN } from './sprite-golden'
 import { test } from './world'
 
 const MODES = ['idle', 'write', 'zap'] as const
+const STAGE = stageFor(foxkit)
 const cellsLength = Math.ceil((STAGE.columns * STAGE.rows * 12) / 3) * 4
 const cap = ACCESSORIES.cap
 if (cap === undefined) throw new Error('no cap')
 const capped = { head: cap }
 const bare = (character: Character): Layers => ({ character, outfit: {}, background: null })
+
+/** The corner of the stage a foxkit-sized body covers, in the body's own pixels: 18 across, 16 down. Tests about a body's pixels read it through `local`. */
+const LOCAL = { width: 18, height: 16 } as const
+
+/** A frame's pixels in the character's own coordinates (its anchors' and its body's), cut to `LOCAL`: the stage moved back by where the character stands on it. */
+const local = (...args: Parameters<typeof composePixels>): Pixels => {
+  const { offset } = stageFor(args[0].character, args[0].background?.heightCap)
+  const pixels = composePixels(...args)
+
+  return Array.from({ length: LOCAL.height }, (_, y) => Array.from({ length: LOCAL.width }, (_, x) => pixels[y + offset.y]?.[x + offset.x]))
+}
+
+/** Edges for a frame asked for outside any stage. */
+const EDGES = { skyTop: 0, ground: 0, left: 0, right: 0 } as const
 
 /** Every opaque pixel as "x,y". */
 const opaque = (pixels: Pixels, keep: (color: number) => boolean = () => true): string[] =>
@@ -44,7 +59,6 @@ const opaque = (pixels: Pixels, keep: (color: number) => boolean = () => true): 
 test('the foxkit draws every frame of every mode exactly as the standalone sprite did', async () => {
   expect(currentLook()).toEqual({ character: 'foxkit', outfit: {}, background: null })
   expect(DEFAULT_LOOK).toEqual(currentLook())
-  expect(SPRITE).toEqual({ columns: STAGE.columns, rows: STAGE.rows })
   for (const mode of MODES) {
     expect(ANIMATIONS[mode].frames, mode).toBe(GOLDEN[mode].length)
     GOLDEN[mode].forEach((cells, frame) => {
@@ -86,8 +100,8 @@ test('an accessory in the head slot sits on the head anchor and bobs with the he
     const { head } = character.anchors
     /** The pixels the cap changes in one write step. */
     const capAt = (step: number): string[] => {
-      const without = composePixels(bare(character), ANIMATIONS.write, step)
-      const worn = composePixels({ character, outfit: capped, background: null }, ANIMATIONS.write, step)
+      const without = local(bare(character), ANIMATIONS.write, step)
+      const worn = local({ character, outfit: capped, background: null }, ANIMATIONS.write, step)
       return opaque(worn).filter(at => {
         const [x = 0, y = 0] = at.split(',').map(Number)
         return worn[y]?.[x] !== without[y]?.[x]
@@ -122,22 +136,30 @@ test('a background shows only where every layer above it is transparent', async 
   }
   const dusk = BACKGROUNDS.dusk
   if (dusk === undefined) throw new Error('no dusk')
-  const withDusk = composePixels({ character: foxkit, outfit: {}, background: dusk }, ANIMATIONS.idle, 0)
+  const withDusk = local({ character: foxkit, outfit: {}, background: dusk }, ANIMATIONS.idle, 0)
+  // The picture stands on the ground, the row under the feet, and repeats sideways from where the character stands.
   expect(withDusk[15]?.[0]).toBe(dusk.palette.g)
   expect(withDusk[8]?.[6]).toBe(foxkit.palette.belly)
+  const whole = composePixels({ character: foxkit, outfit: {}, background: dusk }, ANIMATIONS.idle, 0)
+  const { ground, offset, width } = STAGE
+  expect(ground).toBe(offset.y + 15)
+  for (let x = 0; x < width; x++) expect(whole[ground]?.[x], `ground at ${x}`).toBe(dusk.palette.g)
+  // Its star in the second row, fifteen columns in, shows where the picture starts at the character and again one picture's width before.
+  expect(whole[ground - 14]?.[offset.x + 15]).toBe(dusk.palette.s)
+  expect(whole[ground - 14]?.[offset.x + 15 - 18]).toBe(dusk.palette.s)
 })
 
-test('a character too big for the stage, or missing an anchor, is refused with a clear error', async () => {
-  const tooWide = { ...foxkit, name: 'wide', body: ['o'.repeat(STAGE.width + 1)] }
-  expect(() => defineCharacter(tooWide)).toThrow('character "wide" row 0 is 19 pixels wide; the stage is 18')
-  const tooTall = { ...foxkit, name: 'tall', body: Array.from({ length: STAGE.height + 1 }, () => 'o') }
-  expect(() => defineCharacter(tooTall)).toThrow('character "tall" is 17 pixels tall; the stage is 16')
+test('a character too big to measure, or missing an anchor, is refused with a clear error', async () => {
+  const tooWide = { ...foxkit, name: 'wide', body: ['o'.repeat(MAX_CHARACTER + 1)] }
+  expect(() => defineCharacter(tooWide)).toThrow('character "wide" row 0 is 65 pixels wide; a character is at most 64')
+  const tooTall = { ...foxkit, name: 'tall', body: Array.from({ length: MAX_CHARACTER + 1 }, () => 'o') }
+  expect(() => defineCharacter(tooTall)).toThrow('character "tall" is 65 pixels tall; a character is at most 64')
   const { head: _head, ...headless } = foxkit.anchors
   expect(() => defineCharacter({ ...foxkit, name: 'headless', anchors: headless } as unknown as Character)).toThrow(
-    'character "headless" is missing the anchor "head", or it is off the stage',
+    'character "headless" is missing the anchor "head", or it is off the body',
   )
   const offStage = { ...foxkit, name: 'off', anchors: { ...foxkit.anchors, head: { x: 3, y: -1 } } }
-  expect(() => defineCharacter(offStage)).toThrow('character "off" is missing the anchor "head", or it is off the stage')
+  expect(() => defineCharacter(offStage)).toThrow('character "off" is missing the anchor "head", or it is off the body')
   const unnamed = { ...foxkit, name: 'unnamed', body: ['oq'] }
   expect(() => defineCharacter(unnamed)).toThrow('uses "q" in row 0, which its legend does not name')
   expect(() => layersOf({ character: 'nobody', outfit: {}, background: null })).toThrow('no character named "nobody"')
@@ -153,8 +175,8 @@ if (glasses === undefined || scarf === undefined) throw new Error('no glasses or
 
 /** The stage pixels that wearing `outfit` changes in one write step, as "x,y". */
 const changedBy = (character: Character, outfit: Layers['outfit'], step: number): string[] => {
-  const without = composePixels(bare(character), ANIMATIONS.write, step)
-  const worn = composePixels({ character, outfit, background: null }, ANIMATIONS.write, step)
+  const without = local(bare(character), ANIMATIONS.write, step)
+  const worn = local({ character, outfit, background: null }, ANIMATIONS.write, step)
   return opaque(worn).filter(at => {
     const [x = 0, y = 0] = at.split(',').map(Number)
     return worn[y]?.[x] !== without[y]?.[x]
@@ -171,8 +193,8 @@ test('both characters have a face and a neck anchor on the stage, and glasses an
   for (const [name, character] of Object.entries(CHARACTERS)) {
     const { face, neck } = character.anchors
     if (face === undefined || neck === undefined) throw new Error(`${name} lacks a face or neck anchor`)
-    const dressed = composePixels({ character, outfit: { face: glasses }, background: null }, ANIMATIONS.idle, 0)
-    const plain = composePixels(bare(character), ANIMATIONS.idle, 0)
+    const dressed = local({ character, outfit: { face: glasses }, background: null }, ANIMATIONS.idle, 0)
+    const plain = local(bare(character), ANIMATIONS.idle, 0)
     const changed = (a: Pixels, b: Pixels): string[] =>
       opaque(a).filter(at => {
         const [x = 0, y = 0] = at.split(',').map(Number)
@@ -180,7 +202,7 @@ test('both characters have a face and a neck anchor on the stage, and glasses an
       })
     expect(changed(dressed, plain).sort(), `${name} glasses`).toEqual(placed(glasses, face).sort())
     expect(dressed[face.y]?.[face.x], `${name} glasses bridge on the anchor`).toBe(glasses.palette.L)
-    const scarfed = composePixels({ character, outfit: { neck: scarf }, background: null }, ANIMATIONS.idle, 0)
+    const scarfed = local({ character, outfit: { neck: scarf }, background: null }, ANIMATIONS.idle, 0)
     expect(changed(scarfed, plain).sort(), `${name} scarf`).toEqual(placed(scarf, neck).sort())
     expect(scarfed[neck.y]?.[neck.x], `${name} scarf on the anchor`).toBe(scarf.palette.t)
   }
@@ -202,7 +224,7 @@ test('head, face and neck accessories are worn together, drawn neck first, then 
   const spot = { x: 8, y: 8 }
   const piled = defineCharacter({ ...foxkit, name: 'piled', anchors: { ...foxkit.anchors, head: spot, face: spot, neck: spot } })
   const all = { head: dot('head', 1), face: dot('face', 2), neck: dot('neck', 3) }
-  const at = (outfit: Layers['outfit']) => composePixels({ character: piled, outfit, background: null }, ANIMATIONS.idle, 0)[spot.y]?.[spot.x]
+  const at = (outfit: Layers['outfit']) => local({ character: piled, outfit, background: null }, ANIMATIONS.idle, 0)[spot.y]?.[spot.x]
   expect(at(all)).toBe(1)
   expect(at({ face: all.face, neck: all.neck })).toBe(2)
   expect(at({ neck: all.neck })).toBe(3)
@@ -211,29 +233,29 @@ test('head, face and neck accessories are worn together, drawn neck first, then 
   for (const [name, character] of Object.entries(CHARACTERS)) {
     const { head, face, neck } = character.anchors
     if (face === undefined || neck === undefined) throw new Error(`${name} lacks a face or neck anchor`)
-    const worn = composePixels({ character, outfit: { head: cap, face: glasses, neck: scarf }, background: null }, ANIMATIONS.idle, 0)
+    const worn = local({ character, outfit: { head: cap, face: glasses, neck: scarf }, background: null }, ANIMATIONS.idle, 0)
     expect(worn[head.y]?.[head.x], `${name} cap`).toBe(cap.palette.d)
     expect(worn[face.y]?.[face.x], `${name} glasses`).toBe(glasses.palette.L)
     expect(worn[neck.y]?.[neck.x], `${name} scarf`).toBe(scarf.palette.t)
   }
 })
 
-test('a character is valid without face or neck anchors, but an anchor it gives must be on the stage', async () => {
+test('a character is valid without face or neck anchors, but an anchor it gives must be on the body', async () => {
   const { face: _face, neck: _neck, held: _held, ...head } = foxkit.anchors
   const plain = defineCharacter({ ...foxkit, name: 'plain', anchors: head, bobs: { head: true } })
   expect(plain.anchors.face).toBeUndefined()
   // Without the anchors the accessories are simply not drawn.
-  const worn = composePixels({ character: plain, outfit: { face: glasses, neck: scarf }, background: null }, ANIMATIONS.idle, 0)
-  expect(worn).toEqual(composePixels(bare(plain), ANIMATIONS.idle, 0))
+  const worn = local({ character: plain, outfit: { face: glasses, neck: scarf }, background: null }, ANIMATIONS.idle, 0)
+  expect(worn).toEqual(local(bare(plain), ANIMATIONS.idle, 0))
   for (const slot of ['face', 'neck'] as const) {
     for (const off of [
       { x: -1, y: 4 },
-      { x: 4, y: STAGE.height },
-      { x: STAGE.width, y: 4 },
+      { x: 4, y: foxkit.body.length },
+      { x: MAX_CHARACTER, y: 4 },
       { x: 1.5, y: 4 },
     ]) {
       const bad = { ...foxkit, name: 'off', anchors: { ...foxkit.anchors, [slot]: off } }
-      expect(() => defineCharacter(bad), `${slot} ${JSON.stringify(off)}`).toThrow(`character "off" has the anchor "${slot}" off the stage`)
+      expect(() => defineCharacter(bad), `${slot} ${JSON.stringify(off)}`).toThrow(`character "off" has the anchor "${slot}" off the body`)
     }
   }
 })
@@ -285,7 +307,7 @@ const flag = ACCESSORIES.flag
 if (flag === undefined) throw new Error('no flag')
 
 /** Every pixel of a frame, so two frames can be compared whole. */
-const frameOf = (layers: Layers, animation: Animation, step: number): string => JSON.stringify(composePixels(layers, animation, step))
+const frameOf = (layers: Layers, animation: Animation, step: number): string => JSON.stringify(local(layers, animation, step))
 const withAll = (): Layers['outfit'] => ({ head: cap, face: glasses, neck: scarf, held: flag })
 const withoutHeld = (): Layers['outfit'] => ({ head: cap, face: glasses, neck: scarf })
 
@@ -312,8 +334,8 @@ test('both characters have a held anchor on the stage, and a flag stands on it, 
     const { held } = character.anchors
     if (held === undefined) throw new Error(`${name} lacks a held anchor`)
     expect(character.bobs.held, `${name} held does not bob`).toBe(false)
-    const rest = composePixels({ character, outfit: { held: flag }, background: null }, ANIMATIONS.idle, 0)
-    const plain = composePixels(bare(character), ANIMATIONS.idle, 0)
+    const rest = local({ character, outfit: { held: flag }, background: null }, ANIMATIONS.idle, 0)
+    const plain = local(bare(character), ANIMATIONS.idle, 0)
     const changed = opaque(rest).filter(at => {
       const [x = 0, y = 0] = at.split(',').map(Number)
       return rest[y]?.[x] !== plain[y]?.[x]
@@ -326,7 +348,7 @@ test('both characters have a held anchor on the stage, and a flag stands on it, 
       `${name} flag clear of the body`,
     ).toEqual([])
     // And of the other accessories: worn together at rest, each keeps all of its own pixels.
-    expectOwnPixels(character, composePixels({ character, outfit: withAll(), background: null }, ANIMATIONS.idle, 0), 0, `${name} at rest`)
+    expectOwnPixels(character, local({ character, outfit: withAll(), background: null }, ANIMATIONS.idle, 0), 0, `${name} at rest`)
   }
 })
 
@@ -361,7 +383,7 @@ test('an animation that hides no slot leaves every accessory drawn, and one that
     for (const step of [0, 1]) {
       const kept = (hidden: Layers['outfit']) => frameOf({ character, outfit: hidden, background: null }, hidesNone, step)
       // Every accessory's own pixels are in the frame, worked out from the anchors and the bob, not from the renderer.
-      expectOwnPixels(character, composePixels(layers, hidesNone, step), step, `${character.name} step ${step}`)
+      expectOwnPixels(character, local(layers, hidesNone, step), step, `${character.name} step ${step}`)
       // The same held accessory is drawn by an animation that hides nothing and not by one that hides held.
       expect(everything(hidesNone, step)).not.toBe(frameOf(layers, { ...hidesNone, hides: ['held'] }, step))
       // Hiding the face takes out the glasses and nothing else.
@@ -381,7 +403,7 @@ test('all four slots are worn together and held is drawn above the other three',
     bobs: { head: true, face: true, neck: false, held: false },
   })
   const all = { head: dot('head', 1), face: dot('face', 2), neck: dot('neck', 3), held: dot('held', 4) }
-  const at = (outfit: Layers['outfit']) => composePixels({ character: piled, outfit, background: null }, ANIMATIONS.idle, 0)[spot.y]?.[spot.x]
+  const at = (outfit: Layers['outfit']) => local({ character: piled, outfit, background: null }, ANIMATIONS.idle, 0)[spot.y]?.[spot.x]
   expect(at(all)).toBe(4)
   expect(at({ head: all.head, face: all.face, neck: all.neck })).toBe(1)
 
@@ -389,7 +411,7 @@ test('all four slots are worn together and held is drawn above the other three',
   for (const [name, character] of Object.entries(CHARACTERS)) {
     const { head, face, neck, held } = character.anchors
     if (face === undefined || neck === undefined || held === undefined) throw new Error(`${name} lacks an anchor`)
-    const worn = composePixels({ character, outfit: withAll(), background: null }, ANIMATIONS.idle, 0)
+    const worn = local({ character, outfit: withAll(), background: null }, ANIMATIONS.idle, 0)
     expect(worn[head.y]?.[head.x], `${name} cap`).toBe(cap.palette.d)
     expect(worn[face.y]?.[face.x], `${name} glasses`).toBe(glasses.palette.L)
     expect(worn[neck.y]?.[neck.x], `${name} scarf`).toBe(scarf.palette.t)
@@ -411,8 +433,8 @@ test('layersOf takes the flag in the held slot only, and a held anchor needs a b
   expect(() => defineCharacter({ ...foxkit, name: 'floating', bobs: { ...foxkit.bobs, held: true } })).toThrow(
     'character "floating" declares the slot "held" as bobbing, but its anchor is outside the headRegion',
   )
-  expect(() => defineCharacter({ ...foxkit, name: 'offstage', anchors: { ...foxkit.anchors, held: { x: 18, y: 4 } } })).toThrow(
-    'character "offstage" has the anchor "held" off the stage',
+  expect(() => defineCharacter({ ...foxkit, name: 'offstage', anchors: { ...foxkit.anchors, held: { x: MAX_CHARACTER, y: 4 } } })).toThrow(
+    'character "offstage" has the anchor "held" off the body',
   )
 })
 
@@ -427,14 +449,14 @@ test('looking, shrugging and cheering hide no slot, and what they draw is on the
       let bobbed = 0
       let drawn = 0
       for (let step = 0; step < animation.frames; step++) {
-        const plan = animation.frame(step, character.anchors)
+        const plan = animation.frame(step, character.anchors, EDGES)
         if ((plan.bob ?? 0) > 0) bobbed += 1
         // The same frame with the head where the bob puts it, wearing everything, and nothing but the animation's own dots left out.
-        const without = composePixels(layers, { ...animation, frame: () => ({ bob: plan.bob ?? 0 }) }, step)
-        const full = composePixels(layers, animation, step)
+        const without = local(layers, { ...animation, frame: () => ({ bob: plan.bob ?? 0 }) }, step)
+        const full = local(layers, animation, step)
         for (const [x, y] of plan.dots ?? []) {
           const label = `${name} ${mode} ${step} dot ${x},${y}`
-          expect(x >= 0 && x < STAGE.width && y >= 0 && y < STAGE.height, `${label} is on the stage`).toBe(true)
+          expect(x >= 0 && x < LOCAL.width && y >= 0 && y < LOCAL.height, `${label} is on the stage`).toBe(true)
           expect(without[y]?.[x], `${label} lands on nothing worn or grown`).toBeUndefined()
           expect(full[y]?.[x], `${label} is drawn`).toBeDefined()
           drawn += 1
@@ -465,7 +487,7 @@ test('a character with only head and feet is a valid character, and plays an ani
   const owl = stageFrame('owl')
   expect(Object.keys(owl.anchors).sort()).toEqual(['feet', 'head'])
   expect(() => requireAnchors(owl, { idle: ANIMATIONS.idle })).not.toThrow()
-  expect(composePixels(bare(owl), ANIMATIONS.idle, 0)).toBeDefined()
+  expect(local(bare(owl), ANIMATIONS.idle, 0)).toBeDefined()
 })
 
 test('a character missing an anchor a played animation needs is refused, naming the anchor and the animation', async () => {
@@ -500,7 +522,7 @@ test('an animation reads only the anchors it declares', async () => {
       ['head', 'feet', ...animation.needs].map(anchor => [anchor, foxkit.anchors[anchor as keyof typeof foxkit.anchors]]),
     ) as Character['anchors']
     for (let step = 0; step < animation.frames; step++) {
-      expect(animation.frame(step, declared), `${name} step ${step}`).toEqual(animation.frame(step, foxkit.anchors))
+      expect(animation.frame(step, declared, EDGES), `${name} step ${step}`).toEqual(animation.frame(step, foxkit.anchors, EDGES))
     }
   }
 })
@@ -526,11 +548,11 @@ test('one lookup answers what plays for a moment, for each shipped character, an
 test('the background has its own frame: by default it steps with the animation, and it can be given another', async () => {
   const two: Background = { name: 'two', frames: [['a'], ['b']], palette: { a: 0x111111, b: 0x222222 } }
   const layers: Layers = { character: foxkit, outfit: {}, background: two }
-  // idle has one frame, so its step is always 0; the background defaults to that step.
-  expect(composePixels(layers, ANIMATIONS.idle, 0)[0]?.[0]).toBe(0x111111)
-  expect(composePixels(layers, ANIMATIONS.idle, 0, 0)).toEqual(composePixels(layers, ANIMATIONS.idle, 0))
-  expect(composePixels(layers, ANIMATIONS.idle, 0, 1)[0]?.[0]).toBe(0x222222)
-  expect(composePixels(layers, ANIMATIONS.idle, 0, 3)[0]?.[0]).toBe(0x222222)
+  // idle has one frame, so its step is always 0; the background defaults to that step. A one-row picture is the ground, the row under the feet (15).
+  expect(local(layers, ANIMATIONS.idle, 0)[15]?.[0]).toBe(0x111111)
+  expect(local(layers, ANIMATIONS.idle, 0, 0)).toEqual(local(layers, ANIMATIONS.idle, 0))
+  expect(local(layers, ANIMATIONS.idle, 0, 1)[15]?.[0]).toBe(0x222222)
+  expect(local(layers, ANIMATIONS.idle, 0, 3)[15]?.[0]).toBe(0x222222)
   // Only the background moves.
   expect(render(layers, ANIMATIONS.idle, 0, 1)).not.toBe(render(layers, ANIMATIONS.idle, 0))
   // Without a frame of its own the background steps with the animation, as before.
@@ -583,12 +605,12 @@ test('drawing a picture writes no state: the left-out line is worked out by the 
 
 // What a character must give to be drawn at all.
 
-test('a character is refused when an anchor it gives is empty or off the stage, or when it lacks the stage frame', async () => {
+test('a character is refused when an anchor it gives is empty or off the body, or when it lacks the stage frame', async () => {
   const give = (name: string, anchors: Record<string, unknown>): Character =>
     ({ ...foxkit, name, anchors: { ...foxkit.anchors, ...anchors } }) as unknown as Character
   for (const list of ['cheeks', 'tail', 'ears']) {
     expect(() => defineCharacter(give('hollow', { [list]: [] })), `${list} empty`).toThrow(
-      `character "hollow" has the anchor "${list}" empty, or with a point off the stage`,
+      `character "hollow" has the anchor "${list}" empty, or with a point off the body`,
     )
     expect(
       () =>
@@ -596,22 +618,22 @@ test('a character is refused when an anchor it gives is empty or off the stage, 
           give('wide', {
             [list]: [
               { x: 1, y: 1 },
-              { x: STAGE.width, y: 1 },
+              { x: MAX_CHARACTER, y: 1 },
             ],
           }),
         ),
       `${list} off`,
-    ).toThrow(`character "wide" has the anchor "${list}" empty, or with a point off the stage`)
+    ).toThrow(`character "wide" has the anchor "${list}" empty, or with a point off the body`)
   }
   for (const point of ['paw', 'reach', 'boltFrom']) {
-    expect(() => defineCharacter(give('lost', { [point]: { x: -1, y: 0 } })), point).toThrow(`character "lost" has the anchor "${point}" off the stage`)
+    expect(() => defineCharacter(give('lost', { [point]: { x: -1, y: 0 } })), point).toThrow(`character "lost" has the anchor "${point}" off the body`)
   }
   const { feet: _feet, ...noFeet } = foxkit.anchors
   expect(() => defineCharacter({ ...foxkit, name: 'footless', anchors: noFeet } as unknown as Character)).toThrow(
-    'character "footless" is missing the anchor "feet", or it is off the stage',
+    'character "footless" is missing the anchor "feet", or it is off the body',
   )
-  expect(() => defineCharacter(give('floating', { feet: { x: 7, y: STAGE.height } }))).toThrow(
-    'character "floating" is missing the anchor "feet", or it is off the stage',
+  expect(() => defineCharacter(give('floating', { feet: { x: 7, y: foxkit.body.length } }))).toThrow(
+    'character "floating" is missing the anchor "feet", or it is off the body',
   )
 })
 
@@ -640,9 +662,9 @@ test('an animation is given the stage frame and the anchors it declared, and no 
 
 // Poses: a named change to the body that each character draws for itself, as a patch over its body.
 
-const BODY_WIDTH = STAGE.width
-/** The body as the stage sees it: every row padded with transparent pixels, and missing rows empty. */
-const padded = (character: Character): string[] => Array.from({ length: STAGE.height }, (_, y) => (character.body[y] ?? '').padEnd(BODY_WIDTH, '.'))
+const BODY_WIDTH = LOCAL.width
+/** The body as a pose sees it: every row padded with transparent pixels to the width its art and anchors cover. */
+const padded = (character: Character): string[] => character.body.map(row => row.padEnd(BODY_WIDTH, '.'))
 /** A character with the given pose patches, without going through the load check. */
 const withPoses = (name: string, poses: unknown): Character => ({ ...foxkit, name, poses }) as unknown as Character
 const armless = defineCharacter({ ...foxkit, name: 'armless', poses: {} })
@@ -654,14 +676,14 @@ test('the pose names are one fixed list that holds armUp, blink and the tail and
 test('posed lays each patch over the body: a space keeps the pixel, a dot clears it, a letter sets it', async () => {
   const patched = withPoses('patched', { armUp: { at: { x: 1, y: 2 }, rows: ['s.', ' h'] } })
   const rows = posed(patched, ['armUp'])
-  expect(rows).toHaveLength(STAGE.height)
+  expect(rows).toHaveLength(foxkit.body.length)
   expect(rows[2]).toBe('.s.oyhyyyyyooo....')
   expect(rows[3]).toBe('oshyhyyyyyyyyso...')
   // Nothing outside the patch changes.
   expect(rows.filter((_, y) => y !== 2 && y !== 3)).toEqual(padded(foxkit).filter((_, y) => y !== 2 && y !== 3))
   // No pose asked for: the body, padded to the stage.
   expect(posed(patched, [])).toEqual(padded(foxkit))
-  expect(posed(classic, []).every(row => row.length === BODY_WIDTH)).toBe(true)
+  expect(new Set(posed(classic, []).map(row => row.length)).size).toBe(1)
 })
 
 test('poses in one frame apply in the order given, so the later one wins', async () => {
@@ -675,15 +697,15 @@ test('poses in one frame apply in the order given, so the later one wins', async
   expect(order(['nod', 'armUp'])).toBe('s')
 })
 
-test('a character with a pose that is not a known name, is off the stage, or uses a letter without a legend entry or colour is refused, naming the character and the pose', async () => {
+test('a character with a pose that is not a known name, is off the body, or uses a letter without a legend entry or colour is refused, naming the character and the pose', async () => {
   const load = (poses: unknown, extra: Partial<Character> = {}): Character =>
     defineCharacter({ ...foxkit, name: 'odd', ...extra, poses } as unknown as Character)
   expect(() => load({ nod: { at: { x: 0, y: 0 }, rows: ['o'] } })).toThrow(
     'sprite: character "odd" has the pose "nod", which is not one of: armUp, blink, tailUp, earsUp',
   )
-  expect(() => load({ armUp: { at: { x: 17, y: 0 }, rows: ['oo'] } })).toThrow('character "odd" has the pose "armUp" off the stage')
-  expect(() => load({ armUp: { at: { x: 0, y: 15 }, rows: ['o', 'o'] } })).toThrow('character "odd" has the pose "armUp" off the stage')
-  expect(() => load({ armUp: { at: { x: -1, y: 0 }, rows: ['o'] } })).toThrow('character "odd" has the pose "armUp" off the stage')
+  expect(() => load({ armUp: { at: { x: MAX_CHARACTER - 1, y: 0 }, rows: ['oo'] } })).toThrow('character "odd" has the pose "armUp" off the body')
+  expect(() => load({ armUp: { at: { x: 0, y: 15 }, rows: ['o', 'o'] } })).toThrow('character "odd" has the pose "armUp" off the body')
+  expect(() => load({ armUp: { at: { x: -1, y: 0 }, rows: ['o'] } })).toThrow('character "odd" has the pose "armUp" off the body')
   expect(() => load({ armUp: { at: { x: 0, y: 0 }, rows: ['q'] } })).toThrow('character "odd" uses "q" in the pose "armUp", which its legend does not name')
   // The classic colours no highlight, so a legend letter for it has no colour.
   expect(() => load({ armUp: { at: { x: 0, y: 0 }, rows: ['h'] } }, { ...classic, name: 'dull', legend: { ...classic.legend, h: 'highlight' } })).toThrow(
@@ -713,7 +735,7 @@ test('every shipped character has every pose the shipped animations use, and eve
     expect(() => requirePoses(character, ANIMATIONS), character.name).not.toThrow()
     for (const [name, animation] of Object.entries(ANIMATIONS)) {
       for (let step = 0; step < animation.frames; step++) {
-        for (const pose of animation.frame(step, character.anchors).poses ?? []) {
+        for (const pose of animation.frame(step, character.anchors, EDGES).poses ?? []) {
           expect(animation.poses, `${character.name} ${name} ${step} asks for ${pose}`).toContain(pose)
         }
       }
@@ -769,17 +791,18 @@ test('zap draws every frame as it did when the arm was three painted dots (their
   for (const character of Object.values(CHARACTERS)) {
     const armDots = OLD_ARM[character.name]
     if (armDots === undefined) throw new Error(`no old arm for ${character.name}`)
-    const cheeks = character.anchors.cheeks ?? []
+    // The old pixels are in the character's own coordinates; the plan is in stage pixels, where the character stands at its offset.
+    const { offset } = stageFor(character)
     // The old zap: the new plan with the pose taken out; in the arm frames the cheek glow is painted in full and the three arm dots over it, last.
     const painted: Animation = {
       ...ANIMATIONS.zap,
       poses: [],
-      frame: (step, at) => {
-        const plan = ANIMATIONS.zap.frame(step, at)
+      frame: (step, at, edges) => {
+        const plan = ANIMATIONS.zap.frame(step, at, edges)
         if (!plan.poses?.includes('armUp')) return plan
         const glowRole = step === 2 ? 'flash' : step === 3 ? 'spark' : undefined
-        const glow = glowRole === undefined ? [] : cheeks.map(cheek => [cheek.x + 1, cheek.y, glowRole] as const)
-        const arm = armDots.map(([x, y, role]) => [x, y, step === 4 && role === 'base' ? 'spark' : role] as const)
+        const glow = glowRole === undefined ? [] : (at.cheeks ?? []).map(cheek => [cheek.x + 1, cheek.y, glowRole] as const)
+        const arm = armDots.map(([x, y, role]) => [x + offset.x, y + offset.y, step === 4 && role === 'base' ? 'spark' : role] as const)
         return { ...plan, poses: [], dots: [...(plan.dots ?? []), ...glow, ...arm] }
       },
     }
@@ -804,13 +827,13 @@ test('accessories draw over posed pixels, in bobbed frames too, and the cap sits
     const bareLayers = bare(crowned)
     const capLayers = { character: crowned, outfit: capped, background: null }
     // The pixels the cap changes in the frame without the pose.
-    const capOverPose = opaque(composePixels(capLayers, plainTo(bob), 0)).filter(at => {
+    const capOverPose = opaque(local(capLayers, plainTo(bob), 0)).filter(at => {
       const [x = 0, y = 0] = at.split(',').map(Number)
-      return composePixels(capLayers, plainTo(bob), 0)[y]?.[x] !== composePixels(bareLayers, plainTo(bob), 0)[y]?.[x]
+      return local(capLayers, plainTo(bob), 0)[y]?.[x] !== local(bareLayers, plainTo(bob), 0)[y]?.[x]
     })
     expect(capOverPose.length, `bob ${bob} the cap draws`).toBeGreaterThan(0)
-    const withPose = composePixels(capLayers, posedTo(bob), 0)
-    const without = composePixels(capLayers, plainTo(bob), 0)
+    const withPose = local(capLayers, posedTo(bob), 0)
+    const without = local(capLayers, plainTo(bob), 0)
     // The pose changes the body...
     expect(frameOf(bareLayers, posedTo(bob), 0), `bob ${bob} the pose shows without the cap`).not.toBe(frameOf(bareLayers, plainTo(bob), 0))
     // ...but wherever the cap draws, the cap's own pixel is what shows, exactly as without the pose.
@@ -836,7 +859,7 @@ const eyePixels = (character: Character): string[] =>
   padded(character).flatMap((row, y) => [...row].flatMap((letter, x) => (character.legend[letter] === 'eye' ? [`${x},${y}`] : [])))
 /** The pixels where two frames differ, as "x,y". */
 const differing = (a: Pixels, b: Pixels): string[] => a.flatMap((row, y) => row.map((_, x) => x).flatMap(x => (a[y]?.[x] !== b[y]?.[x] ? [`${x},${y}`] : [])))
-const restPixels = (layers: Layers): Pixels => composePixels(layers, ANIMATIONS.idle, 0)
+const restPixels = (layers: Layers): Pixels => local(layers, ANIMATIONS.idle, 0)
 
 test('blink is a pose every shipped character draws, and a once-only animation that declares it', async () => {
   expect(POSES).toContain('blink')
@@ -851,7 +874,7 @@ test('the blink closes the eyes in exactly one frame, which is neither the first
     const layers = bare(character)
     const rest = restPixels(layers)
     const closed = Array.from({ length: ANIMATIONS.blink.frames }, (_, step) => step).filter(
-      step => differing(composePixels(layers, ANIMATIONS.blink, step), rest).length > 0,
+      step => differing(local(layers, ANIMATIONS.blink, step), rest).length > 0,
     )
     expect(closed, character.name).toHaveLength(1)
     expect(closed[0], character.name).toBeGreaterThan(0)
@@ -864,7 +887,7 @@ test('the blink frame differs from rest at the eye pixels and nowhere else, on e
     const layers = bare(character)
     const rest = restPixels(layers)
     for (let step = 0; step < ANIMATIONS.blink.frames; step++) {
-      const changed = differing(composePixels(layers, ANIMATIONS.blink, step), rest)
+      const changed = differing(local(layers, ANIMATIONS.blink, step), rest)
       // The middle frame differs at exactly the eyes; the others are rest.
       const middle = Math.floor(ANIMATIONS.blink.frames / 2)
       expect(changed.sort(), `${character.name} step ${step}`).toEqual(step === middle ? eyePixels(character).sort() : [])
@@ -879,10 +902,7 @@ test('glasses hide the blink: with them on, every blink frame equals rest, also 
       const layers = { character, outfit, background: null }
       const rest = restPixels(layers)
       for (let step = 0; step < ANIMATIONS.blink.frames; step++) {
-        expect(
-          differing(composePixels(layers, ANIMATIONS.blink, step), rest),
-          `${character.name} ${Object.keys(outfit).length} accessories step ${step}`,
-        ).toEqual([])
+        expect(differing(local(layers, ANIMATIONS.blink, step), rest), `${character.name} ${Object.keys(outfit).length} accessories step ${step}`).toEqual([])
       }
     }
     // Bobbed: the same pose in a frame that bobs the head down a pixel. The blink shows without glasses and is hidden with them.
@@ -896,13 +916,10 @@ test('glasses hide the blink: with them on, every blink frame equals rest, also 
       frame: () => ({ bob: 1, poses: ['blink'] }),
     })
     const steady: Animation = { ...bobbing, poses: [], frame: () => ({ bob: 1 }) }
-    expect(
-      differing(composePixels(bare(character), bobbing, 0), composePixels(bare(character), steady, 0)).length,
-      `${character.name} bobbed blink shows`,
-    ).toBeGreaterThan(0)
+    expect(differing(local(bare(character), bobbing, 0), local(bare(character), steady, 0)).length, `${character.name} bobbed blink shows`).toBeGreaterThan(0)
     for (const outfit of [{ face: glasses }, withAll()]) {
       const layers = { character, outfit, background: null }
-      expect(differing(composePixels(layers, bobbing, 0), composePixels(layers, steady, 0)), `${character.name} bobbed, glasses on`).toEqual([])
+      expect(differing(local(layers, bobbing, 0), local(layers, steady, 0)), `${character.name} bobbed, glasses on`).toEqual([])
     }
   }
 })
@@ -959,8 +976,8 @@ test('a character that replaces ticket-done never plays zap, so it needs no armU
 
 /** The pixels where two frames differ, as "x,y", clear pixels included (`differing` skips a pixel that is clear in the first frame). */
 const changedPixels = (a: Pixels, b: Pixels): string[] =>
-  Array.from({ length: STAGE.height }, (_, y) => y).flatMap(y =>
-    Array.from({ length: STAGE.width }, (_, x) => x).flatMap(x => (a[y]?.[x] !== b[y]?.[x] ? [`${x},${y}`] : [])),
+  Array.from({ length: LOCAL.height }, (_, y) => y).flatMap(y =>
+    Array.from({ length: LOCAL.width }, (_, x) => x).flatMap(x => (a[y]?.[x] !== b[y]?.[x] ? [`${x},${y}`] : [])),
   )
 /** The ambient animations a shipped character lists, by name. */
 const listedBy = (character: Character): readonly AmbientName[] => AMBIENT.filter(name => (character.ambient ?? []).includes(name))
@@ -1003,7 +1020,7 @@ test('every ambient animation starts at rest, ends at rest and leaves it in betw
     const rest = restPixels(layers)
     for (const name of listedBy(character)) {
       const animation = ANIMATIONS[name]
-      const frames = frameCount(animation).map(step => composePixels(layers, animation, step))
+      const frames = frameCount(animation).map(step => local(layers, animation, step))
       const label = `${character.name} ${name}`
       expect(changedPixels(frames[0] ?? [], rest), `${label} first`).toEqual([])
       expect(changedPixels(frames.at(-1) ?? [], rest), `${label} last`).toEqual([])
@@ -1027,7 +1044,7 @@ test('the tail and ear flicks change exactly the pixels their pose patches chang
       for (const outfit of [{}, withAll()]) {
         const layers = { character, outfit, background: null }
         const rest = restPixels(layers)
-        const changed = new Set(frameCount(ANIMATIONS[name]).flatMap(step => changedPixels(composePixels(layers, ANIMATIONS[name], step), rest)))
+        const changed = new Set(frameCount(ANIMATIONS[name]).flatMap(step => changedPixels(local(layers, ANIMATIONS[name], step), rest)))
         expect([...changed].sort(), `${character.name} ${name} with ${Object.keys(outfit).length} accessories`).toEqual(expected)
       }
     }
@@ -1042,7 +1059,7 @@ test('a flick pose in a bobbed frame draws each patch pixel one pixel down when 
       const patch = poseChanges(character, pose)
       for (const outfit of [{}, withAll()]) {
         const layers = { character, outfit, background: null }
-        const changed = changedPixels(composePixels(layers, bobbing, 0), composePixels(layers, steady, 0))
+        const changed = changedPixels(local(layers, bobbing, 0), local(layers, steady, 0))
         const label = `${character.name} ${pose} with ${Object.keys(outfit).length} accessories`
         // A pixel inside the head region moves down with the head; one outside it stays where the patch put it.
         const region = character.headRegion
@@ -1108,7 +1125,7 @@ test('the cheek spark lights the cheek anchors and nothing else, also with all f
     for (const outfit of [{}, withAll()]) {
       const layers = { character, outfit, background: null }
       const rest = restPixels(layers)
-      const lit = new Set(frameCount(ANIMATIONS.cheekSpark).flatMap(step => changedPixels(composePixels(layers, ANIMATIONS.cheekSpark, step), rest)))
+      const lit = new Set(frameCount(ANIMATIONS.cheekSpark).flatMap(step => changedPixels(local(layers, ANIMATIONS.cheekSpark, step), rest)))
       expect([...lit].sort(), `${character.name} with ${Object.keys(outfit).length} accessories`).toEqual(cheeks)
     }
   }

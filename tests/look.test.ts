@@ -4,13 +4,13 @@ import { expect, mock } from 'claude-code/testing'
 import { changeLook, lookReport } from '../hooks/look'
 import { leftOut } from '../hooks/sprite'
 import { foxkit } from '../hooks/sprite/characters/foxkit'
-import { defineCharacter, render } from '../hooks/sprite/compose'
+import { defineCharacter } from '../hooks/sprite/compose'
 import { currentLook, drawable, droppedOf, layersOf, projectLook, savedLook, setCurrentRoot, setProjectLook, setSavedLook } from '../hooks/sprite/look-in-use'
 import { ACCESSORIES, ANIMATIONS, CHARACTERS } from '../hooks/sprite/registry'
 import type { Accessory, Character } from '../hooks/sprite/types'
 import { strikeSteps } from '../hooks/strike'
 import { GOLDEN } from './sprite-golden'
-import { addSet, answered, PANE, QUIET, RECIPE, RUN, test, ticket, world } from './world'
+import { addSet, answered, cropped, PANE, QUIET, RECIPE, RUN, paneRender as render, test, ticket, world } from './world'
 
 // The pane draws the look resolved at each refresh, and the test world keeps what was painted.
 const ROOT = '/work/shop'
@@ -32,25 +32,25 @@ test('with nothing saved the pane paints the bare foxkit: writing in a turn, idl
   // What the renderer draws for the resolved look and an animation frame is what the world saw painted.
   const bare = layersOf(currentLook())
   // The rescan above made the sidekick look and then stand still; what follows is the turn's own.
-  expect(w.painted.at(-1)).toBe(GOLDEN.idle[0])
+  expect(w.painted.at(-1)).toBe(cropped(GOLDEN.idle[0]))
   w.painted.length = 0
 
   await $.turn.start({ text: 'Build it.', turnId: 't1' })
   expect(w.painted.at(-1)).toBe(render(bare, ANIMATIONS.write, 0))
   await clock.advance(ANIMATIONS.write.msPerFrame)
   expect(w.painted.at(-1)).toBe(render(bare, ANIMATIONS.write, 1))
-  expect(w.painted.at(-1)).toBe(GOLDEN.write[1])
+  expect(w.painted.at(-1)).toBe(cropped(GOLDEN.write[1]))
 
   await $.turn.complete({ answer: 'Done.', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
   expect(w.painted.at(-1)).toBe(render(bare, ANIMATIONS.idle, 0))
-  expect(w.painted.at(-1)).toBe(GOLDEN.idle[0])
+  expect(w.painted.at(-1)).toBe(cropped(GOLDEN.idle[0]))
 
   addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'done') }, 9)
   await $.tool.call({ tool: 'Read', file_path: `${ROOT}/.scratch/checkout/issues/01-cart.md` })
   await clock.settle()
-  expect(w.painted.at(-1)).toBe(GOLDEN.zap[0])
+  expect(w.painted.at(-1)).toBe(cropped(GOLDEN.zap[0]))
   await clock.advance(ANIMATIONS.zap.msPerFrame * 3)
-  expect(w.painted.at(-1)).toBe(GOLDEN.zap[3])
+  expect(w.painted.at(-1)).toBe(cropped(GOLDEN.zap[3]))
   await ui.unmount()
 })
 
@@ -91,12 +91,12 @@ test('a part set with the command shows on the very next paint, and several can 
 test('a look changed mid-turn shows in the next animation frame, with no reload', async ($, on) => {
   const { clock, w } = await started($, on)
   await $.turn.start({ text: 'Build it.', turnId: 't1' })
-  expect(w.painted.at(-1)).toBe(GOLDEN.write[0])
+  expect(w.painted.at(-1)).toBe(cropped(GOLDEN.write[0]))
 
   await $.command.run({ ...LOOK, args: 'character=classic head=cap' })
   await clock.advance(ANIMATIONS.write.msPerFrame)
   expect(w.painted.at(-1)).toBe(render(dressed('classic', { head: 'cap' }), ANIMATIONS.write, 1))
-  expect(w.painted.at(-1)).not.toBe(GOLDEN.write[1])
+  expect(w.painted.at(-1)).not.toBe(cropped(GOLDEN.write[1]))
 })
 
 test('the look survives a fresh session start', async ($, on) => {
@@ -232,7 +232,7 @@ test('a store that cannot be read at session start still opens the pane with the
   await clock.advance(SETTLED)
   // The pane was opened (ui.open is answered by the world) and the refresh ran after the failed read.
   await $.turn.start({ text: 'Build it.', turnId: 't1' })
-  expect(w.painted.at(-1)).toBe(GOLDEN.write[0])
+  expect(w.painted.at(-1)).toBe(cropped(GOLDEN.write[0]))
 
   const ran = await $.command.run({ ...LOOK, args: 'head=cap' })
   expect(ran.text).toBe('Could not read the saved look. Nothing was changed.')

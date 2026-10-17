@@ -1,3 +1,4 @@
+import { heightRefusal } from './compose'
 import { ACCESSORIES, BACKGROUNDS, CHARACTERS, DEFAULT_LOOK, found, pick, slotRefusal } from './registry'
 import type { Accessory, Background, Character, Layers, Look, LookPart, Outfit, SavedLook, Slot } from './types'
 
@@ -105,6 +106,13 @@ export const resolve = (look: Look): { readonly layers: Layers; readonly dropped
   if (look.background !== null) {
     background = found(BACKGROUNDS, look.background) ?? null
     if (background === null) dropped.push({ part: 'background', why: `no background named ${look.background}`, isReported: true })
+    // A background can cap the stage's height; a character that needs more cannot stand on it.
+    const cap = background?.heightCap
+    const refusal = cap === undefined ? undefined : heightRefusal(character, cap)
+    if (background !== null && refusal !== undefined) {
+      dropped.push({ part: 'background', why: `${look.background} is left out: ${refusal}`, isReported: true })
+      background = null
+    }
   }
 
   return { layers: { character, outfit, background }, dropped }

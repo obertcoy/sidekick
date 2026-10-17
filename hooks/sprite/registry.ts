@@ -137,6 +137,9 @@ export const requirePlainDefaults = (catalog: Readonly<Record<string, Animation>
 }
 requirePlainDefaults()
 
+/** Stage edges for the checks that run a frame without a stage: only what a frame is given, not where anything is. */
+const EDGES = { skyTop: 0, ground: 0, left: 0, right: 0 } as const
+
 /**
  * Refuses a library animation that does not keep its own declaration, whether or not any moveset plays it: its frame count and pace, the anchors it
  * needs (known names), and the poses it asks for at each step (declared ones). Its frames are worked out from the declared anchors alone, so a frame
@@ -169,7 +172,7 @@ export const requireDeclaration = (name: string, animation: Animation): void => 
   for (let step = 0; step < animation.frames; step++) {
     let plan: FramePlan
     try {
-      plan = animation.frame(step, given as Anchors)
+      plan = animation.frame(step, given as Anchors, EDGES)
     } catch {
       throw new Error(
         `sprite: the animation "${name}" fails at step ${step} when given only the anchors it needs (${animation.needs.join(', ') || 'none'}); it reads one it does not declare`,
@@ -214,7 +217,7 @@ export const requirePoses = (character: Character, played: Readonly<Record<strin
 export const requireDeclaredPoses = (character: Character, played: Readonly<Record<string, Animation>>): void => {
   for (const [name, animation] of Object.entries(played)) {
     for (let step = 0; step < animation.frames; step++) {
-      for (const pose of animation.frame(step, character.anchors).poses ?? []) {
+      for (const pose of animation.frame(step, character.anchors, EDGES).poses ?? []) {
         if (!animation.poses.includes(pose)) {
           throw new Error(
             `sprite: the animation "${name}" asks for the pose "${pose}" at step ${step} for character "${character.name}", but does not declare it`,

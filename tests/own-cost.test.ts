@@ -1,7 +1,7 @@
 import type { On } from 'claude-code'
 import type { Engine, MockClock } from 'claude-code/testing'
 import { expect, mock } from 'claude-code/testing'
-import { SPRITE } from '../hooks/sprite'
+import { viewIn } from '../hooks/sprite'
 import type { Reply, World } from './world'
 import { addSet, PANE, QUIET, RECIPE, RUN, SURFACES, test, ticket, world } from './world'
 
@@ -123,7 +123,7 @@ test("the pane's header shows this session's estimated cost, dim, once the sidek
 
   await endTurn($, clock, 't1')
   // At 40 columns, less a column of padding each side, the header's text column is what the sprite and the gap leave.
-  const room = PANE.props.bodyColumns - 2 - SPRITE.columns - 1
+  const room = PANE.props.bodyColumns - 2 - viewIn({ columns: PANE.props.bodyColumns, rows: PANE.props.scroll.bodyRows }).columns - 1
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...PANE, surface })
     const cost = await ui.find({ type: 'Text', text: '~$0.004' })

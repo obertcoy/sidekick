@@ -1,5 +1,7 @@
 import { expect } from 'claude-code/testing'
-import { cellsOf, SPRITE } from '../hooks/sprite'
+import { cellsOf } from '../hooks/sprite'
+import { foxkit } from '../hooks/sprite/characters/foxkit'
+import { stageFor } from '../hooks/sprite/compose'
 import { ANIMATIONS } from '../hooks/sprite/registry'
 import type { Place, Recipe } from '../hooks/tickets'
 import {
@@ -214,7 +216,8 @@ test('a long ticket list is cut to the room it has, around the next ticket', asy
 })
 
 test('every frame of the character fills its grid, and the frames differ', async () => {
-  const bytes = SPRITE.columns * SPRITE.rows * 12
+  const stage = stageFor(foxkit)
+  const bytes = stage.columns * stage.rows * 12
   const length = Math.ceil(bytes / 3) * 4
   for (const mode of ['idle', 'write', 'zap'] as const) {
     for (let frame = 0; frame < ANIMATIONS[mode].frames; frame++) {

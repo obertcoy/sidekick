@@ -37,7 +37,7 @@ import {
 import type { Target } from './look'
 import { changeLook, lookReport, parseSaved, targetOf } from './look'
 import { changeMotion, MOTION, motionReport, parseMotion } from './motion'
-import { ambientFor, cellsOf, leftOut, playsFor, SPRITE } from './sprite'
+import { ambientFor, cellsOf, DEFAULT_PANE, leftOut, listRoom, type Pane, playsFor, viewIn } from './sprite'
 import { projectRoot, setCurrentRoot, setProjectLook, setSavedLook } from './sprite/look-in-use'
 import type { SavedLook } from './sprite/types'
 import { BURN_STEPS, BURNS, HITS, isStruck, LANDS, LEAVES, STRIKE_REST_STEPS } from './strike'
@@ -258,6 +258,9 @@ const isPaneShown = async ($: Dollar): Promise<boolean> => {
   }
 }
 
+/** The size of the pane body as the last render saw it, so a repaint between renders looks through the same camera; the dock's usual size before the first render. */
+let paneSeen: Pane = DEFAULT_PANE
+
 const sceneOf = ($: Dollar): Scene => {
   const held = scenes.get(PANE)
   if (held !== undefined) return held
@@ -267,7 +270,7 @@ const sceneOf = ($: Dollar): Scene => {
     activity: createActivity(
       { every: (ms, fn) => $.clock.every(ms, fn), after: (ms, fn) => $.clock.after(ms, fn) },
       ({ animation, frame }) => {
-        void $.ui.blit({ requestId: PANE, key: BUDDY, cells: cellsOf(animation, frame) }).catch(() => undefined)
+        void $.ui.blit({ requestId: PANE, key: BUDDY, cells: cellsOf(animation, frame, undefined, paneSeen) }).catch(() => undefined)
       },
       playsFor,
       ambientFor,
@@ -1279,8 +1282,11 @@ export const register: Register = on => {
     const columns = Math.max(12, e.props.bodyColumns - 2)
     const rows = progress?.rows ?? []
     const focus = rows.findIndex(row => row.state !== 'done' && row.title === progress?.next)
-    // What the header, the bar, the tabs and the lines around the list take; the list has the rest.
-    const room = Math.max(3, e.props.scroll.bodyRows - 16)
+    // The camera looks at the stage through what the pane can spare; the list has the rows the header, the bar, the tabs and the lines around it leave.
+    const pane = { columns: e.props.bodyColumns, rows: e.props.scroll.bodyRows }
+    paneSeen = pane
+    const camera = viewIn(pane)
+    const room = listRoom(pane.rows, camera.rows)
     const steady = windowOf(rows.length, Math.max(0, focus), room)
     // A row being struck is brought into view for the strike, then the list goes back to the next ticket.
     const { activity, strike } = sceneOf($)
@@ -1447,7 +1453,7 @@ export const register: Register = on => {
 
             const { animation, frame } = activity.shown()
 
-            return <Raster key={BUDDY} columns={SPRITE.columns} rows={SPRITE.rows} cells={cellsOf(animation, frame)} />
+            return <Raster key={BUDDY} columns={camera.columns} rows={camera.rows} cells={cellsOf(animation, frame, undefined, pane)} />
           })()
         : null
 

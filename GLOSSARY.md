@@ -22,7 +22,7 @@ _Avoid_: Task, objective
 
 **Phase**:
 The step of work the session is in, in free text. It stays as written unless the work moves to a different step.
-_Avoid_: Stage (the sprite's canvas), step, status
+_Avoid_: Stage (the sidekick's canvas, see **Stage**), step, status
 
 **Edit**:
 A change to the working tree made in a turn, by an edit tool or by a shell command. A failed edit is not one.
@@ -94,7 +94,7 @@ What the sidekick looks like: its character, its outfit and its background toget
 _Avoid_: Theme, skin, style
 
 **Background**:
-The picture behind the sidekick; part of the look, chosen by the user.
+The picture behind the sidekick; part of the look, chosen by the user. It stands on the stage's ground and repeats sideways across the world.
 _Avoid_: Scene, backdrop
 
 **Outfit**:
@@ -111,6 +111,14 @@ A place on the sidekick where one accessory goes: head, face, neck or held. Ever
 **Animation**:
 A short motion of the sidekick. Every animation is in the library, whether or not any character plays it.
 _Avoid_: Mode, effect
+
+**Stage**:
+The sidekick's canvas, made to fit its character: sky above (headroom for jumps and falling bolts), the character down to its feet, then the ground. It is wide, at least 40 pixels, like a small world, and the character stands in the middle of it. Animations, poses and accessories place things only from the character's anchors and from the stage's named edges (sky top, ground, the camera's left and right), never from fixed coordinates, so any character size works with any effect. A look can cap the stage's height; a character too tall for the cap is refused, and the capping background is left out.
+_Avoid_: Canvas, scene, sprite
+
+**Camera**:
+What the pane looks into the stage through. It keeps the character centred horizontally and stays inside the world; a narrow pane shows the part around the character, a wide one the whole world. When the pane has less height than the stage it trims the sky first, and never cuts into the character or the ground.
+_Avoid_: Viewport, window
 
 **Moment**:
 Something the mod can detect that the sidekick answers with an animation: a turn is working, a search runs, a search fails, a ticket is done, a set is done, the sidekick rests. The list is closed; one is added only together with a real event that produces it.

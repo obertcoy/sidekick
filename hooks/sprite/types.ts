@@ -1,7 +1,7 @@
 // The parts a look is built from. Every part is plain data or a pure function of
 // its inputs, so a new character, animation, accessory or background is one file.
 
-/** One pixel of the stage, counted from the top-left corner. Two pixels stack in each cell. */
+/** One pixel, counted from the top-left corner: of a character's body in its own parts, of the stage once drawn (the stage is made to fit the character, see `stageFor`). Two pixels stack in each cell. */
 export type Point = { readonly x: number; readonly y: number }
 
 /** Colours a character defines for its own body. */
@@ -29,6 +29,7 @@ export type Role = BodyRole | PropRole
  *  - cheeks: the cheek pixels; the zap glows one pixel to the right of each.
  *  - tail: the tail tips, the first one the outermost; sparks crackle on and above them.
  *  - ears: the ear tips.
+ * All are in the character's own pixels, on its body; the animation is given them moved onto the stage.
  * Only `head` and `feet` are certain for every character; any other anchor is there when the animations the character plays need it.
  */
 export const REQUIRED_ANCHORS = ['head', 'feet'] as const
@@ -52,6 +53,14 @@ export type Anchors = { readonly [N in RequiredAnchor]: Point } & { readonly [N 
 /** What an animation that needs the named anchors is given: the stage frame, those anchors certain to be there, and nothing else. */
 export type Needed<N extends AnchorName> = Pick<Anchors, RequiredAnchor> & { readonly [K in N]-?: NonNullable<Anchors[K]> }
 
+/**
+ * The named edges of the stage an animation may place things by, in stage pixels; never a fixed coordinate, so any character size works with any effect.
+ *  - skyTop: the top row the camera shows.
+ *  - ground: the first ground row, the row under the feet.
+ *  - left, right: the leftmost and rightmost columns the camera shows.
+ */
+export type Edges = { readonly skyTop: number; readonly ground: number; readonly left: number; readonly right: number }
+
 /** An inclusive rectangle of pixels. */
 export type Region = { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number }
 
@@ -74,7 +83,7 @@ export type Character = {
    * The registry refuses, at load, a name that is not an ambient animation, and one whose anchors or poses the character lacks.
    */
   readonly ambient?: readonly string[]
-  /** Rows of letters, at most the stage size; '.' (or anything past a short row) is transparent. */
+  /** Rows of letters, at most `MAX_CHARACTER` either way; '.' (or anything past a short row) is transparent. The stage is made to fit them. */
   readonly body: readonly string[]
   /** What each body letter means. */
   readonly legend: Readonly<Record<string, BodyRole>>
@@ -127,8 +136,8 @@ export type Animation = {
   readonly once: boolean
   /** The slots whose accessory is not drawn while this animation plays, because the animation draws there itself; `[]` hides none. */
   readonly hides: readonly Slot[]
-  /** One frame, worked out from the character's anchors only, never from its pixels. */
-  readonly frame: (step: number, at: Anchors) => FramePlan
+  /** One frame, worked out from the character's anchors (already on the stage) and the stage's named edges only, never from its pixels or a fixed coordinate. */
+  readonly frame: (step: number, at: Anchors, edges: Edges) => FramePlan
 }
 
 /** The places an accessory can go. Every character has the head slot; the others are optional per character. Each is also the name of its anchor. */
@@ -149,9 +158,14 @@ export type Accessory = {
   readonly palette: Readonly<Record<string, number>>
 }
 
-/** A full-stage picture behind everything; it shows only where nothing else is drawn. */
+/**
+ * A picture behind everything; it shows only where nothing else is drawn. It stands on the ground: its last row on the first ground row (and repeated under it),
+ * and it repeats sideways across the world from where the character stands.
+ */
 export type Background = {
   readonly name: string
+  /** The most pixels tall the stage may be with this background; a character that needs more cannot be drawn on it and the background is left out. Left out means no cap. */
+  readonly heightCap?: number
   /** One grid per frame of its own, cycled by the animation step; one grid for a still background. */
   readonly frames: readonly (readonly string[])[]
   readonly palette: Readonly<Record<string, number>>

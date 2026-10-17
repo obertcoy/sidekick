@@ -1,12 +1,11 @@
 import type { On } from 'claude-code'
 import type { Engine, MockClock } from 'claude-code/testing'
 import { expect, mock } from 'claude-code/testing'
-import { render } from '../hooks/sprite/compose'
 import { currentLook, layersOf } from '../hooks/sprite/look-in-use'
 import { ANIMATIONS } from '../hooks/sprite/registry'
 import { strikeSteps } from '../hooks/strike'
 import type { Reply, World } from './world'
-import { addSet, answered, counting, failed, ON_TICKETS, PANE, QUIET, RECIPE, REFRESH_MS, RUN, test, ticket, world } from './world'
+import { addSet, answered, counting, failed, ON_TICKETS, PANE, QUIET, RECIPE, REFRESH_MS, RUN, paneRender as render, test, ticket, world } from './world'
 
 // What the sidekick does while a search runs, when one fails, and how that mixes with turns and
 // zaps. Each test drives the mod as the engine does and reads the cells the mod painted.

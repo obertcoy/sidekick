@@ -1,6 +1,10 @@
 import type { On, SessionMessage, TurnCompleteInput, TurnCompleteResult } from 'claude-code'
 import type { TestBody, TestOptions } from 'claude-code/testing'
 import { test as harnessTest } from 'claude-code/testing'
+import { viewIn } from '../hooks/sprite'
+import { foxkit } from '../hooks/sprite/characters/foxkit'
+import { render, stageFor, type View } from '../hooks/sprite/compose'
+import type { Animation, Layers } from '../hooks/sprite/types'
 
 /**
  * How long one whole-mod test may run. The harness stops a test at 5000 ms. Each of these tests loads the
@@ -262,6 +266,29 @@ export const PANE = {
     view: {},
   },
 } as const
+
+/** The size of the pane body the whole-mod tests mount at, as the sprite is given it; it is also the size the sprite assumes before a pane has rendered. */
+export const PANE_SIZE = { columns: PANE.props.bodyColumns, rows: PANE.props.scroll.bodyRows } as const
+
+/** A frame as the pane paints it: `render` through the camera the pane has. The whole-mod tests compare what was painted with it. */
+export const paneRender = (layers: Layers, animation: Animation, step: number, backgroundFrame?: number): string =>
+  render(layers, animation, step, backgroundFrame, viewIn(PANE_SIZE, layers))
+
+/** The part of a whole-stage foxkit frame (a golden one) that a view looks at: the cells of the frame, cut to the view. */
+export const cropped = (cells: string | undefined, view: View = viewIn(PANE_SIZE)): string => {
+  if (cells === undefined) throw new Error('no such golden frame')
+  const { columns } = stageFor(foxkit)
+  const words = new Uint32Array(Uint8Array.from(atob(cells), letter => letter.charCodeAt(0)).buffer)
+  const out = new Uint32Array(view.columns * view.rows * 3)
+  for (let row = 0; row < view.rows; row++) {
+    for (let column = 0; column < view.columns; column++) {
+      const from = ((view.top / 2 + row) * columns + view.left + column) * 3
+      out.set(words.subarray(from, from + 3), (row * view.columns + column) * 3)
+    }
+  }
+
+  return btoa(String.fromCharCode(...new Uint8Array(out.buffer)))
+}
 
 export const RUN = {
   origin: { kind: 'composer' },

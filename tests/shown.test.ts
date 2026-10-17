@@ -2,12 +2,11 @@ import type { On } from 'claude-code'
 import type { Engine, MockClock, Mounted as MountedPane } from 'claude-code/testing'
 import { expect, mock } from 'claude-code/testing'
 import { AMBIENT_GAP_MS } from '../hooks/activity'
-import { render } from '../hooks/sprite/compose'
 import { layersOf } from '../hooks/sprite/look-in-use'
 import { ANIMATIONS, ambientAnimationsOf, CHARACTERS } from '../hooks/sprite/registry'
 import { strikeSteps } from '../hooks/strike'
 import type { Reply, World } from './world'
-import { addSet, answered, counting, failed, ON_TICKETS, PANE, QUIET, RECIPE, RUN, test, ticket, world } from './world'
+import { addSet, answered, counting, failed, ON_TICKETS, PANE, QUIET, RECIPE, RUN, paneRender as render, test, ticket, world } from './world'
 
 // The sidekick animates only while its pane is the one shown. Whole-mod: the world answers `$.ui.panes()` with `w.isShown`, a pane the
 // host stops drawing is unmounted and one it draws again is mounted anew, and the mock clock moves on.
