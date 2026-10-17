@@ -15,6 +15,7 @@ import {
   reviewLine,
   sectionsOf,
   tidy,
+  workingHeading,
   workingLine,
 } from '../hooks/inbox'
 import { test } from './world'
@@ -208,6 +209,14 @@ test('the evidence beside a ticket is its ticked boxes, never a verdict', () => 
   for (const line of [reviewLine({ title: 'x', ticked: 7, boxes: 7 }).text, workingLine({ title: 'x', ticked: 7, boxes: 7, since: 0 }, 1)]) {
     expect(line).not.toMatch(/verified/i)
   }
+})
+
+test('the WORKING heading counts the tickets, and the subagents running only while there are any', () => {
+  expect(workingHeading(1, 0)).toBe('WORKING · 1 ticket')
+  expect(workingHeading(2, 0)).toBe('WORKING · 2 tickets')
+  expect(workingHeading(2, 3)).toBe('WORKING · 2 tickets · 3 agents')
+  expect(workingHeading(1, 1)).toBe('WORKING · 1 ticket · 1 agent')
+  expect(workingHeading(0, 2)).toBe('WORKING · 2 agents')
 })
 
 test('how long, in the largest whole unit', () => {

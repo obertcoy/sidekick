@@ -159,6 +159,12 @@ export const reviewLine = (ticket: Checked): { glyph: '✓' | '◐'; text: strin
 export const workingLine = (ticket: InboxView['working'][number], now: number): string =>
   [ticket.boxes === 0 ? '' : `${ticket.ticked}/${ticket.boxes} ticked`, `active ${ago(now - (ticket.since ?? now))}`].filter(part => part !== '').join(' · ')
 
+const counted = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`
+
+/** The WORKING heading: the active tickets, then the subagents running now, each only while there are any. */
+export const workingHeading = (tickets: number, agents: number): string =>
+  ['WORKING', tickets > 0 ? counted(tickets, 'ticket') : '', agents > 0 ? counted(agents, 'agent') : ''].filter(part => part !== '').join(' · ')
+
 /** A ticket's title as the inbox shows it: its number kept, without the colon ("08: Payment" is "08 Payment"). */
 export const inboxTitle = (title: string): string => title.replace(/^#?(\d+)\s*[:.)-]\s+/, '$1 ')
 

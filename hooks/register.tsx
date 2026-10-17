@@ -1,4 +1,4 @@
-import type { EngineInterface, ModelCompleteRequest, ModelCompleteResult, Register } from 'claude-code'
+import type { AgentStatus, EngineInterface, ModelCompleteRequest, ModelCompleteResult, Register } from 'claude-code'
 import { atom, read, update } from 'claude-code'
 
 import type { InboxView, SetEntry, View } from '../types'
@@ -7,7 +7,7 @@ import { createActivity } from './activity'
 import type { CostKind, SavedSession } from './cost'
 import { addCall, costReport, dollarsOf, parseSession, parseTotals, shortDollars, totalOf } from './cost'
 import type { FileTicket, Inbox, TicketRef } from './inbox'
-import { activeSince, addItems, fit, inboxTitle, parseItems, readInbox, readSince, reviewLine, sectionsOf, tidy, workingLine } from './inbox'
+import { activeSince, addItems, fit, inboxTitle, parseItems, readInbox, readSince, reviewLine, sectionsOf, tidy, workingHeading, workingLine } from './inbox'
 import type { Target } from './look'
 import { changeLook, lookReport, parseSaved, targetOf } from './look'
 import { changeMotion, MOTION, motionReport, parseMotion } from './motion'
@@ -147,6 +147,18 @@ const ASK_OPTIONS = 4
 const parsed = new Map<string, { mtimeMs: number; tickets: Ticket[] }>()
 
 type Dollar = EngineInterface
+
+// The subagents running now, by id, for the WORKING heading: a spawn adds one, the end of its turn (answered, failed or
+// stopped) takes it out. Held in memory only, so a restart starts at none; a new session clears it too.
+const running = new Set<string>()
+const ENDED: ReadonlySet<AgentStatus> = new Set(['completed', 'failed', 'killed'])
+
+/** Drops the agents the engine lists as ended: a turn end missed (a kill, say) leaves no stale count past the next refresh. */
+const dropEnded = async ($: Dollar): Promise<void> => {
+  if (running.size === 0) return
+  const listed = await $.agent.list().catch(() => [])
+  for (const agent of listed) if (ENDED.has(agent.status)) running.delete(agent.id)
+}
 
 // The sidekick's own cost: every call it makes to the small model adds its usage to this session's totals and to the
 // project's all-time ones, in the store. The header shows the session's in estimated dollars (./cost).
@@ -603,6 +615,7 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
   files ??= recipe === undefined ? [] : await filesOf($, root, recipe)
   const sets = recipe === undefined ? [] : orderSets(groupSets(recipe, files))
   await tidyInbox($, root, sets)
+  await dropEnded($)
   const session = await $.session.id()
   sessionDollars = dollarsOf(totalOf(parseSession(await $.store.get(sessionCostKey(root)), session)))
   const key = activeKey(root, session)
@@ -787,8 +800,9 @@ export const register: Register = on => {
       name: 'sidekick-cost',
       description: "Show what the sidekick's own model calls cost, this session and all time",
     })
-    // A session that ended mid-turn may never have raised turn.complete; the new one starts with no turn running.
+    // A session that ended mid-turn may never have raised turn.complete; the new one starts with no turn running, and no subagents.
     sceneOf($).activity.set('turn', false)
+    running.clear()
     setSavedLook((await storedLook($, LOOK)) ?? {})
     const root = await rootOrNone($)
     setProjectLook((await storedLook($, lookKey('project', root))) ?? {}, root)
@@ -997,8 +1011,21 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // A teammate idles between turns instead of ending, so only subagents are counted.
+  on('agent.spawn', async ($, e, next) => {
+    const started = await next(e)
+    if (started.agentId !== undefined && e.isTeammate !== true) {
+      running.add(started.agentId)
+      $.ui.invalidate('ui.render')
+    }
+
+    return started
+  })
+
   on('turn.complete', async ($, e, next) => {
     const ended = await next(e)
+    // A subagent's run is one turn, whatever ended it.
+    if (e.agentId !== undefined && running.delete(e.agentId)) $.ui.invalidate('ui.render')
     await syncShown($)
     if (e.agentId === undefined) sceneOf($).activity.set('turn', false)
     // The first turn ended with no pick: the picker gives way to the hint line.
@@ -1091,7 +1118,9 @@ export const register: Register = on => {
     const isComplete = progress !== null && progress.done === progress.total
     const accent = isComplete ? 'success' : 'claude'
     const filled = progress === null ? 0 : Math.round((progress.done / progress.total) * columns)
-    const isInboxEmpty = inbox.needsYou.length + inbox.review.length + inbox.working.length + inbox.reviewed === 0
+    const agents = running.size
+    const isWorking = inbox.working.length + agents > 0
+    const isInboxEmpty = inbox.needsYou.length + inbox.review.length + inbox.reviewed === 0 && !isWorking
     const now = await $.clock.now()
     // Every inbox line is cut to the pane's width: a heading; a glyph and a title; a detail indented under it.
     const heading = (text: string, color: Mark['color']) => (
@@ -1237,14 +1266,14 @@ export const register: Register = on => {
               })}
             </Box>
           )}
-          {inbox.working.length > 0 && (
+          {isWorking && (
             <Box flexDirection="column" marginTop={inbox.needsYou.length + inbox.review.length > 0 ? 1 : 0}>
-              {heading(`WORKING · ${inbox.working.length} ${inbox.working.length === 1 ? 'ticket' : 'tickets'}`, 'claude')}
+              {heading(workingHeading(inbox.working.length, agents), 'claude')}
               {inbox.working.map((one, at) => entry(`working-${at}`, { glyph: GLYPH.active, color: 'claude' }, inboxTitle(one.title), workingLine(one, now)))}
             </Box>
           )}
           {inbox.reviewed > 0 && (
-            <Box marginTop={inbox.needsYou.length + inbox.review.length + inbox.working.length > 0 ? 1 : 0}>
+            <Box marginTop={inbox.needsYou.length + inbox.review.length > 0 || isWorking ? 1 : 0}>
               <Text dimColor>{fit(`REVIEWED · ${inbox.reviewed}`, columns)}</Text>
             </Box>
           )}
