@@ -7,7 +7,7 @@ import { layersOf } from '../hooks/sprite/look-in-use'
 import { ANIMATIONS, ambientAnimationsOf, CHARACTERS } from '../hooks/sprite/registry'
 import { strikeSteps } from '../hooks/strike'
 import type { Reply, World } from './world'
-import { addSet, answered, counting, failed, PANE, QUIET, RECIPE, RUN, test, ticket, world } from './world'
+import { addSet, answered, counting, failed, ON_TICKETS, PANE, QUIET, RECIPE, RUN, test, ticket, world } from './world'
 
 // The sidekick animates only while its pane is the one shown. Whole-mod: the world answers `$.ui.panes()` with `w.isShown`, a pane the
 // host stops drawing is unmounted and one it draws again is mounted anew, and the mock clock moves on.
@@ -71,7 +71,7 @@ type Open = {
 const start = async ($: Engine, on: On, tickets: Record<string, string> = TICKETS, isMotionOn = false): Promise<Open> => {
   const timers = counting(on)
   const clock = mock.clock(timers.on)
-  mock.store(on, isMotionOn ? {} : QUIET)
+  mock.store(on, isMotionOn ? ON_TICKETS : { ...QUIET, ...ON_TICKETS })
   const w = world(on, ROOT)
   addSet(w, ROOT, 'checkout', tickets, 5)
   on('turn.start', (_, e) => ({ turnId: e.turnId }))

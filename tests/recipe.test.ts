@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 import { expect, mock } from 'claude-code/testing'
 import type { Reply, World } from './world'
-import { addSet, answered, failed, PANE, RECIPE, RUN, SURFACES, test, ticket, world } from './world'
+import { addSet, answered, failed, ON_TICKETS, PANE, RECIPE, RUN, SURFACES, setButtons, test, ticket, world } from './world'
 
 const ROOT = '/work/shop'
 const CHECKOUT = {
@@ -43,7 +43,7 @@ const FAILURES: [string, Reply | (() => Reply)][] = [
 for (const [how, reply] of FAILURES) {
   test(`a rescan whose search ${how} keeps the recipe that worked and says so`, async ($, on) => {
     const clock = mock.clock(on)
-    mock.store(on)
+    mock.store(on, ON_TICKETS)
     const w = await known($, on)
     w.answer = () => reply as Reply
     const ran = await $.command.run({ command: 'sidekick-rescan', args: 'tickets are in docs/tasks', ...RUN })
@@ -61,7 +61,7 @@ for (const [how, reply] of FAILURES) {
 
 test('a rescan that finds nothing in a project that never had a recipe still records none', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = world(on, ROOT)
   addSet(w, ROOT, 'checkout', CHECKOUT, 5)
   w.answer = () => answered('{"kind":"none"}')
@@ -81,7 +81,7 @@ const addDocsTasks = (w: World): void => {
 
 test('a Write of a ticket in a new folder adds a place and keeps the old one, without switching the active set or opening the picker', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = await known($, on)
   addDocsTasks(w)
   w.answer = () => answered(TASKS_RECIPE)
@@ -96,7 +96,7 @@ test('a Write of a ticket in a new folder adds a place and keeps the old one, wi
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ type: 'Text', text: '.scratch/checkout/issues' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '2 sets · /sidekick-pick' })).toBeDefined()
-    expect(await ui.find({ type: 'Button' })).toBeUndefined()
+    expect(await setButtons(ui)).toHaveLength(0)
     await ui.unmount()
   }
   // Creating the ticket was no touch; reading it is.
@@ -107,7 +107,7 @@ test('a Write of a ticket in a new folder adds a place and keeps the old one, wi
 
 test('a rescan with a hint adds the place it finds and keeps the old one, and a plain rescan adds too', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = await known($, on)
   addDocsTasks(w)
   w.answer = () => answered(TASKS_RECIPE)
@@ -116,7 +116,7 @@ test('a rescan with a hint adds the place it finds and keeps the old one, and a 
   expect(w.asked[1]).toContain('`.scratch/*/issues/*.md`')
   // Both places are read now: the picker lists both sets.
   let ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.findAll({ type: 'Button' })).length).toBe(2)
+  expect((await setButtons(ui)).length).toBe(2)
   await ui.unmount()
 
   // A plain rescan adds a third place the model finds, with the others still there.
@@ -128,25 +128,25 @@ test('a rescan with a hint adds the place it finds and keeps the old one, and a 
   await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
   await clock.settle()
   ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.findAll({ type: 'Button' })).length).toBe(3)
+  expect((await setButtons(ui)).length).toBe(3)
   await ui.unmount()
 })
 
 test('a place whose glob is already known is replaced with the new rules, not duplicated', async ($, on) => {
   mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = await known($, on)
   w.answer = () => answered(RECIPE.replace('"done"', '"done","shipped-it"'))
   await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Button' })).toBeUndefined()
+  expect(await setButtons(ui)).toHaveLength(0)
   expect(await ui.find({ type: 'Text', text: /sets/ })).toBeUndefined()
   await ui.unmount()
 })
 
 test('a rescan that finds a place already read, or nothing, leaves the recipe as it was', async ($, on) => {
   mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = await known($, on)
   addDocsTasks(w)
   w.answer = () => answered('{"kind":"none"}')
@@ -157,7 +157,7 @@ test('a rescan that finds a place already read, or nothing, leaves the recipe as
 
 test('an old single-glob recipe in the store is read as one place', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on, { [`recipe:${ROOT}`]: JSON.parse(RECIPE) })
+  mock.store(on, { ...ON_TICKETS, [`recipe:${ROOT}`]: JSON.parse(RECIPE) })
   const w = world(on, ROOT)
   addSet(w, ROOT, 'checkout', CHECKOUT, 5)
   await $.command.run({ command: 'sidekick', args: '', ...RUN })
@@ -169,7 +169,7 @@ test('an old single-glob recipe in the store is read as one place', async ($, on
 
 test('a place whose files are gone drops out and is saved without the others', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = await known($, on)
   addDocsTasks(w)
   w.answer = () => answered(TASKS_RECIPE)
@@ -192,7 +192,7 @@ test('a place whose files are gone drops out and is saved without the others', a
 
 test('a new ticket file whose search finds nothing leaves the old recipe and pane alone', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = await known($, on)
   w.tree[ROOT] = [...(w.tree[ROOT] ?? []), { name: 'docs', kind: 'dir' }]
   w.tree[`${ROOT}/docs`] = [{ name: 'tasks', kind: 'dir' }]
@@ -212,7 +212,7 @@ test('a new ticket file whose search finds nothing leaves the old recipe and pan
 
 test('a burst of writes in one folder searches once, and a folder is not searched again', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = await known($, on)
   w.tree[`${ROOT}/docs`] = [{ name: 'tasks', kind: 'dir' }]
   w.tree[`${ROOT}/docs/tasks`] = [{ name: 'a.md', kind: 'file', mtimeMs: 9 }]
@@ -230,7 +230,7 @@ test('a burst of writes in one folder searches once, and a folder is not searche
 
 test('only a Write of a markdown file inside the project, in a ticket-like folder, starts a search', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = await known($, on)
   w.answer = () => answered('{"kind":"none"}')
   const quiet = async (input: Record<string, unknown>): Promise<void> => {
@@ -251,7 +251,7 @@ test('only a Write of a markdown file inside the project, in a ticket-like folde
 
 test('with no recipe at all, a new ticket file in a likely folder is adopted and shown', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = world(on, ROOT)
   on('tool.call', () => ({ result: { ok: true } }))
   w.answer = () => answered('{"kind":"none"}')

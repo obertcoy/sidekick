@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 import { expect, mock } from 'claude-code/testing'
 import type { World } from './world'
-import { addSet, answered, PANE, RECIPE, RUN, SURFACES, test, ticket, world } from './world'
+import { addSet, answered, ON_TICKETS, PANE, RECIPE, RUN, SURFACES, setButtons, test, ticket, world } from './world'
 
 const ROOT = '/work/shop'
 const SEARCH = { '01-index.md': ticket('01: Index', 'done'), '02-query.md': ticket('02: Query', 'open') }
@@ -43,7 +43,7 @@ const END = { turnId: 't1', answer: 'Done.', durationMs: 1, isAborted: false, re
 type Pane = { buttons: number; has: (text: string | RegExp) => Promise<boolean> }
 const look = async ($: Engine): Promise<Pane> => {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const buttons = (await ui.findAll({ type: 'Button' })).length
+  const buttons = (await setButtons(ui)).length
   const found = new Map<string | RegExp, boolean>()
   for (const text of PROBES) found.set(text, (await ui.find({ type: 'Text', text })) !== undefined)
   await ui.unmount()
@@ -65,7 +65,7 @@ const PROBES: (string | RegExp)[] = [
 // A new session in a project with two sets: nothing is active, so the pane offers the picker alone.
 const fresh = async ($: Engine, on: On, names = ['search', 'billing']): Promise<{ w: World; clock: ReturnType<typeof mock.clock> }> => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = await setup($, on, names)
   w.sessionId = 's-new'
   await $.session.start(START)
@@ -267,7 +267,7 @@ test('a rescan with two sets mid-session reopens the picker, keeps the current s
   await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.findAll({ type: 'Button' })).length).toBe(2)
+  expect((await setButtons(ui)).length).toBe(2)
   expect(await ui.find({ type: 'Button', text: /› 2: search/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: SEARCH_SRC })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '1/2 done' })).toBeDefined()
@@ -281,27 +281,27 @@ test('a rescan with two sets mid-session reopens the picker, keeps the current s
 
 test('a single set shows no list', async ($, on) => {
   mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   await setup($, on, ['search'])
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Button' })).toBeUndefined()
+  expect(await setButtons(ui)).toHaveLength(0)
   expect(await ui.find({ type: 'Text', text: /sets · / })).toBeUndefined()
   await ui.unmount()
 })
 
 test('with 9 sets the pane still draws one button per set and no Select', async ($, on) => {
   mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   await setup($, on, [...NAMES, 'eta', 'theta', 'iota'])
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.findAll({ type: 'Button' })).length).toBe(9)
+  expect((await setButtons(ui)).length).toBe(9)
   expect(await ui.find({ type: 'Select' })).toBeUndefined()
   await ui.unmount()
 })
 
 test('/sidekick-pick with a number or a name picks directly, and reports a bad or ambiguous one', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   await setup($, on, ['search', 'billing'])
 
   expect((await $.command.run({ command: 'sidekick-pick', args: '2', ...RUN })).text).toBe('Showing search: 1/2 done.')
@@ -316,21 +316,21 @@ test('/sidekick-pick with a number or a name picks directly, and reports a bad o
 
 test('/sidekick-pick with one set only says so', async ($, on) => {
   mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   await setup($, on, ['search'])
   expect((await $.command.run({ command: 'sidekick-pick', args: '', ...RUN })).text).toBe('Only one ticket set here: search.')
 })
 
 test('/sidekick-pick with no sets only says so', async ($, on) => {
   mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   world(on, ROOT)
   expect((await $.command.run({ command: 'sidekick-pick', args: '', ...RUN })).text).toMatch(/No ticket sets found/)
 })
 
 test('/sidekick-pick without args asks when there are 4 sets or fewer, and takes a typed name', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const d = dialog(on)
   await setup($, on, NAMES.slice(0, 4))
   d.reply = 'alpha'
@@ -342,7 +342,7 @@ test('/sidekick-pick without args asks when there are 4 sets or fewer, and takes
 
 test('/sidekick-pick takes a choice from the dialog, and a dismissed dialog changes nothing', async ($, on) => {
   mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const d = dialog(on)
   await setup($, on, ['search', 'billing'])
   d.reply = 'search'
@@ -366,7 +366,7 @@ const MANY = ['s01', 's02', 's03', 's04', 's05', 's06', 's07', 's08', 's09', 's1
 
 test('/sidekick-pick without args and more than 4 sets opens the pane picker with the keys, and asks nothing', async ($, on) => {
   mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const d = dialog(on)
   const w = await setup($, on, NAMES)
   w.sessionId = 's-new'
@@ -382,7 +382,7 @@ test('/sidekick-pick without args and more than 4 sets opens the pane picker wit
 
 test('with 4 sets or fewer the command still asks in a dialog and opens no pane', async ($, on) => {
   mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const d = dialog(on)
   const w = await setup($, on, NAMES.slice(0, 4))
   w.opened.length = 0
@@ -410,7 +410,7 @@ test('the picker the command opened closes when the next main-agent turn ends', 
 test('with 10 sets the pane draws a Select of all of them and picking one makes it active', async ($, on) => {
   const { clock } = await fresh($, on, MANY)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.findAll({ type: 'Button' })).toHaveLength(0)
+  expect(await setButtons(ui)).toHaveLength(0)
   expect(await ui.find({ type: 'Text', text: 'Pick a ticket set:' })).toBeDefined()
   expect(await ui.find({ type: 'Select' })).toBeDefined()
   await ui.select({ key: 'set-select', value: '.scratch/s03/issues' })

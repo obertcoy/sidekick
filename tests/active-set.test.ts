@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 import { expect, mock } from 'claude-code/testing'
 import type { World } from './world'
-import { addSet, answered, PANE, RECIPE, RUN, SURFACES, test, ticket, world } from './world'
+import { addSet, answered, ON_TICKETS, PANE, RECIPE, RUN, SURFACES, test, ticket, world } from './world'
 
 // Two ticket sets: "search" is older and half done, "billing" changed most recently.
 const OLDER = {
@@ -57,7 +57,7 @@ const expectPane = async ($: Engine, shown: typeof SHOWS_OLDER, hidden: typeof S
 
 test('with two ticket sets the pane shows the picked one', async ($, on) => {
   mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   await twoSets($, on, '/work/shop', '/work/shop')
   await expectPane($, SHOWS_NEWER, SHOWS_OLDER)
 })
@@ -66,7 +66,7 @@ for (const { label, root, posixRoot, older } of SPELLINGS) {
   for (const tool of ['Read', 'Edit'] as const) {
     test(`${tool === 'Read' ? 'reading' : 'editing'} a ticket in the older set switches the pane's source and count to that set (${label} paths)`, async ($, on) => {
       const clock = mock.clock(on)
-      mock.store(on)
+      mock.store(on, ON_TICKETS)
       await twoSets($, on, root, posixRoot)
       await expectPane($, SHOWS_NEWER, SHOWS_OLDER)
 
@@ -80,7 +80,7 @@ for (const { label, root, posixRoot, older } of SPELLINGS) {
 
 test('the touched set stays active through later refreshes, even when another set changes', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = await twoSets($, on, '/work/shop', '/work/shop')
   await $.tool.call({ tool: 'Read', file_path: '/work/shop/.scratch/search/issues/01-index.md' })
   await clock.settle()
@@ -99,7 +99,7 @@ test('the touched set stays active through later refreshes, even when another se
 
 test('when the active set is gone the one set left is active', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = await twoSets($, on, '/work/shop', '/work/shop')
   await $.tool.call({ tool: 'Read', file_path: '/work/shop/.scratch/search/issues/01-index.md' })
   await clock.settle()
@@ -117,7 +117,7 @@ test('when the active set is gone the one set left is active', async ($, on) => 
 
 test('touching a file that is not a ticket leaves the active ticket set unchanged', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   await twoSets($, on, '/work/shop', '/work/shop')
   await $.tool.call({ tool: 'Read', file_path: '/work/shop/README.md' })
   await $.tool.call({ tool: 'Edit', file_path: '/work/shop/.scratch/search/spec.md', old_string: 'a', new_string: 'b' })
@@ -129,7 +129,7 @@ test('touching a file that is not a ticket leaves the active ticket set unchange
 
 test("the tool call's own result is returned unchanged whether or not the bookkeeping succeeds", async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = world(on, '/work/shop')
   addSet(w, '/work/shop', 'search', OLDER, 5)
   addSet(w, '/work/shop', 'billing', NEWER, 9)

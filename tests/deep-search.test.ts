@@ -1,6 +1,6 @@
 import { expect, mock } from 'claude-code/testing'
 import type { World } from './world'
-import { answered, RUN, test, ticket, world } from './world'
+import { answered, ON_TICKETS, RUN, test, ticket, world } from './world'
 
 // A monorepo: the tickets sit seven levels down, in a sub-project, next to a shallow todo.md.
 const ROOT = '/work/npd'
@@ -44,7 +44,7 @@ const HINTS = [PLAIN_HINT, `tickets are in ${SUB}/scratch/qa-stop-when-answered/
 for (const hint of HINTS)
   test(`the hint "${hint}" resolves to the folder on disk`, async ($, on) => {
     mock.clock(on)
-    mock.store(on)
+    mock.store(on, ON_TICKETS)
     const w = monorepo(on)
 
     const ran = await $.command.run({ command: 'sidekick-rescan', args: hint, ...RUN })
@@ -54,7 +54,7 @@ for (const hint of HINTS)
 
 test('with no hint, files in a deep ticket folder are listed before a shallow todo.md', async ($, on) => {
   mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = monorepo(on)
 
   await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
@@ -65,7 +65,7 @@ test('with no hint, files in a deep ticket folder are listed before a shallow to
 
 test('cache folders are never listed or read', async ($, on) => {
   mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = monorepo(on)
 
   await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
@@ -95,7 +95,7 @@ const crowded = (on: Parameters<typeof world>[0], ext: string): World => {
 for (const ext of ['py', 'json']) {
   test(`with no hint, ${ext} files in sibling projects do not use up the cap before the deep folder`, async ($, on) => {
     mock.clock(on)
-    mock.store(on)
+    mock.store(on, ON_TICKETS)
     const w = crowded(on, ext)
 
     await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })

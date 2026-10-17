@@ -1,7 +1,7 @@
 import type { EngineInterface, ModelCompleteRequest, ModelCompleteResult, Register } from 'claude-code'
 import { atom, read, update } from 'claude-code'
 
-import type { InboxView, SetEntry, View } from '../types'
+import type { InboxView, SetEntry, Tab, View } from '../types'
 import type { Activity } from './activity'
 import { createActivity } from './activity'
 import type { CostKind, SavedSession } from './cost'
@@ -128,6 +128,7 @@ const view = atom(
     sets: [],
     current: '',
     isChoosing: false,
+    tab: 'inbox',
   } satisfies View as View,
 )
 
@@ -559,6 +560,19 @@ const tidyInbox = async ($: Dollar, root: string, sets: TicketSet[]): Promise<vo
 const inboxViewOf = async ($: Dollar, root: string, set: TicketSet | undefined): Promise<InboxView> =>
   sectionsOf(await inboxOf($, root), set === undefined ? [] : await fileTicketsOf($, root, [set]), readSince(await $.store.get(sinceKey(root))))
 
+// The tab the pane shows, one per project: Inbox unless Tickets was chosen there.
+const tabKey = (root: string): string => `tab:${root}`
+
+const tabOf = async ($: Dollar, root: string): Promise<Tab> => ((await $.store.get(tabKey(root))) === 'tickets' ? 'tickets' : 'inbox')
+
+/** Shows the tab at once and keeps it for the project. */
+const chooseTab = async ($: Dollar, tab: Tab): Promise<void> => {
+  // Kept before it is shown, so a refresh in between reads the new tab.
+  await $.store.set(tabKey(await rootOf($)), tab)
+  await update($, view, held => ({ ...held, tab }))
+  $.ui.invalidate('ui.render')
+}
+
 /** Refreshes the pane. `isOffering` (a rescan) opens the set picker; a new session opens it by itself. */
 const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = false): Promise<View> => {
   await syncShown($)
@@ -633,6 +647,7 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
     sets: sets.length < 2 ? [] : await entriesOf($, root, sets),
     current: set?.id ?? '',
     isChoosing: isChoosing && sets.length > 1,
+    tab: await tabOf($, root),
   }
   await show($, next)
   // WORKING's time active moves on while nothing else changes, so the pane is drawn again at every refresh.
@@ -1023,12 +1038,13 @@ export const register: Register = on => {
     const { Box, Text, Button } = table
     // The mobile app draws no Select yet, so only the tables that declare one offer it.
     const Select = 'Select' in table ? table.Select : undefined
-    const { project, isSearching: isLooking, inbox, progress, sets, current, isChoosing: isListed } = await read($, view)
+    const { project, isSearching: isLooking, inbox, progress, sets, current, isChoosing: isListed, tab } = await read($, view)
     // One column of padding on each side; the bar and rules span what is left.
     const columns = Math.max(12, e.props.bodyColumns - 2)
     const rows = progress?.rows ?? []
     const focus = rows.findIndex(row => row.state !== 'done' && row.title === progress?.next)
-    const room = Math.max(3, e.props.scroll.bodyRows - 17)
+    // What the header, the bar, the tabs and the lines around the list take; the list has the rest.
+    const room = Math.max(3, e.props.scroll.bodyRows - 16)
     const steady = windowOf(rows.length, Math.max(0, focus), room)
     // A row being struck is brought into view for the strike, then the list goes back to the next ticket.
     const { activity, strike } = sceneOf($)
@@ -1156,40 +1172,26 @@ export const register: Register = on => {
           </Text>
         )}
         {isLooking && <Text color="suggestion">◌ Looking for tickets…</Text>}
-        {!isLooking && progress === null && !isUndecided && <Text dimColor>○ No tickets here. /sidekick-rescan looks again.</Text>}
-        {progress !== null && (
-          <Box flexDirection="column" marginTop={trailOn(LANDS) ? 0 : 1}>
-            {/* The bolt's second segment takes the blank line above the list, so nothing moves. */}
-            {trailOn(LANDS) && (
-              <Text bold color="warning">
-                {BOLT}
-              </Text>
-            )}
-            {start > 0 && <Text dimColor>↑ {start} earlier</Text>}
-            {rows.slice(start, end).map((row, index) => {
-              const isNext = start + index === focus
-              const was = step === -1 ? undefined : strike?.rows.get(row.title)
-              if (row.state === 'done' && was !== undefined && strike !== undefined && isStruck(step, strike.steps)) {
-                return struckRow(row.title, was, step, columns)
-              }
-
-              return (
-                <Text wrap="truncate-end" dimColor={row.state === 'done'} strikethrough={row.state === 'done'} bold={isNext}>
-                  <Text color={row.state === 'done' ? 'success' : isNext ? 'claude' : 'text'}>{GLYPH[row.state]} </Text>
-                  {shortTitle(row.title)}
-                </Text>
-              )
-            })}
-            {end < rows.length && <Text dimColor>↓ {rows.length - end} more</Text>}
-          </Box>
-        )}
-        {sets.length > 1 && !isListed && (
-          <Box marginTop={1}>
-            <Text dimColor wrap="truncate-end">
-              {isUndecided ? `${sets.length} ticket sets · /sidekick-pick` : `${sets.length} sets · /sidekick-pick`}
-            </Text>
-          </Box>
-        )}
+        <Box key="tabs" flexDirection="row" gap={2} marginTop={1}>
+          {/* The tab shown is marked by its glyph as well as its strength, so it never rests on colour. */}
+          <Button
+            key="tab-inbox"
+            plain
+            hotkey="i"
+            dimColor={tab !== 'inbox'}
+            label={`${tab === 'inbox' ? '●' : '○'} Inbox${inbox.needsYou.length > 0 ? ` · ${inbox.needsYou.length}` : ''}`}
+            onPress={() => quietly(chooseTab($, 'inbox'), $)}
+          />
+          <Button
+            key="tab-tickets"
+            plain
+            hotkey="t"
+            dimColor={tab !== 'tickets'}
+            label={`${tab === 'tickets' ? '●' : '○'} Tickets`}
+            onPress={() => quietly(chooseTab($, 'tickets'), $)}
+          />
+        </Box>
+        {/* The picker asks for a set whichever tab shows. */}
         {sets.length > 1 && isListed && (
           <Box flexDirection="column" marginTop={1}>
             <Text bold>Pick a ticket set:</Text>
@@ -1215,45 +1217,87 @@ export const register: Register = on => {
             )}
           </Box>
         )}
-        <Box key="inbox" flexDirection="column" marginTop={1}>
-          <Text dimColor>{'─'.repeat(columns)}</Text>
-          {isInboxEmpty && <Text dimColor>{fit('Nothing in the inbox yet.', columns)}</Text>}
-          {inbox.needsYou.length > 0 && (
-            <Box flexDirection="column">
-              {heading(`NEEDS YOU · ${inbox.needsYou.length}`, 'warning')}
-              {inbox.needsYou.map((one, at) =>
-                // An item of no ticket is its short line alone; one of a ticket has the ticket above it.
-                one.ticket === null ? entry(`ask-${at}`, ASKED[one.kind], one.short) : entry(`ask-${at}`, ASKED[one.kind], inboxTitle(one.ticket), one.short),
-              )}
-            </Box>
-          )}
-          {inbox.review.length > 0 && (
-            <Box flexDirection="column" marginTop={inbox.needsYou.length > 0 ? 1 : 0}>
-              {heading(`READY TO REVIEW · ${inbox.review.length}`, 'suggestion')}
-              {inbox.review.map((one, at) => {
-                const { glyph, text } = reviewLine(one)
+        {tab === 'tickets' ? (
+          <Box key="tickets" flexDirection="column">
+            {!isLooking && progress === null && !isUndecided && (
+              <Box marginTop={1}>
+                <Text dimColor>○ No tickets here. /sidekick-rescan looks again.</Text>
+              </Box>
+            )}
+            {progress !== null && (
+              <Box flexDirection="column" marginTop={trailOn(LANDS) ? 0 : 1}>
+                {/* The bolt's second segment takes the blank line above the list, so nothing moves. */}
+                {trailOn(LANDS) && (
+                  <Text bold color="warning">
+                    {BOLT}
+                  </Text>
+                )}
+                {start > 0 && <Text dimColor>↑ {start} earlier</Text>}
+                {rows.slice(start, end).map((row, index) => {
+                  const isNext = start + index === focus
+                  const was = step === -1 ? undefined : strike?.rows.get(row.title)
+                  if (row.state === 'done' && was !== undefined && strike !== undefined && isStruck(step, strike.steps)) {
+                    return struckRow(row.title, was, step, columns)
+                  }
 
-                return entry(`review-${at}`, { glyph, color: glyph === '✓' ? 'success' : 'warning' }, inboxTitle(one.title), text)
-              })}
-            </Box>
-          )}
-          {inbox.working.length > 0 && (
-            <Box flexDirection="column" marginTop={inbox.needsYou.length + inbox.review.length > 0 ? 1 : 0}>
-              {heading(`WORKING · ${inbox.working.length} ${inbox.working.length === 1 ? 'ticket' : 'tickets'}`, 'claude')}
-              {inbox.working.map((one, at) => entry(`working-${at}`, { glyph: GLYPH.active, color: 'claude' }, inboxTitle(one.title), workingLine(one, now)))}
-            </Box>
-          )}
-          {inbox.reviewed > 0 && (
-            <Box marginTop={inbox.needsYou.length + inbox.review.length + inbox.working.length > 0 ? 1 : 0}>
-              <Text dimColor>{fit(`REVIEWED · ${inbox.reviewed}`, columns)}</Text>
-            </Box>
-          )}
-        </Box>
-        {progress !== null && (
-          <Box marginTop={1}>
-            <Text dimColor wrap="truncate-start">
-              {progress.source}
-            </Text>
+                  return (
+                    <Text wrap="truncate-end" dimColor={row.state === 'done'} strikethrough={row.state === 'done'} bold={isNext}>
+                      <Text color={row.state === 'done' ? 'success' : isNext ? 'claude' : 'text'}>{GLYPH[row.state]} </Text>
+                      {shortTitle(row.title)}
+                    </Text>
+                  )
+                })}
+                {end < rows.length && <Text dimColor>↓ {rows.length - end} more</Text>}
+              </Box>
+            )}
+            {sets.length > 1 && !isListed && (
+              <Box marginTop={1}>
+                <Text dimColor wrap="truncate-end">
+                  {isUndecided ? `${sets.length} ticket sets · /sidekick-pick` : `${sets.length} sets · /sidekick-pick`}
+                </Text>
+              </Box>
+            )}
+            {progress !== null && (
+              <Box marginTop={1}>
+                <Text dimColor wrap="truncate-start">
+                  {progress.source}
+                </Text>
+              </Box>
+            )}
+          </Box>
+        ) : (
+          <Box key="inbox" flexDirection="column" marginTop={1}>
+            {isInboxEmpty && <Text dimColor>{fit('Nothing in the inbox yet.', columns)}</Text>}
+            {inbox.needsYou.length > 0 && (
+              <Box flexDirection="column">
+                {heading(`NEEDS YOU · ${inbox.needsYou.length}`, 'warning')}
+                {inbox.needsYou.map((one, at) =>
+                  // An item of no ticket is its short line alone; one of a ticket has the ticket above it.
+                  one.ticket === null ? entry(`ask-${at}`, ASKED[one.kind], one.short) : entry(`ask-${at}`, ASKED[one.kind], inboxTitle(one.ticket), one.short),
+                )}
+              </Box>
+            )}
+            {inbox.review.length > 0 && (
+              <Box flexDirection="column" marginTop={inbox.needsYou.length > 0 ? 1 : 0}>
+                {heading(`READY TO REVIEW · ${inbox.review.length}`, 'suggestion')}
+                {inbox.review.map((one, at) => {
+                  const { glyph, text } = reviewLine(one)
+
+                  return entry(`review-${at}`, { glyph, color: glyph === '✓' ? 'success' : 'warning' }, inboxTitle(one.title), text)
+                })}
+              </Box>
+            )}
+            {inbox.working.length > 0 && (
+              <Box flexDirection="column" marginTop={inbox.needsYou.length + inbox.review.length > 0 ? 1 : 0}>
+                {heading(`WORKING · ${inbox.working.length} ${inbox.working.length === 1 ? 'ticket' : 'tickets'}`, 'claude')}
+                {inbox.working.map((one, at) => entry(`working-${at}`, { glyph: GLYPH.active, color: 'claude' }, inboxTitle(one.title), workingLine(one, now)))}
+              </Box>
+            )}
+            {inbox.reviewed > 0 && (
+              <Box marginTop={inbox.needsYou.length + inbox.review.length + inbox.working.length > 0 ? 1 : 0}>
+                <Text dimColor>{fit(`REVIEWED · ${inbox.reviewed}`, columns)}</Text>
+              </Box>
+            )}
           </Box>
         )}
       </Box>
