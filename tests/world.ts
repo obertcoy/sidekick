@@ -22,6 +22,14 @@ export const test = (name: string, ...rest: readonly [body: TestBody] | readonly
  */
 export const QUIET = { motion: false }
 
+/**
+ * A store that opens the pane on its Tickets tab, in every project the whole-mod tests stand in. Tests that read the
+ * ticket list start from it; tests/tabs.test.ts covers the tabs, and the Inbox the pane opens on when nothing is saved.
+ */
+export const ON_TICKETS: Readonly<Record<string, unknown>> = Object.fromEntries(
+  ['/work/shop', 'C:/work/shop', '/work/npd', '/work/notes'].map(root => [`tab:${root}`, 'tickets']),
+)
+
 // The world beneath the mod in the whole-mod tests: a project on disk, the small model and the session.
 
 export type Entry = { name: string; kind: 'file' | 'dir'; mtimeMs?: number }
@@ -216,10 +224,6 @@ export const linesIn = async (ui: Mounted, key: string): Promise<string[]> => {
   return lines.filter(line => !/^─+$/.test(line))
 }
 
-/** The set picker's Buttons in the drawing; the inbox's rows are Buttons too and are left out. */
-export const setButtons = async (ui: { findAll: (query: { type: string }) => Promise<{ key: string | undefined }[]> }): Promise<unknown[]> =>
-  (await ui.findAll({ type: 'Button' })).filter(one => one.key?.startsWith('set-') === true)
-
 export const PANE = {
   plugin: 'sidekick',
   component: 'Pane',
@@ -240,6 +244,10 @@ export const RUN = {
 } as const
 
 export const SURFACES = ['terminal', 'desktop'] as const
+
+/** The set picker's buttons in a mounted pane, the tabs' and the inbox rows' left out. */
+export const setButtons = async <T extends { key?: unknown }>(ui: { findAll: (query: { type: 'Button' }) => Promise<T[]> }): Promise<T[]> =>
+  (await ui.findAll({ type: 'Button' })).filter(one => String(one.key).startsWith('set-'))
 
 /** The pane's refresh, which waits through every session; it is not the sidekick moving. */
 export const REFRESH_MS = 20_000

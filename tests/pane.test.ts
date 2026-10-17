@@ -81,13 +81,18 @@ test('a rescan finds the tickets once, and the pane then shows progress and the 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ type: 'Text', text: '1/3 done' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '✓ Cart' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '○ Shipping' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '◐ Payment' })).toBeDefined()
-    // The inbox reads the ticket files before any summary: one done, one active.
+    // The pane opens on the inbox, which reads the ticket files before any summary: one done, one active.
     expect(await ui.find({ type: 'Text', text: 'READY TO REVIEW · 1' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'WORKING · 1 ticket' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: 'NEEDS YOU' })).toBeUndefined()
+    // The ticket list is on the other tab.
+    await ui.press({ key: 'tab-tickets' })
+    await clock.settle()
+    expect(await ui.find({ type: 'Text', text: '✓ Cart' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '○ Shipping' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '◐ Payment' })).toBeDefined()
+    await ui.press({ key: 'tab-inbox' })
+    await clock.settle()
     await ui.unmount()
   }
 

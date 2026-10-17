@@ -55,7 +55,12 @@ export type View = {
   current: string
   /** True while the set picker shows: a new session, a /clear or a rescan, until a pick, a touch or the end of the next turn. */
   isChoosing: boolean
+  /** Which tab the pane shows below its header and progress bar; kept per project. */
+  tab: Tab
 }
+
+/** The pane's two tabs: the inbox (the default) and the ticket list. */
+export type Tab = 'inbox' | 'tickets'
 
 declare module 'claude-code' {
   interface PluginState {

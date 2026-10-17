@@ -1,7 +1,7 @@
-import type { EngineInterface, ModelCompleteRequest, ModelCompleteResult, Register } from 'claude-code'
+import type { AgentStatus, EngineInterface, ModelCompleteRequest, ModelCompleteResult, Register } from 'claude-code'
 import { atom, read, update } from 'claude-code'
 
-import type { InboxView, SetEntry, View } from '../types'
+import type { InboxView, SetEntry, Tab, View } from '../types'
 import type { Activity } from './activity'
 import { createActivity } from './activity'
 import type { CostKind, SavedSession } from './cost'
@@ -22,6 +22,7 @@ import {
   sectionsOf,
   tidy,
   tidyReviewed,
+  workingHeading,
   workingLine,
 } from './inbox'
 import type { Target } from './look'
@@ -144,6 +145,7 @@ const view = atom(
     sets: [],
     current: '',
     isChoosing: false,
+    tab: 'inbox',
   } satisfies View as View,
 )
 
@@ -163,6 +165,18 @@ const ASK_OPTIONS = 4
 const parsed = new Map<string, { mtimeMs: number; tickets: Ticket[] }>()
 
 type Dollar = EngineInterface
+
+// The subagents running now, by id, for the WORKING heading: a spawn adds one, the end of its turn (answered, failed or
+// stopped) takes it out. Held in memory only, so a restart starts at none; a new session clears it too.
+const running = new Set<string>()
+const ENDED: ReadonlySet<AgentStatus> = new Set(['completed', 'failed', 'killed'])
+
+/** Drops the agents the engine lists as ended: a turn end missed (a kill, say) leaves no stale count past the next refresh. */
+const dropEnded = async ($: Dollar): Promise<void> => {
+  if (running.size === 0) return
+  const listed = await $.agent.list().catch(() => [])
+  for (const agent of listed) if (ENDED.has(agent.status)) running.delete(agent.id)
+}
 
 // The sidekick's own cost: every call it makes to the small model adds its usage to this session's totals and to the
 // project's all-time ones, in the store. The header shows the session's in estimated dollars (./cost).
@@ -645,6 +659,19 @@ const markOpened = async ($: Dollar): Promise<void> => {
   await closeDetail($)
 }
 
+// The tab the pane shows, one per project: Inbox unless Tickets was chosen there.
+const tabKey = (root: string): string => `tab:${root}`
+
+const tabOf = async ($: Dollar, root: string): Promise<Tab> => ((await $.store.get(tabKey(root))) === 'tickets' ? 'tickets' : 'inbox')
+
+/** Shows the tab at once and keeps it for the project. */
+const chooseTab = async ($: Dollar, tab: Tab): Promise<void> => {
+  // Kept before it is shown, so a refresh in between reads the new tab.
+  await $.store.set(tabKey(await rootOf($)), tab)
+  await update($, view, held => ({ ...held, tab }))
+  $.ui.invalidate('ui.render')
+}
+
 /** Refreshes the pane. `isOffering` (a rescan) opens the set picker; a new session opens it by itself. */
 const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = false): Promise<View> => {
   await syncShown($)
@@ -689,6 +716,7 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
   files ??= recipe === undefined ? [] : await filesOf($, root, recipe)
   const sets = recipe === undefined ? [] : orderSets(groupSets(recipe, files))
   await tidyInbox($, root, sets)
+  await dropEnded($)
   const session = await $.session.id()
   sessionDollars = dollarsOf(totalOf(parseSession(await $.store.get(sessionCostKey(root)), session)))
   const key = activeKey(root, session)
@@ -719,6 +747,7 @@ const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = fa
     sets: sets.length < 2 ? [] : await entriesOf($, root, sets),
     current: set?.id ?? '',
     isChoosing: isChoosing && sets.length > 1,
+    tab: await tabOf($, root),
   }
   await show($, next)
   // WORKING's time active moves on while nothing else changes, so the pane is drawn again at every refresh.
@@ -873,10 +902,11 @@ export const register: Register = on => {
       name: 'sidekick-cost',
       description: "Show what the sidekick's own model calls cost, this session and all time",
     })
-    // A session that ended mid-turn may never have raised turn.complete; the new one starts with no turn running.
+    // A session that ended mid-turn may never have raised turn.complete; the new one starts with no turn running, and no subagents.
     sceneOf($).activity.set('turn', false)
     // A new session shows the inbox, not a detail an earlier one left open.
     opened = undefined
+    running.clear()
     setSavedLook((await storedLook($, LOOK)) ?? {})
     const root = await rootOrNone($)
     setProjectLook((await storedLook($, lookKey('project', root))) ?? {}, root)
@@ -1085,8 +1115,21 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // A teammate idles between turns instead of ending, so only subagents are counted.
+  on('agent.spawn', async ($, e, next) => {
+    const started = await next(e)
+    if (started.agentId !== undefined && e.isTeammate !== true) {
+      running.add(started.agentId)
+      $.ui.invalidate('ui.render')
+    }
+
+    return started
+  })
+
   on('turn.complete', async ($, e, next) => {
     const ended = await next(e)
+    // A subagent's run is one turn, whatever ended it.
+    if (e.agentId !== undefined && running.delete(e.agentId)) $.ui.invalidate('ui.render')
     await syncShown($)
     if (e.agentId === undefined) sceneOf($).activity.set('turn', false)
     // The first turn ended with no pick: the picker gives way to the hint line.
@@ -1118,12 +1161,13 @@ export const register: Register = on => {
     const { Box, Text, Button } = table
     // The mobile app draws no Select yet, so only the tables that declare one offer it.
     const Select = 'Select' in table ? table.Select : undefined
-    const { project, isSearching: isLooking, inbox, progress, sets, current, isChoosing: isListed } = await read($, view)
+    const { project, isSearching: isLooking, inbox, progress, sets, current, isChoosing: isListed, tab } = await read($, view)
     // One column of padding on each side; the bar and rules span what is left.
     const columns = Math.max(12, e.props.bodyColumns - 2)
     const rows = progress?.rows ?? []
     const focus = rows.findIndex(row => row.state !== 'done' && row.title === progress?.next)
-    const room = Math.max(3, e.props.scroll.bodyRows - 17)
+    // What the header, the bar, the tabs and the lines around the list take; the list has the rest.
+    const room = Math.max(3, e.props.scroll.bodyRows - 16)
     const steady = windowOf(rows.length, Math.max(0, focus), room)
     // A row being struck is brought into view for the strike, then the list goes back to the next ticket.
     const { activity, strike } = sceneOf($)
@@ -1186,7 +1230,9 @@ export const register: Register = on => {
     const isComplete = progress !== null && progress.done === progress.total
     const accent = isComplete ? 'success' : 'claude'
     const filled = progress === null ? 0 : Math.round((progress.done / progress.total) * columns)
-    const isInboxEmpty = inbox.needsYou.length + inbox.review.length + inbox.working.length + inbox.reviewed === 0
+    const agents = running.size
+    const isWorking = inbox.working.length + agents > 0
+    const isInboxEmpty = inbox.needsYou.length + inbox.review.length + inbox.reviewed === 0 && !isWorking
     const now = await $.clock.now()
     // Every inbox line is cut to the pane's width: a heading; a glyph and a title; a detail indented under it.
     const heading = (text: string, color: Mark['color']) => (
@@ -1231,7 +1277,6 @@ export const register: Register = on => {
 
       return (
         <Box key="detail" flexDirection="column" marginTop={1}>
-          <Text dimColor>{'─'.repeat(columns)}</Text>
           <Button key="back" plain hotkey="b" label="← Back" onPress={() => quietly(closeDetail($), $)} />
           <Text wrap="wrap" bold>
             <Text color={mark.color}>{mark.glyph} </Text>
@@ -1298,40 +1343,26 @@ export const register: Register = on => {
           </Text>
         )}
         {isLooking && <Text color="suggestion">◌ Looking for tickets…</Text>}
-        {!isLooking && progress === null && !isUndecided && <Text dimColor>○ No tickets here. /sidekick-rescan looks again.</Text>}
-        {progress !== null && (
-          <Box flexDirection="column" marginTop={trailOn(LANDS) ? 0 : 1}>
-            {/* The bolt's second segment takes the blank line above the list, so nothing moves. */}
-            {trailOn(LANDS) && (
-              <Text bold color="warning">
-                {BOLT}
-              </Text>
-            )}
-            {start > 0 && <Text dimColor>↑ {start} earlier</Text>}
-            {rows.slice(start, end).map((row, index) => {
-              const isNext = start + index === focus
-              const was = step === -1 ? undefined : strike?.rows.get(row.title)
-              if (row.state === 'done' && was !== undefined && strike !== undefined && isStruck(step, strike.steps)) {
-                return struckRow(row.title, was, step, columns)
-              }
-
-              return (
-                <Text wrap="truncate-end" dimColor={row.state === 'done'} strikethrough={row.state === 'done'} bold={isNext}>
-                  <Text color={row.state === 'done' ? 'success' : isNext ? 'claude' : 'text'}>{GLYPH[row.state]} </Text>
-                  {shortTitle(row.title)}
-                </Text>
-              )
-            })}
-            {end < rows.length && <Text dimColor>↓ {rows.length - end} more</Text>}
-          </Box>
-        )}
-        {sets.length > 1 && !isListed && (
-          <Box marginTop={1}>
-            <Text dimColor wrap="truncate-end">
-              {isUndecided ? `${sets.length} ticket sets · /sidekick-pick` : `${sets.length} sets · /sidekick-pick`}
-            </Text>
-          </Box>
-        )}
+        <Box key="tabs" flexDirection="row" gap={2} marginTop={1}>
+          {/* The tab shown is marked by its glyph as well as its strength, so it never rests on colour. */}
+          <Button
+            key="tab-inbox"
+            plain
+            hotkey="i"
+            dimColor={tab !== 'inbox'}
+            label={`${tab === 'inbox' ? '●' : '○'} Inbox${inbox.needsYou.length > 0 ? ` · ${inbox.needsYou.length}` : ''}`}
+            onPress={() => quietly(chooseTab($, 'inbox'), $)}
+          />
+          <Button
+            key="tab-tickets"
+            plain
+            hotkey="t"
+            dimColor={tab !== 'tickets'}
+            label={`${tab === 'tickets' ? '●' : '○'} Tickets`}
+            onPress={() => quietly(chooseTab($, 'tickets'), $)}
+          />
+        </Box>
+        {/* The picker asks for a set whichever tab shows. */}
         {sets.length > 1 && isListed && (
           <Box flexDirection="column" marginTop={1}>
             <Text bold>Pick a ticket set:</Text>
@@ -1357,10 +1388,59 @@ export const register: Register = on => {
             )}
           </Box>
         )}
-        {opened !== undefined && detailView(opened)}
-        {opened === undefined && (
+        {tab === 'tickets' ? (
+          <Box key="tickets" flexDirection="column">
+            {!isLooking && progress === null && !isUndecided && (
+              <Box marginTop={1}>
+                <Text dimColor>○ No tickets here. /sidekick-rescan looks again.</Text>
+              </Box>
+            )}
+            {progress !== null && (
+              <Box flexDirection="column" marginTop={trailOn(LANDS) ? 0 : 1}>
+                {/* The bolt's second segment takes the blank line above the list, so nothing moves. */}
+                {trailOn(LANDS) && (
+                  <Text bold color="warning">
+                    {BOLT}
+                  </Text>
+                )}
+                {start > 0 && <Text dimColor>↑ {start} earlier</Text>}
+                {rows.slice(start, end).map((row, index) => {
+                  const isNext = start + index === focus
+                  const was = step === -1 ? undefined : strike?.rows.get(row.title)
+                  if (row.state === 'done' && was !== undefined && strike !== undefined && isStruck(step, strike.steps)) {
+                    return struckRow(row.title, was, step, columns)
+                  }
+
+                  return (
+                    <Text wrap="truncate-end" dimColor={row.state === 'done'} strikethrough={row.state === 'done'} bold={isNext}>
+                      <Text color={row.state === 'done' ? 'success' : isNext ? 'claude' : 'text'}>{GLYPH[row.state]} </Text>
+                      {shortTitle(row.title)}
+                    </Text>
+                  )
+                })}
+                {end < rows.length && <Text dimColor>↓ {rows.length - end} more</Text>}
+              </Box>
+            )}
+            {sets.length > 1 && !isListed && (
+              <Box marginTop={1}>
+                <Text dimColor wrap="truncate-end">
+                  {isUndecided ? `${sets.length} ticket sets · /sidekick-pick` : `${sets.length} sets · /sidekick-pick`}
+                </Text>
+              </Box>
+            )}
+            {progress !== null && (
+              <Box marginTop={1}>
+                <Text dimColor wrap="truncate-start">
+                  {progress.source}
+                </Text>
+              </Box>
+            )}
+          </Box>
+        ) : opened !== undefined ? (
+          // The detail takes the inbox's place in the Inbox tab.
+          detailView(opened)
+        ) : (
           <Box key="inbox" flexDirection="column" marginTop={1}>
-            <Text dimColor>{'─'.repeat(columns)}</Text>
             {isInboxEmpty && <Text dimColor>{fit('Nothing in the inbox yet.', columns)}</Text>}
             {inbox.needsYou.length > 0 && (
               <Box flexDirection="column">
@@ -1379,9 +1459,9 @@ export const register: Register = on => {
                 })}
               </Box>
             )}
-            {inbox.working.length > 0 && (
+            {isWorking && (
               <Box flexDirection="column" marginTop={inbox.needsYou.length + inbox.review.length > 0 ? 1 : 0}>
-                {heading(`WORKING · ${inbox.working.length} ${inbox.working.length === 1 ? 'ticket' : 'tickets'}`, 'claude')}
+                {heading(workingHeading(inbox.working.length, agents), 'claude')}
                 {inbox.working.map((one, at) => {
                   const mark: Mark = { glyph: GLYPH.active, color: 'claude' }
 
@@ -1392,17 +1472,10 @@ export const register: Register = on => {
               </Box>
             )}
             {inbox.reviewed > 0 && (
-              <Box marginTop={inbox.needsYou.length + inbox.review.length + inbox.working.length > 0 ? 1 : 0}>
+              <Box marginTop={inbox.needsYou.length + inbox.review.length > 0 || isWorking ? 1 : 0}>
                 <Text dimColor>{fit(`REVIEWED · ${inbox.reviewed}`, columns)}</Text>
               </Box>
             )}
-          </Box>
-        )}
-        {progress !== null && (
-          <Box marginTop={1}>
-            <Text dimColor wrap="truncate-start">
-              {progress.source}
-            </Text>
           </Box>
         )}
       </Box>

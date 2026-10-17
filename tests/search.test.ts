@@ -1,6 +1,6 @@
 import { expect, mock } from 'claude-code/testing'
 import type { Reply } from './world'
-import { addSet, answered, failed, PANE, RECIPE, RUN, SURFACES, test, ticket, world } from './world'
+import { addSet, answered, failed, ON_TICKETS, PANE, RECIPE, RUN, SURFACES, test, ticket, world } from './world'
 
 const ROOT = '/work/shop'
 const NONE_FOUND = 'No tickets found. Try a hint: /sidekick-rescan tickets are in docs/tasks'
@@ -23,7 +23,7 @@ const FAILURES: [string, () => Reply][] = [
 for (const [how, failure] of FAILURES)
   test(`a search whose model call ${how} is not remembered, and the next refresh searches again`, async ($, on) => {
     const clock = mock.clock(on)
-    mock.store(on)
+    mock.store(on, ON_TICKETS)
     const w = world(on, ROOT)
     addSet(w, ROOT, 'checkout', CHECKOUT, 5)
     w.answer = failure
@@ -54,7 +54,7 @@ for (const [how, failure] of FAILURES)
 
 test('a stored recipe that stops finding tickets leads to exactly one new search, whose result replaces it', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = world(on, ROOT)
   addSet(w, ROOT, 'checkout', CHECKOUT, 5)
   w.answer = () => answered(RECIPE)
@@ -94,7 +94,7 @@ test('a stored recipe that stops finding tickets leads to exactly one new search
 
 test('a project with no listable files is recorded as having no tickets without asking the model', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = world(on, ROOT, {
     [ROOT]: [
       { name: 'logo.png', kind: 'file' },
@@ -121,7 +121,7 @@ test('a project with no listable files is recorded as having no tickets without 
 
 test('a rescan asked for while a search runs is refused, and no second search starts', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = world(on, ROOT)
   addSet(w, ROOT, 'checkout', CHECKOUT, 5)
   let release: (reply: Reply) => void = () => undefined
@@ -154,7 +154,7 @@ test('a rescan asked for while a search runs is refused, and no second search st
 
 test('a recipe that points outside the project is refused, and the project is treated as having no tickets', async ($, on) => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = world(on, ROOT)
   addSet(w, ROOT, 'checkout', CHECKOUT, 5)
   // Tickets the bad recipes would reach, were they followed.

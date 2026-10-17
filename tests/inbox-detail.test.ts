@@ -218,13 +218,23 @@ test('the detail wraps to the pane and is drawn whole however tall, for the pane
   expect(await linesIn(ui, 'detail')).toContain(long)
   // Every line of text wraps rather than being cut at the pane's edge.
   const texts = (await ui.find({ key: 'detail' }))?.children ?? []
-  // The rule above the detail is left out: it is as wide as the pane.
-  const wraps = (texts as { type?: string; props?: { wrap?: string } }[])
-    .filter(one => one.type === 'Text')
-    .slice(1)
-    .map(one => one.props?.wrap)
+  const wraps = (texts as { type?: string; props?: { wrap?: string } }[]).filter(one => one.type === 'Text').map(one => one.props?.wrap)
   expect(wraps.length).toBeGreaterThan(0)
   expect(wraps.every(wrap => wrap === 'wrap')).toBe(true)
   await ui.press({ key: 'back' })
+  await ui.unmount()
+})
+
+test("the detail takes the inbox's place in the Inbox tab: Tickets shows the list, and Inbox brings the detail back", async ($, on) => {
+  await start($, on)
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'open-ask-1' })
+  await ui.press({ key: 'tab-tickets' })
+  expect(await ui.find({ key: 'detail' })).toBeUndefined()
+  expect(await ui.find({ key: 'tickets' })).toBeDefined()
+  await ui.press({ key: 'tab-inbox' })
+  expect((await linesIn(ui, 'detail')).slice(0, 2)).toEqual(['← Back', '? 02 Payment'])
+  await ui.press({ key: 'back' })
+  expect((await linesIn(ui, 'inbox')).slice(0, 4)).toEqual(INBOX)
   await ui.unmount()
 })

@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import type { Engine, MockClock, Mounted as MountedPane } from 'claude-code/testing'
 import { expect, mock } from 'claude-code/testing'
 import type { World } from './world'
-import { addSet, answered, PANE, RECIPE, RUN, test, ticket, world } from './world'
+import { addSet, answered, ON_TICKETS, PANE, RECIPE, RUN, test, ticket, world } from './world'
 
 // When a ticket finishes, the critter zaps and a bolt strikes the ticket's row: the row charges,
 // the bolt runs down from the critter, the row flashes, the strike-through burns across it, and
@@ -31,7 +31,7 @@ const start = async (
   bodyRows = 30,
 ): Promise<{ w: World; clock: MockClock; ui: Mounted; blits: string[] }> => {
   const clock = mock.clock(on)
-  mock.store(on)
+  mock.store(on, ON_TICKETS)
   const w = world(on, ROOT)
   addSet(w, ROOT, 'checkout', tickets, 5)
   w.answer = () => answered(RECIPE)
@@ -101,12 +101,12 @@ test('a finished ticket is struck: charge, bolt from the critter, flash, burning
   await clock.advance(2 * STEP)
   const done = await rowOf(ui, 'Payment')
   expect(done).toMatchObject({ text: '✓ Payment', props: { strikethrough: true, dimColor: true } })
-  // The picture, without the handles a Button's press is kept under: each drawing hands out new ones.
-  const picture = async (): Promise<string> => JSON.stringify(await ui.drawn()).replace(/"handle":\d+/g, '')
-  const drawn = await picture()
+  // A Button's press handle is new at every render; what is drawn is the rest.
+  const unpressed = (key: string, value: unknown): unknown => (key === 'press' ? undefined : value)
+  const drawn = JSON.stringify(await ui.drawn(), unpressed)
   const painted = blits.length
   await clock.advance(5000)
-  expect(await picture()).toBe(drawn)
+  expect(JSON.stringify(await ui.drawn(), unpressed)).toBe(drawn)
   expect(blits.length).toBe(painted)
   expect(await ui.find({ type: 'Text', text: /^━+─+$/ })).toBeDefined()
   await ui.unmount()
