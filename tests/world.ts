@@ -90,6 +90,12 @@ export type World = {
   hasKeyboard: boolean
   /** Every toast the mod popped, in order. */
   toasts: { text: string; timeoutMs?: number }[]
+  /** The prompt box's draft; a test types by adding to it, and `$.prompt.fill` writes it. */
+  draft: string
+  /** Set to stand in a dialog holding the keys (or a headless run): the box takes nothing. */
+  isPromptHeld: boolean
+  /** Every prompt that reached the bottom of `prompt.submit`, with the context the hooks attached. */
+  submitted: { text: string; context: readonly string[] | undefined }[]
 }
 
 /** Stands beneath the mod as a project at `root` (spelled as the host spells it). */
@@ -116,6 +122,9 @@ export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}):
     isShown: true,
     hasKeyboard: false,
     toasts: [],
+    draft: '',
+    isPromptHeld: false,
+    submitted: [],
   }
   on('session.root', () => {
     if (w.isRootGone) throw new Error('the session has no root')
@@ -159,6 +168,18 @@ export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}):
     w.toasts.push({ text: e.text, timeoutMs: e.timeoutMs })
 
     return { value: undefined }
+  })
+  on('prompt.read', () => ({ value: { text: w.draft, cursor: w.draft.length } }))
+  on('prompt.fill', (_, e) => {
+    if (w.isPromptHeld) return { isFilled: false, refusal: 'dialog', text: w.draft, cursor: w.draft.length }
+    w.draft = e.mode === 'replace' ? e.text : `${w.draft}${e.text}`
+
+    return { isFilled: true, text: w.draft, cursor: w.draft.length }
+  })
+  on('prompt.submit', (_, e) => {
+    w.submitted.push({ text: e.text, context: e.context })
+
+    return { text: e.text, context: e.context }
   })
   on('ui.log', () => ({ value: undefined }))
   on('ui.open', (_, e) => {

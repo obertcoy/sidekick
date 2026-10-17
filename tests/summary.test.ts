@@ -38,7 +38,7 @@ const expectSummary = async ($: Engine, store: Store): Promise<void> => {
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ type: 'Text', text: 'NEEDS YOU · 1' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '? Pick a payment provider?' })).toBeDefined()
+    expect(await ui.find({ type: 'Button', text: '? Pick a payment provider?' })).toBeDefined()
     // A note is a line of history, not news for the inbox.
     expect(await ui.find({ type: 'Text', text: 'Built the cart.' })).toBeUndefined()
     expect(await ui.find({ type: 'Text', text: 'Dropped the cart.' })).toBeUndefined()
@@ -209,8 +209,8 @@ test('items survive the next turn: the pane shows the new change of direction an
   expect(w.asked[1]).toContain('Pick a payment provider?')
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: 'NEEDS YOU · 2' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '? Pick a payment provider?' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '! Dropped the cart.' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', text: '? Pick a payment provider?' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', text: '! Dropped the cart.' })).toBeDefined()
   await ui.unmount()
 })
 
@@ -259,7 +259,7 @@ test('a short line longer than the pane is cut with an ellipsis when drawn, and 
   expect((await inboxOf(store))?.items.map(item => item.short)).toEqual([done, question])
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   // 40 columns less the padding: 38, of which the glyph and its space take 2, and the ▸ that opens its detail with its space 2.
-  expect(await ui.find({ type: 'Text', text: /^\? Keep timed-out payments pending f…$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Button', text: /^\? Keep timed-out payments pending f…$/ })).toBeDefined()
   await ui.unmount()
 })
 

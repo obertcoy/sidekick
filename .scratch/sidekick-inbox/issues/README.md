@@ -13,7 +13,7 @@ This track runs in parallel with `../../sidekick-looks/issues/` once that set's 
 | 5 | 05 Items move on by themselves | 01, 04 | done |
 | 6 | 06 Working counts running agents | 02 | done |
 | 7 | 07 The sidekick's own cost | — (after looks 13) | done |
-| 8 | 10 Reply from the inbox | 04, 05 | ready |
+| 8 | 10 Reply from the inbox | 04, 05 | done |
 | — | 08 Test results as evidence | 02 | later |
 | — | 09 Needs you and agent returned are moments | 05, looks 18 | later |
 

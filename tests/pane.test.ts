@@ -103,7 +103,7 @@ test('a rescan finds the tickets once, and the pane then shows progress and the 
   expect(asked.length).toBe(2)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: 'NEEDS YOU · 1' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '? 02 Payment' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', text: '? 02 Payment' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '  Pick a payment provider.' })).toBeDefined()
   await ui.unmount()
 

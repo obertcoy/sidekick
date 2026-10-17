@@ -301,6 +301,35 @@ export const markReviewed = (held: { inbox: Inbox; reviewed: Reviewed }, opened:
   return { ...held, inbox: { ...held.inbox, items } }
 }
 
+// Replying from the inbox: a question is tagged in the prompt box, and the message sent carries it as hidden context.
+
+/** The tag a question gets in the prompt box: its ticket as the inbox shows it, or its short line when it has no ticket. */
+export const tagOf = (item: { ticket: string | null; short: string }): string => `${item.ticket === null ? item.short : inboxTitle(item.ticket)}: `
+
+/** Whether the draft holds the tag at the start of a line. */
+export const hasTag = (draft: string, tag: string): boolean => draft.split('\n').some(line => line.startsWith(tag.trimEnd()))
+
+/** What to add after the draft to tag it: the tag on a line of its own, after a newline unless the draft is empty or ends with one. */
+export const tagAddition = (draft: string, tag: string): string => (draft === '' || draft.endsWith('\n') ? tag : `\n${tag}`)
+
+/** The draft without the tag's line when nothing is typed after the tag; the draft as it was otherwise. */
+export const withoutEmptyTag = (draft: string, tag: string): string => {
+  const lines = draft.split('\n')
+  const at = lines.findIndex(line => line.trimEnd() === tag.trimEnd())
+  if (at === -1) return draft
+  lines.splice(at, 1)
+
+  return lines.join('\n')
+}
+
+/** What Claude is told, out of sight, about a tagged question: which it is, and its whole explanation. */
+export const contextOf = (item: Pick<Item, 'ticket' | 'short' | 'long'>): string =>
+  [
+    `The developer's message answers a question of yours, tagged "${tagOf({ ticket: item.ticket?.title ?? null, short: item.short }).trimEnd()}" in the message; their answer follows the tag.`,
+    `Question: ${item.short}`,
+    ...(item.long === '' ? [] : [`Explanation: ${item.long}`]),
+  ].join('\n')
+
 /** The reviewed tickets still done in their files; one that is not done any more is forgotten, so it comes back to review once done again. */
 export const tidyReviewed = (reviewed: Reviewed, tickets: readonly FileTicket[]): string[] =>
   reviewed.filter(key => tickets.some(ticket => ticket.isDone && keyOf(ticket) === key))

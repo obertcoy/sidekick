@@ -12,8 +12,10 @@ import {
   addItems,
   closableOf,
   closeItems,
+  contextOf,
   detailOf,
   fit,
+  hasTag,
   inboxTitle,
   markReviewed,
   parseClosed,
@@ -23,8 +25,11 @@ import {
   readSince,
   reviewLine,
   sectionsOf,
+  tagAddition,
+  tagOf,
   tidy,
   tidyReviewed,
+  withoutEmptyTag,
   workingHeading,
   workingLine,
 } from './inbox'
@@ -646,9 +651,46 @@ const openDetail = async ($: Dollar, of: Opened, mark: Mark, isMarkable: boolean
   await $.ui.scroll({ to: { key: 'detail' }, in: PANE, block: 'start' }).catch(() => undefined)
 }
 
+// Replying from the inbox: the questions tagged in the prompt box, by item id, until the message is sent.
+const tagged = new Map<number, { tag: string; context: string }>()
+
+/**
+ * Opens a NEEDS YOU row's detail and tags its question in the prompt, on a line of its own after the draft; a question
+ * the draft already holds a tag for is not tagged twice. A box that takes nothing (a dialog, headless) leaves only the detail.
+ */
+const replyTo = async ($: Dollar, item: InboxView['needsYou'][number], mark: Mark): Promise<void> => {
+  await openDetail($, { item: item.id }, mark, true)
+  if (opened === undefined) return
+  const held = (await inboxOf($, await rootOf($))).items.find(one => one.id === item.id)
+  if (held === undefined) return
+  const tag = tagOf(item)
+  const asked = { tag, context: contextOf(held) }
+  const { text } = await $.prompt.read()
+  if (hasTag(text, tag)) {
+    tagged.set(item.id, asked)
+
+    return
+  }
+  const filled = await $.prompt.fill({ text: tagAddition(text, tag), mode: 'append' })
+  if (filled.isFilled) tagged.set(item.id, asked)
+}
+
+/** Going Back from a question's detail: its tag goes from the prompt when nothing is typed after it. */
+const untagIfEmpty = async ($: Dollar, id: number): Promise<void> => {
+  const asked = tagged.get(id)
+  if (asked === undefined) return
+  const { text } = await $.prompt.read()
+  const rest = withoutEmptyTag(text, asked.tag)
+  if (rest === text) return
+  tagged.delete(id)
+  await $.prompt.fill({ text: rest, mode: 'replace' })
+}
+
 /** Back to the inbox, its window where it stood when the detail opened. */
 const closeDetail = async ($: Dollar): Promise<void> => {
+  const left = opened
   opened = undefined
+  if (left !== undefined && 'item' in left.of) await untagIfEmpty($, left.of.item)
   scrollTo = backOffset
   $.ui.invalidate('ui.render')
   await $.ui.scroll({ to: 'start', in: PANE }).catch(() => undefined)
@@ -1145,6 +1187,14 @@ export const register: Register = on => {
     return started
   })
 
+  // The message sent carries each question tagged in it as hidden context, so Claude knows which answer belongs to which.
+  on('prompt.submit', async (_, e, next) => {
+    const context = [...tagged.values()].filter(one => hasTag(e.text, one.tag)).map(one => one.context)
+    tagged.clear()
+
+    return next(context.length === 0 ? e : { ...e, context: [...(e.context ?? []), ...context] })
+  })
+
   on('turn.complete', async ($, e, next) => {
     const ended = await next(e)
     // A subagent's run is one turn, whatever ended it.
@@ -1259,17 +1309,19 @@ export const register: Register = on => {
         {fit(text, columns)}
       </Text>
     )
-    // A NEEDS YOU row opens its detail from the ▸ at its end (a click on the row itself is the reply's, ticket 10).
+    // A click on a NEEDS YOU row opens its detail and tags the prompt for a reply; the ▸ at its end opens the detail alone.
     const asked = (one: InboxView['needsYou'][number]) => {
       const mark = ASKED[one.kind]
 
       return (
         <Box key={`ask-${one.id}`} flexDirection="column">
           <Box flexDirection="row" justifyContent="space-between">
-            <Text>
-              <Text color={mark.color}>{mark.glyph} </Text>
-              {fit(one.ticket === null ? one.short : inboxTitle(one.ticket), columns - 4)}
-            </Text>
+            <Button
+              key={`reply-ask-${one.id}`}
+              plain
+              label={`${mark.glyph} ${fit(one.ticket === null ? one.short : inboxTitle(one.ticket), columns - 4)}`}
+              onPress={() => quietly(replyTo($, one, mark), $)}
+            />
             <Button key={`open-ask-${one.id}`} plain label="▸" onPress={() => quietly(openDetail($, { item: one.id }, mark, true), $)} />
           </Box>
           {/* An item of no ticket is its short line alone; one of a ticket has the ticket above it. */}
