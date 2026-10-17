@@ -1,6 +1,7 @@
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 import { expect, mock } from 'claude-code/testing'
+import { changeLook } from '../hooks/look'
 import { listRoom, PANE_CHROME_ROWS, viewIn } from '../hooks/sprite'
 import { classic } from '../hooks/sprite/characters/classic'
 import { foxkit } from '../hooks/sprite/characters/foxkit'
@@ -340,3 +341,47 @@ for (const bodyRows of [8, 12, 30]) {
     await ui.unmount()
   })
 }
+
+test('a character taller than the sprite has rows for makes the ticket list yield, and the list rows are pinned for it', async () => {
+  // A 30-row pane: the foxkit leaves the list its 14 rows; a 24-pixel character needs 13 rows of sprite, so the list has 9.
+  const rows = 30
+  const listFor = (character: Character): number => listRoom(rows, viewIn({ columns: 40, rows }, { character, outfit: {}, background: null }).rows)
+  expect(listFor(foxkit)).toBe(14)
+  expect(listFor(classic)).toBe(14)
+  expect(listFor(block(15))).toBe(14)
+  expect(viewIn({ columns: 40, rows }, { character: block(24), outfit: {}, background: null }).rows).toBe(13)
+  expect(listFor(block(24))).toBe(9)
+})
+
+test('the look command refuses a capped background for a character too tall for it, naming the cap, and accepts one that fits', async () => {
+  const backgrounds = BACKGROUNDS as Record<string, Background>
+  const characters = CHARACTERS as Record<string, Character>
+  const dusk = BACKGROUNDS.dusk
+  if (dusk === undefined) throw new Error('no dusk')
+  backgrounds.low = { ...dusk, name: 'low', heightCap: 20 }
+  characters.block24 = block(24)
+  try {
+    const refused = changeLook('character=block24 background=low', {}, 'global')
+    expect(refused.isSaved).toBe(false)
+    expect(refused.text).toContain("the look's height cap is 20")
+    expect(refused.text).toContain('Nothing was changed.')
+    expect(changeLook('character=foxkit background=low', {}, 'global').isSaved).toBe(true)
+    // The character may come from the other layer.
+    expect(changeLook('character=block24', { background: 'low' }, 'global').isSaved).toBe(false)
+    setSavedLook({ character: 'block24' })
+    expect(changeLook('background=low', {}, 'project').isSaved).toBe(false)
+    expect(changeLook('background=dusk', {}, 'project').isSaved).toBe(true)
+  } finally {
+    setSavedLook({})
+    delete backgrounds.low
+    delete characters.block24
+  }
+})
+
+test('an anchor that is present but undefined is no anchor: the stage, the camera and a frame all work without it', async () => {
+  const holed = { ...foxkit, name: 'holed', anchors: { ...foxkit.anchors, paw: undefined } } as unknown as Character
+  const loaded = defineCharacter(holed)
+  expect(stageFor(loaded)).toEqual(stageFor(foxkit))
+  expect(offStage({ character: loaded, outfit: {}, background: null }, ANIMATIONS.idle, 0)).toEqual([])
+  expect(render({ character: loaded, outfit: {}, background: null }, ANIMATIONS.idle, 0).length).toBeGreaterThan(0)
+})

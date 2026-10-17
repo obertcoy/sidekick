@@ -1,3 +1,4 @@
+import { heightRefusal } from './sprite/compose'
 import { currentLook, droppedOf, projectLook, savedLook } from './sprite/look-in-use'
 import { ACCESSORIES, BACKGROUNDS, CHARACTERS, DEFAULT_LOOK, found, slotRefusal } from './sprite/registry'
 import type { Look, LookPart, SavedLook, Slot } from './sprite/types'
@@ -150,6 +151,22 @@ export const changeLook = (args: string, held: SavedLook, target: Target): LookC
       outfit[part] = name
     }
     done.push(`${part}=${name}`)
+  }
+  // A background's height cap must hold for the character that will be drawn on it (the other layer's choice where this one sets none).
+  if (refusals.length === 0 && (character !== held.character || background !== held.background)) {
+    const isOwn = target === 'project'
+    const named = isOwn ? (character ?? savedLook().character) : (projectLook().character ?? character)
+    const behind = isOwn
+      ? background !== undefined
+        ? background
+        : savedLook().background
+      : projectLook().background !== undefined
+        ? projectLook().background
+        : background
+    const cap = behind == null ? undefined : found(BACKGROUNDS, behind)?.heightCap
+    const drawn = found(CHARACTERS, named ?? DEFAULT_LOOK.character)
+    const refusal = cap === undefined || drawn === undefined ? undefined : heightRefusal(drawn, cap)
+    if (refusal !== undefined) refusals.push(`The background "${behind}" cannot go behind this character: ${refusal}`)
   }
   if (refusals.length > 0) return { isSaved: false, text: [...refusals, 'Nothing was changed.'].join('\n') }
   const next: SavedLook = {

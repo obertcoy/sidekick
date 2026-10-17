@@ -47,6 +47,8 @@ const extentOf = (character: Character): { readonly left: number; readonly right
     }
   }
   for (const anchor of Object.values(character.anchors)) {
+    // An anchor present but undefined is no anchor.
+    if (anchor === undefined) continue
     for (const point of Array.isArray(anchor) ? anchor : [anchor]) xs.push(point.x)
   }
 
@@ -259,7 +261,9 @@ const moved = (point: Point, by: Point): Point => ({ x: point.x + by.x, y: point
 /** Anchors moved from the character's own pixels onto the stage. */
 const placed = (anchors: Anchors, by: Point): Anchors =>
   Object.fromEntries(
-    Object.entries(anchors).map(([name, anchor]) => [name, 'x' in anchor ? moved(anchor, by) : anchor.map(point => moved(point, by))]),
+    Object.entries(anchors)
+      .filter(([, anchor]) => anchor !== undefined)
+      .map(([name, anchor]) => [name, 'x' in anchor ? moved(anchor, by) : anchor.map(point => moved(point, by))]),
   ) as unknown as Anchors
 
 /**

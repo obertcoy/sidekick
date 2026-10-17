@@ -1273,6 +1273,8 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     // The host draws the pane when it is shown, so a render is also the news that it is, before the picture is read.
     await syncShown($)
+    // Whatever this render draws, the repaints between renders look through the pane's size as it is now.
+    paneSeen = { columns: e.props.bodyColumns, rows: e.props.scroll.bodyRows }
     const table = $.ui.resolve(e)
     const { Box, Text, Button } = table
     // The mobile app draws no Select yet, so only the tables that declare one offer it.
@@ -1283,8 +1285,7 @@ export const register: Register = on => {
     const rows = progress?.rows ?? []
     const focus = rows.findIndex(row => row.state !== 'done' && row.title === progress?.next)
     // The camera looks at the stage through what the pane can spare; the list has the rows the header, the bar, the tabs and the lines around it leave.
-    const pane = { columns: e.props.bodyColumns, rows: e.props.scroll.bodyRows }
-    paneSeen = pane
+    const pane = paneSeen
     const camera = viewIn(pane)
     const room = listRoom(pane.rows, camera.rows)
     const steady = windowOf(rows.length, Math.max(0, focus), room)
