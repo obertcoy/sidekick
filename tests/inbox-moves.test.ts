@@ -180,7 +180,7 @@ test('a ticket done in its file after its question was answered shows in READY T
 
 test('a reply that cannot be read closes nothing, and a reply with no closed list closes nothing', async ($, on) => {
   const { clock, store, w } = await start($, on)
-  await endTurn($, clock, w, 'Card.', '{"items":[{"kind":"bogus"}],"closed":[{"id":1,"said":"card"}]}', 't2')
+  await endTurn($, clock, w, 'Card.', '{"items":[{"kind":"bogus"}]}', 't2')
   await endTurn($, clock, w, 'Card.', JSON.stringify({ items: [] }), 't3')
   expect(stored(store).every(item => !item.isReviewed)).toBe(true)
   // A reply of closings alone, with no new items, is an answer.

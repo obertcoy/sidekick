@@ -10,6 +10,7 @@ import type { Detail, FileTicket, Inbox, Opened, TicketRef } from './inbox'
 import {
   activeSince,
   addItems,
+  askedOf,
   closableOf,
   closeItems,
   contextOf,
@@ -418,14 +419,21 @@ const filesOf = async ($: Dollar, root: string, recipe: Recipe): Promise<FileInf
   return all.filter((file, at) => all.findIndex(one => one.path === file.path) === at)
 }
 
-const ticketsOf = async ($: Dollar, root: string, place: Place, file: FileInfo): Promise<Ticket[]> => {
+/** `onUnread` is called when the file could not be read: what is returned is then a guess from no text, and is not kept. */
+const ticketsOf = async ($: Dollar, root: string, place: Place, file: FileInfo, onUnread?: () => void): Promise<Ticket[]> => {
   const key = `${root}/${file.path}`
   const held = parsed.get(key)
   if (held !== undefined && held.mtimeMs === file.mtimeMs) return held.tickets
-  const text = await $.fs.read(key).catch(() => '')
+  let isRead = true
+  const text = await $.fs.read(key).catch(() => {
+    isRead = false
+
+    return ''
+  })
   const name = file.path.slice(file.path.lastIndexOf('/') + 1)
   const tickets = place.kind === 'files' ? [parseTicketFile(name, text, place)] : parseChecklist(text)
-  parsed.set(key, { mtimeMs: file.mtimeMs, tickets })
+  if (isRead) parsed.set(key, { mtimeMs: file.mtimeMs, tickets })
+  else onUnread?.()
 
   return tickets
 }
@@ -570,12 +578,24 @@ const sinceKey = (root: string): string => `active-since:${root}`
 const reviewedKey = (root: string): string => `reviewed:${root}`
 
 /** Every ticket of the sets as its file says, the sets in the order given. */
-const fileTicketsOf = async ($: Dollar, root: string, sets: TicketSet[]): Promise<FileTicket[]> =>
+const fileTicketsOf = async ($: Dollar, root: string, sets: TicketSet[], unread?: Set<string>): Promise<FileTicket[]> =>
   (
     await Promise.all(
-      sets.map(async set => (await Promise.all(set.files.map(file => ticketsOf($, root, set.place, file)))).flat().map(one => ({ ...one, set: set.id }))),
+      sets.map(async set =>
+        (await Promise.all(set.files.map(file => ticketsOf($, root, set.place, file, () => unread?.add(set.id))))).flat().map(one => ({ ...one, set: set.id })),
+      ),
     )
   ).flat()
+
+// Writes to the inbox are run one after another, so two that end together never undo one another.
+let inboxWrites: Promise<unknown> = Promise.resolve()
+
+const exclusively = <T,>(job: () => Promise<T>): Promise<T> => {
+  const run = inboxWrites.then(job, job)
+  inboxWrites = run.catch(() => undefined)
+
+  return run
+}
 
 /** Every ticket of the sets, as the inbox names it. */
 const ticketRefsOf = async ($: Dollar, root: string, sets: TicketSet[]): Promise<TicketRef[]> =>
@@ -588,21 +608,30 @@ const ticketRefsOf = async ($: Dollar, root: string, sets: TicketSet[]): Promise
  */
 const tidyInbox = async ($: Dollar, root: string, sets: TicketSet[]): Promise<void> => {
   if (sets.length === 0) return
-  const tickets = await fileTicketsOf($, root, sets)
+  // A set with a file that could not be read now (one being written) is not known to have lost anything: it is left as it was.
+  const unread = new Set<string>()
+  const tickets = (await fileTicketsOf($, root, sets, unread)).filter(one => !unread.has(one.set))
+  const isUnread = (key: string): boolean => [...unread].some(set => key.startsWith(`${set}\n`))
   const held = readSince(await $.store.get(sinceKey(root)))
-  const since = activeSince(
-    held,
-    tickets.filter(one => one.isActive),
-    await $.clock.now(),
-  )
+  const since = {
+    ...activeSince(
+      held,
+      tickets.filter(one => one.isActive),
+      await $.clock.now(),
+    ),
+    ...Object.fromEntries(Object.entries(held).filter(([key]) => isUnread(key))),
+  }
   if (JSON.stringify(since) !== JSON.stringify(held)) await $.store.set(sinceKey(root), since)
   const reviewed = readReviewed(await $.store.get(reviewedKey(root)))
-  const stillDone = tidyReviewed(reviewed, tickets)
+  const stillDone = [...tidyReviewed(reviewed, tickets), ...reviewed.filter(isUnread)]
   if (stillDone.length !== reviewed.length) await $.store.set(reviewedKey(root), stillDone)
-  if ((await $.store.get(inboxKey(root))) === undefined) return
-  const inbox = await inboxOf($, root)
-  const kept = tidy(inbox, tickets)
-  if (kept.items.length !== inbox.items.length) await $.store.set(inboxKey(root), kept)
+  await exclusively(async () => {
+    if ((await $.store.get(inboxKey(root))) === undefined) return
+    const inbox = await inboxOf($, root)
+    const live = [...tickets, ...inbox.items.flatMap(item => (item.ticket !== null && unread.has(item.ticket.set) ? [item.ticket] : []))]
+    const kept = tidy(inbox, live)
+    if (kept.items.length !== inbox.items.length) await $.store.set(inboxKey(root), kept)
+  })
 }
 
 /** The inbox the pane draws: the items, and the tickets of the active set (none when no set is active). */
@@ -639,16 +668,18 @@ const ticketFileOf = async ($: Dollar, root: string, ticket: TicketRef): Promise
  * Opens an entry's detail in the inbox's place, its goal read from the ticket's file now. `isMarkable`: the entry can
  * be marked reviewed (an open item, a ticket ready to review). Opening marks nothing.
  */
-const openDetail = async ($: Dollar, of: Opened, mark: Mark, isMarkable: boolean): Promise<void> => {
+const openDetail = async ($: Dollar, of: Opened, mark: Mark, isMarkable: boolean): Promise<boolean> => {
   const root = await rootOf($)
   const inbox = await inboxOf($, root)
   const ticket = 'ticket' in of ? of.ticket : (inbox.items.find(item => item.id === of.item)?.ticket ?? null)
   const detail = detailOf(inbox, of, ticket === null ? undefined : await ticketFileOf($, root, ticket))
-  if (detail === undefined) return
+  if (detail === undefined) return false
   backOffset = inboxOffset
   opened = { of, detail: { ...detail, isReviewable: detail.isReviewable && isMarkable }, mark }
   $.ui.invalidate('ui.render')
   await $.ui.scroll({ to: { key: 'detail' }, in: PANE, block: 'start' }).catch(() => undefined)
+
+  return true
 }
 
 // Replying from the inbox: the questions tagged in the prompt box, by item id, until the message is sent.
@@ -659,12 +690,13 @@ const tagged = new Map<number, { tag: string; context: string }>()
  * the draft already holds a tag for is not tagged twice. A box that takes nothing (a dialog, headless) leaves only the detail.
  */
 const replyTo = async ($: Dollar, item: InboxView['needsYou'][number], mark: Mark): Promise<void> => {
-  await openDetail($, { item: item.id }, mark, true)
-  if (opened === undefined) return
-  const held = (await inboxOf($, await rootOf($))).items.find(one => one.id === item.id)
+  // Only a detail this call opened is the question's: an earlier one may still be shown when this item can no longer be opened.
+  if (!(await openDetail($, { item: item.id }, mark, true))) return
+  const inbox = await inboxOf($, await rootOf($))
+  const held = inbox.items.find(one => one.id === item.id)
   if (held === undefined) return
-  const tag = tagOf(item)
-  const asked = { tag, context: contextOf(held) }
+  const tag = tagOf(item, askedOf(inbox))
+  const asked = { tag, context: contextOf(held, tag) }
   const { text } = await $.prompt.read()
   if (hasTag(text, tag)) {
     tagged.set(item.id, asked)
@@ -702,9 +734,11 @@ const markOpened = async ($: Dollar): Promise<void> => {
   if (opened === undefined) return
   const { of } = opened
   const root = await rootOf($)
-  const marked = markReviewed({ inbox: await inboxOf($, root), reviewed: readReviewed(await $.store.get(reviewedKey(root))) }, of)
-  if ('item' in of) await $.store.set(inboxKey(root), marked.inbox)
-  else await $.store.set(reviewedKey(root), marked.reviewed)
+  await exclusively(async () => {
+    const marked = markReviewed({ inbox: await inboxOf($, root), reviewed: readReviewed(await $.store.get(reviewedKey(root))) }, of)
+    if ('item' in of) await $.store.set(inboxKey(root), marked.inbox)
+    else await $.store.set(reviewedKey(root), marked.reviewed)
+  })
   await refresh($)
   await closeDetail($)
 }
@@ -850,13 +884,19 @@ const summarize = async ($: Dollar, answer: string): Promise<void> => {
     maxTokens: 1000,
     timeoutMs: 60_000,
   })
-  const drafts = reply.isAnswered ? parseItems(reply.text, tickets) : undefined
+  const parsedDrafts = reply.isAnswered ? parseItems(reply.text, tickets) : undefined
+  // Read again, and written before anything else writes: a refresh may have tidied the inbox, or the developer marked
+  // an item reviewed, while the model was answering. Closures count whether or not the items could be read.
+  const drafts = await exclusively(async () => {
+    const now = await inboxOf($, root)
+    const closed = parseClosed(reply.isAnswered ? reply.text : '', now)
+    const written = parsedDrafts ?? []
+    if (written.length === 0 && closed.length === 0) return undefined
+    await $.store.set(inboxKey(root), addItems(closeItems(now, closed), written, await $.clock.now()))
+
+    return written
+  })
   if (drafts === undefined) return
-  // Read again: a refresh may have tidied the inbox, or the developer marked an item reviewed, while the model was answering.
-  const now = await inboxOf($, root)
-  const closed = parseClosed(reply.isAnswered ? reply.text : '', now)
-  if (drafts.length === 0 && closed.length === 0) return
-  await $.store.set(inboxKey(root), addItems(closeItems(now, closed), drafts, await $.clock.now()))
   for (const draft of drafts) {
     if (draft.kind === 'needs-you') $.ui.toast(`Needs you: ${draft.short}`, { timeoutMs: 8000 })
   }
@@ -1189,8 +1229,10 @@ export const register: Register = on => {
 
   // The message sent carries each question tagged in it as hidden context, so Claude knows which answer belongs to which.
   on('prompt.submit', async (_, e, next) => {
-    const context = [...tagged.values()].filter(one => hasTag(e.text, one.tag)).map(one => one.context)
-    tagged.clear()
+    // A tag is spent by the message that holds it; the others wait for the message that does.
+    const sent = [...tagged].filter(([, one]) => hasTag(e.text, one.tag))
+    const context = sent.map(([, one]) => one.context)
+    for (const [id] of sent) tagged.delete(id)
 
     return next(context.length === 0 ? e : { ...e, context: [...(e.context ?? []), ...context] })
   })

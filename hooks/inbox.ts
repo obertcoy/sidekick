@@ -304,7 +304,21 @@ export const markReviewed = (held: { inbox: Inbox; reviewed: Reviewed }, opened:
 // Replying from the inbox: a question is tagged in the prompt box, and the message sent carries it as hidden context.
 
 /** The tag a question gets in the prompt box: its ticket as the inbox shows it, or its short line when it has no ticket. */
-export const tagOf = (item: { ticket: string | null; short: string }): string => `${item.ticket === null ? item.short : inboxTitle(item.ticket)}: `
+export const tagOf = (
+  item: { id?: number; ticket: string | null; short: string },
+  open: readonly { id?: number; ticket: string | null; short: string }[] = [],
+): string => {
+  const base = item.ticket === null ? item.short : inboxTitle(item.ticket)
+  const sameBase = (one: { ticket: string | null; short: string }): boolean => (one.ticket === null ? one.short : inboxTitle(one.ticket)) === base
+  // With more than one open question on the ticket, the item's number tells them apart.
+  const isShared = item.id !== undefined && open.some(one => one.id !== item.id && sameBase(one))
+
+  return `${base}${isShared ? ` #${item.id}` : ''}: `
+}
+
+/** The open questions, blockers and changes of direction: what NEEDS YOU lists. */
+export const askedOf = (inbox: Inbox): { id: number; ticket: string | null; short: string }[] =>
+  inbox.items.filter(item => isAsking(item.kind) && !item.isReviewed).map(item => ({ id: item.id, ticket: item.ticket?.title ?? null, short: item.short }))
 
 /** Whether the draft holds the tag at the start of a line. */
 export const hasTag = (draft: string, tag: string): boolean => draft.split('\n').some(line => line.startsWith(tag.trimEnd()))
@@ -323,9 +337,9 @@ export const withoutEmptyTag = (draft: string, tag: string): string => {
 }
 
 /** What Claude is told, out of sight, about a tagged question: which it is, and its whole explanation. */
-export const contextOf = (item: Pick<Item, 'ticket' | 'short' | 'long'>): string =>
+export const contextOf = (item: Pick<Item, 'ticket' | 'short' | 'long'>, tag = tagOf({ ticket: item.ticket?.title ?? null, short: item.short })): string =>
   [
-    `The developer's message answers a question of yours, tagged "${tagOf({ ticket: item.ticket?.title ?? null, short: item.short }).trimEnd()}" in the message; their answer follows the tag.`,
+    `The developer's message answers a question of yours, tagged "${tag.trimEnd()}" in the message; their answer follows the tag.`,
     `Question: ${item.short}`,
     ...(item.long === '' ? [] : [`Explanation: ${item.long}`]),
   ].join('\n')

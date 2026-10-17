@@ -66,6 +66,8 @@ export type World = {
   tree: Record<string, Entry[]>
   /** File contents, by the same paths. */
   files: Record<string, string>
+  /** Paths whose read fails, as a file does while it is being written. */
+  unreadable: string[]
   /** Every prompt the small model was sent. */
   asked: string[]
   /** The system prompt of each of those calls, in the same order. */
@@ -107,6 +109,7 @@ export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}):
     endTurn: e => ({ text: e.answer }),
     tree,
     files: {},
+    unreadable: [],
     asked: [],
     told: [],
     touched: [],
@@ -153,6 +156,7 @@ export const world = (on: On, root: string, tree: Record<string, Entry[]> = {}):
   })
   on('fs.read', (_, e) => {
     w.touched.push(posix(e.path))
+    if (w.unreadable.includes(posix(e.path))) throw new Error('the file is being written')
 
     return { value: w.files[posix(e.path)] ?? '' }
   })
