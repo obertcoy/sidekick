@@ -120,7 +120,7 @@ test('a background shows only where every layer above it is transparent', async 
   const wall = 0x123456
   const solid: Background = {
     name: 'solid',
-    frames: [Array.from({ length: STAGE.height }, () => 'x'.repeat(STAGE.width))],
+    ground: [Array.from({ length: STAGE.height }, () => 'x'.repeat(STAGE.width))],
     palette: { x: wall },
   }
   for (const [mode, animation] of Object.entries(ANIMATIONS)) {
@@ -546,7 +546,7 @@ test('one lookup answers what plays for a moment, for each shipped character, an
 })
 
 test('the background has its own frame: by default it steps with the animation, and it can be given another', async () => {
-  const two: Background = { name: 'two', frames: [['a'], ['b']], palette: { a: 0x111111, b: 0x222222 } }
+  const two: Background = { name: 'two', ground: [['a'], ['b']], palette: { a: 0x111111, b: 0x222222 } }
   const layers: Layers = { character: foxkit, outfit: {}, background: two }
   // idle has one frame, so its step is always 0; the background defaults to that step. A one-row picture is the ground, the row under the feet (15).
   expect(local(layers, ANIMATIONS.idle, 0)[15]?.[0]).toBe(0x111111)

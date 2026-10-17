@@ -2,9 +2,9 @@
 // once-only animations, and, while it rests with nothing going on, its ambient motion. One small unit,
 // one timer, and no knowledge of the pane beyond whether it is the one shown. register.tsx tells it what happens; it tells register.tsx what to draw.
 //
-// A pure `transition(model, event, playsFor, ambientOf)` is the only place anything changes: it returns the next model
-// and the effects to run, as data. `createActivity` is the shell: it owns the one timer and runs the effects in order,
-// and it is the one place that draws a random number (the length of the gap between ambient animations, and which one plays).
+// A pure `transition(model, event, playsFor, ambientOf, backdrop)` is the only place anything changes: it returns the next model
+// and the effects to run, as data. `createActivity` is the shell: it owns the timer of what plays (one at a time) and, apart from it, the timer of a background that moves at rest,
+// and runs the effects in order, and it is the one place that draws a random number (the length of the gap between ambient animations, and which one plays).
 import type { Timer } from 'claude-code'
 
 import type { Moment } from './sprite/registry'
@@ -22,6 +22,13 @@ export type Lookup = (moment: Moment) => Animation
 /** Answers which ambient animations the character in use plays on its own; empty for a character with none. Given, like `Lookup`, and asked again whenever the answer matters. */
 export type Ambient = () => readonly Animation[]
 const noAmbient: Ambient = () => []
+
+/** Answers how many frames the background drawn now has in all (see `backgroundFrames`); one for a still background or none. Given, like `Lookup`, and asked again whenever the answer matters. */
+export type Backdrop = () => number
+const noBackdrop: Backdrop = () => 1
+
+/** How long a background with several frames shows each of them while the sidekick rests, in milliseconds. */
+export const BACKGROUND_STEP_MS = 2_000
 
 /** How long the sidekick rests, in milliseconds, between one ambient animation and the next: a whole number from `min` to `max`, both included. */
 export const AMBIENT_GAP_MS = { min: 5_000, max: 15_000 } as const
@@ -49,6 +56,8 @@ export type Entry = {
 export type Clock = { every: (ms: number, fn: () => void) => Timer; after: (ms: number, fn: () => void) => Timer }
 
 export type Activity = {
+  /** The background frame the rest shows now: its own, while the background moves by itself at rest; undefined when it steps with the animation (or does not move). */
+  background: () => number | undefined
   /** Turns a condition on or off. */
   set: (condition: Condition, isOn: boolean) => void
   /** Turns ambient motion on or off. It starts off; with it off no timer runs at rest. */
@@ -101,6 +110,10 @@ export type Model = {
   readonly phase: Phase
   /** While holding or between this is always the resting moment at frame 0, so leaving it for rest needs no draw. */
   readonly shown: Shown
+  /** The frame of a moving background that the rest shows; it keeps its place while something else plays, and goes back to 0 when motion is turned off. */
+  readonly cycle: number
+  /** Whether the background's own timer is running: motion is on, the background has several frames, and the sidekick rests with a still picture. */
+  readonly isCycling: boolean
 }
 
 export type Event =
@@ -115,10 +128,17 @@ export type Event =
   | { readonly type: 'look' }
   /** The pane is now the one shown, or no longer. */
   | { readonly type: 'view'; readonly isShown: boolean }
+  /** The background's interval has passed: it steps to its next frame. */
+  | { readonly type: 'cycle' }
 
 export type Effect =
-  | { readonly do: 'draw'; readonly shown: Shown }
+  /** `background` is the frame of the background to draw when it has one of its own; without it the background steps with the animation. */
+  | { readonly do: 'draw'; readonly shown: Shown; readonly background?: number }
   | { readonly do: 'stop' }
+  /** Start the background's timer, beside the one for what plays (replacing its own): a `cycle` event every `ms`. */
+  | { readonly do: 'cycle'; readonly ms: number }
+  /** Cancel the background's timer. */
+  | { readonly do: 'uncycle' }
   | { readonly do: 'every'; readonly ms: number }
   /** Cancel the timer there is, and start the one gap: a random wait within `AMBIENT_GAP_MS`, chosen by the shell. */
   | { readonly do: 'wait' }
@@ -135,6 +155,8 @@ export const initial = (playsFor: Lookup): Model => ({
   waiting: [],
   phase: { kind: 'resting' },
   shown: { moment: 'resting', animation: playsFor('resting'), frame: 0 },
+  cycle: 0,
+  isCycling: false,
 })
 
 const unreachable = (value: never): never => {
@@ -289,8 +311,45 @@ const reconsider = (m: Model, playsFor: Lookup, ambientOf: Ambient, cutsAmbient:
   }
 }
 
+/** Whether a phase shows a picture that stays as it is until something happens, as against an animation that is playing. */
+const isStill = (phase: Phase): boolean => phase.kind === 'resting' || phase.kind === 'between' || phase.kind === 'holding'
+
+/**
+ * Whether the background moves by itself: motion is on, it has several frames, and the sidekick rests with a picture that does not move.
+ * While an animation plays, or the pane is hidden, it does not: it steps with the animation, as it always did.
+ */
+const cyclesAt = (m: Model, backdrop: Backdrop): boolean => m.isMotionOn && backdrop() > 1 && isStill(m.phase) && m.shown.animation.frames <= 1
+
+/** The frame of its own that the background shows now, or undefined when it steps with the animation. */
+export const backgroundOf = (m: Model, backdrop: Backdrop): number | undefined => (cyclesAt(m, backdrop) ? m.cycle % backdrop() : undefined)
+
+/**
+ * Adds to a result what the background at rest needs, the same for every event: the frame of its own on each picture drawn while it moves by itself,
+ * its timer when it starts to move and when it stops, and the first frame again when motion is turned off.
+ */
+const withBackdrop = (result: Result, backdrop: Backdrop): Result => {
+  const was = result.model
+  const cycles = cyclesAt(was, backdrop)
+  const cycle = was.isMotionOn ? was.cycle : 0
+  // A model that needs no change is handed back as it is.
+  const model: Model = cycles === was.isCycling && cycle === was.cycle ? was : { ...was, isCycling: cycles, cycle }
+  const background = backgroundOf(model, backdrop)
+  const effects: Effect[] = result.effects.map(effect => (effect.do === 'draw' && background !== undefined ? { ...effect, background } : effect))
+  if (cycles && !was.isCycling) effects.push({ do: 'cycle', ms: BACKGROUND_STEP_MS })
+  if (!cycles && was.isCycling) {
+    effects.push({ do: 'uncycle' })
+    // Motion turned off while the rest showed a later frame of the background: the rest is drawn again, from its first.
+    if (!was.isMotionOn && was.cycle !== 0 && isStill(was.phase)) effects.push({ do: 'draw', shown: was.shown })
+  }
+
+  return { model, effects }
+}
+
 /** The one place the model changes. Pure: it calls no clock, no draw, no hook and no random number. */
-export const transition = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient = noAmbient): Result => {
+export const transition = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient = noAmbient, backdrop: Backdrop = noBackdrop): Result =>
+  withBackdrop(reduce(m, e, playsFor, ambientOf, backdrop), backdrop)
+
+const reduce = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient, backdrop: Backdrop): Result => {
   switch (e.type) {
     case 'set': {
       if (m.conditions[e.condition] === e.isOn) return same(m)
@@ -367,6 +426,9 @@ export const transition = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambi
           return unreachable(m.phase)
       }
     }
+    case 'cycle':
+      // A step that arrives when the background no longer moves by itself (its timer was cancelled on the way) is ignored.
+      return m.isCycling ? show({ ...m, cycle: (m.cycle + 1) % backdrop() }, m.shown) : same(m)
     case 'look':
       // The old character's ambient animation may need anchors the new one lacks, so it does not play on.
       return reconsider(m, playsFor, ambientOf, true)
@@ -381,26 +443,29 @@ export const transition = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambi
 }
 
 /**
- * `draw` is called with every picture to show: when what is shown changes, and on `repaint`, never while the pane is not shown.
+ * `draw` is called with every picture to show, and the frame of the background when it moves by itself at rest (otherwise the background steps with the animation):
+ * when what is shown changes, when the background steps, and on `repaint`, never while the pane is not shown.
  * `isShownNow`, when given, is asked each time the timer fires, before the sidekick acts on it, so a pane that went behind another is found out at once
  * and shows nothing more; without it the pane is taken to be shown until `setShown` says otherwise.
  */
 export const createActivity = (
   clock: Clock,
-  draw: (shown: Shown) => void,
+  draw: (shown: Shown, background?: number) => void,
   playsFor: Lookup,
   ambientOf: Ambient = noAmbient,
   isShownNow?: () => Promise<boolean>,
+  backdrop: Backdrop = noBackdrop,
 ): Activity => {
   let model = initial(playsFor)
   let timer: Timer | undefined
+  let cycleTimer: Timer | undefined
   const inbox: Event[] = []
   let isBusy = false
 
   const run = (effect: Effect): void => {
     switch (effect.do) {
       case 'draw':
-        draw(effect.shown)
+        draw(effect.shown, effect.background)
 
         return
       case 'stop':
@@ -408,14 +473,24 @@ export const createActivity = (
         timer = undefined
 
         return
+      case 'cycle':
+        cycleTimer?.cancel()
+        cycleTimer = clock.every(effect.ms, () => fire({ type: 'cycle' }, () => cycleTimer))
+
+        return
+      case 'uncycle':
+        cycleTimer?.cancel()
+        cycleTimer = undefined
+
+        return
       case 'every':
         timer?.cancel()
-        timer = clock.every(effect.ms, () => fire({ type: 'tick' }))
+        timer = clock.every(effect.ms, () => fire({ type: 'tick' }, () => timer))
 
         return
       case 'wait':
         timer?.cancel()
-        timer = clock.after(gapMs(), () => fire({ type: 'gap', roll: Math.random() }))
+        timer = clock.after(gapMs(), () => fire({ type: 'gap', roll: Math.random() }, () => timer))
 
         return
       case 'start':
@@ -434,18 +509,18 @@ export const createActivity = (
         unreachable(effect)
     }
   }
-  // What the timer fires: the event, once the pane is known to be shown. If it is not, the pane goes away instead and the event is not acted on.
-  const fire = (event: Event): void => {
+  // What a timer fires: the event, once the pane is known to be shown. If it is not, the pane goes away instead and the event is not acted on.
+  // `current` is the timer's own slot: one that was replaced while the answer was awaited fired for something that is over.
+  const fire = (event: Event, current: () => Timer | undefined): void => {
     if (isShownNow === undefined) {
       dispatch(event)
 
       return
     }
-    const fired = timer
+    const fired = current()
     void isShownNow().then(isShown => {
       dispatch({ type: 'view', isShown })
-      // The answer took a moment: a timer that was replaced meanwhile fired for something that is over.
-      if (timer === fired) dispatch(event)
+      if (current() === fired) dispatch(event)
     })
   }
   // One event at a time: a hook that calls set or queue is handled after the effects now running.
@@ -455,7 +530,7 @@ export const createActivity = (
     isBusy = true
     try {
       for (let next = inbox.shift(); next !== undefined; next = inbox.shift()) {
-        const result = transition(model, next, playsFor, ambientOf)
+        const result = transition(model, next, playsFor, ambientOf, backdrop)
         model = result.model
         result.effects.forEach(run)
       }
@@ -465,6 +540,7 @@ export const createActivity = (
   }
 
   return {
+    background: () => backgroundOf(model, backdrop),
     set: (condition, isOn) => dispatch({ type: 'set', condition, isOn }),
     setMotion: isOn => dispatch({ type: 'motion', isOn }),
     setShown: isShown => dispatch({ type: 'view', isShown }),
@@ -473,7 +549,7 @@ export const createActivity = (
     lookChanged: () => dispatch({ type: 'look' }),
     repaint: () => {
       dispatch({ type: 'look' })
-      if (model.phase.kind !== 'away') draw(model.shown)
+      if (model.phase.kind !== 'away') draw(model.shown, backgroundOf(model, backdrop))
     },
     shown: () => model.shown,
   }

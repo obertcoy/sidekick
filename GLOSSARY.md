@@ -94,7 +94,7 @@ What the sidekick looks like: its character, its outfit and its background toget
 _Avoid_: Theme, skin, style
 
 **Background**:
-The picture behind the sidekick; part of the look, chosen by the user. It stands on the stage's ground and repeats sideways across the world.
+The picture behind the sidekick; part of the look, chosen by the user. It is drawn in up to three **layers** of its own, each with frames of its own (the sky, what is far behind the hills, and the ground with its hills), stands on the stage's ground and repeats sideways across the world. A background with more than one frame steps at a slow fixed interval while the sidekick rests; ambient motion off holds its first frame.
 _Avoid_: Scene, backdrop
 
 **Outfit**:
@@ -110,7 +110,7 @@ A place on the sidekick where one accessory goes: head, face, neck or held. Ever
 
 **Animation**:
 A short motion of the sidekick. Every animation is in the library, whether or not any character plays it.
-_Avoid_: Mode, effect
+_Avoid_: Mode
 
 **Stage**:
 The sidekick's canvas, made to fit its character: sky above (headroom for jumps and falling bolts), the character down to its feet, then the ground. It is wide, at least 40 pixels, like a small world, and the character stands in the middle of it. Animations, poses and accessories place things only from the character's anchors and from the stage's named edges (sky top, ground, the camera's left and right), never from fixed coordinates, so any character size works with any effect. A look can cap the stage's height; a character too tall for the cap is refused, and the capping background is left out.
@@ -128,6 +128,19 @@ _Avoid_: Transform, animation of the body
 The pixels the character covers in a frame, accessories included, after all its body motion; props and effects are not part of it. An effect that hugs the character, such as an aura, is aimed by it.
 _Avoid_: Silhouette, hitbox
 
+**Layer**:
+One of the six planes a frame is drawn in, back to front: sky (it can be lit by a flash), far (things behind the hills, such as a distant bolt), ground (it can carry marks), character, effects and overlay (the check mark). The background draws a picture on the first three; an animation can put dots on every layer but the character's, and they are drawn after that layer's picture, so what is on a layer further back is hidden by what is in front of it (a far bolt by the hills).
+
+**Effect**:
+A thing an animation draws that is not the body, from the library of effects: bolt (with branches), burst (sparks under gravity), smoke, shockwave along the ground, aura around the mask, crackle, confetti, and flash. Each is a pure function of the frame number and a seed, aimed only by anchors, the mask and the stage's edges, so the same frame always draws the same pixels.
+_Avoid_: Animation
+
+**Flash**:
+The effect that lights the sky layer for its frames, and nothing else.
+
+**Ground mark**:
+Something an animation leaves on the ground layer, such as a scorch or cracks. It is drawn only in the frames that draw it, so it is gone when the sidekick is at rest again.
+
 **Moment**:
 Something the mod can detect that the sidekick answers with an animation: a turn is working, a search runs, a search fails, a ticket is done, a set is done, the sidekick rests. The list is closed; one is added only together with a real event that produces it.
 _Avoid_: State, event, trigger
@@ -143,5 +156,5 @@ _Avoid_: Animation set, replacements
 The animation that plays for a moment when a character's moveset leaves it out. It uses only what every character has (its head and feet), so any character can play it and a knight is never handed the bolt.
 
 **Ambient motion**:
-Animations the sidekick plays on its own while nothing is happening, such as a blink. Each character names its own; the user can turn all of it off.
+Animations the sidekick plays on its own while nothing is happening, such as a blink, and the slow stepping of a multi-frame background at rest. Each character names its own animations; the user can turn all of it off.
 _Avoid_: Idle animation, fidget

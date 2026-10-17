@@ -12,7 +12,23 @@ export type BodyRole = (typeof BODY_ROLES)[number]
 export const REQUIRED_BODY_ROLES = ['outline', 'base'] as const satisfies readonly BodyRole[]
 
 /** Colours shared by every look, for props and effects. */
-const PROP_ROLES = ['paper', 'ink', 'spark', 'flash', 'check'] as const
+const PROP_ROLES = [
+  'paper',
+  'ink',
+  'spark',
+  'flash',
+  'check',
+  'glow',
+  'glowDim',
+  'ember',
+  'coal',
+  'scorch',
+  'smoke',
+  'smokeDim',
+  'dust',
+  'skyLit',
+  'skyFlash',
+] as const
 export type PropRole = (typeof PROP_ROLES)[number]
 
 export type Role = BodyRole | PropRole
@@ -114,21 +130,34 @@ export type PoseName = (typeof POSES)[number]
 /** Letters laid over the body from `at`, row by row: ' ' keeps the body's pixel, '.' clears it, any other letter is from the legend. */
 export type Patch = { readonly at: Point; readonly rows: readonly string[] }
 
-/** A pixel an animation lays over the body; `role` is a body role (taken from the character) or a prop role. */
-export type Dot = readonly [x: number, y: number, role: Role]
+/** A pixel an animation or effect lays down; `role` is a body role (taken from the character) or a prop role, or a plain 0xRRGGBB colour that no recolour touches (an aura's flames, confetti). */
+export type Dot = readonly [x: number, y: number, role: Role | number]
+
+/**
+ * The layers a frame is drawn in, back to front. The background supplies a picture for `sky`, `far` and `ground`; the character layer is the body and what it wears;
+ * an animation puts dots on every layer but the character's (`FramePlan`), and what it puts on a layer is drawn after that layer's picture and before the next layer.
+ */
+export const LAYERS = ['sky', 'far', 'ground', 'character', 'effects', 'overlay'] as const
+export type LayerName = (typeof LAYERS)[number]
+
+/** The layers a background draws a picture on. */
+export const BACK_LAYERS = ['sky', 'far', 'ground'] as const satisfies readonly LayerName[]
+export type BackLayer = (typeof BACK_LAYERS)[number]
 
 /** Whether a stage pixel is covered by the character in a frame. */
 export type Mask = (x: number, y: number) => boolean
 
 /**
  * What one frame does: the head bob (in pixels, down), the poses laid over the body in order (a later one wins),
- * how the whole character moves, and the props and effects drawn on top. Accessories draw over posed pixels; anchors do not move with poses.
+ * how the whole character moves, and the props and effects drawn on the layers (see `LAYERS`). Accessories draw over posed pixels; anchors do not move with poses.
  * A patch inside the character's `headRegion` bobs with the head.
  *  - dx, dy: move the whole character, accessories included, by that many pixels (right, down); whole numbers.
  *  - mirror: the character faces the other way, about the middle of its frame so it stays where it stands; accessories are turned with it.
  *  - squash: whole rows; positive takes that many rows out just above the feet, negative (a stretch, at most the sky above the character) repeats the row two above the feet that many times. The feet stay on the same row; the rest of the body, accessories included, moves to meet them.
  *  - recolor: other colours for some body roles in this frame only; the next frame starts from the character's palette again. A worn pixel that is the colour of a recoloured role follows it.
  * A number that is not finite counts as 0. The animation is given the anchors at rest: they do not follow the move, mirror or squash, so an effect that must hug the moved body uses `aimed`.
+ *  - dots: the effects layer, in front of the character.
+ *  - layers: dots on the other layers, each drawn after that layer's background picture: `sky` (a flash lights it), `far` (behind the hills, so the background's ground layer hides what reaches below them), `ground` (marks such as a scorch or cracks, which exist only in the frames that draw them), and `overlay` (in front of everything, such as the check mark).
  *  - aimed: dots worked out from the character's mask (the pixels it covers in this frame, accessories included), such as an aura that hugs it; drawn with `dots`.
  */
 export type FramePlan = {
@@ -140,6 +169,7 @@ export type FramePlan = {
   readonly squash?: number
   readonly recolor?: Readonly<Partial<Record<BodyRole, number>>>
   readonly dots?: readonly Dot[]
+  readonly layers?: Readonly<Partial<Record<BackLayer | 'overlay', readonly Dot[]>>>
   readonly aimed?: (mask: Mask) => readonly Dot[]
 }
 
@@ -177,16 +207,24 @@ export type Accessory = {
   readonly palette: Readonly<Record<string, number>>
 }
 
+/** The frames of one layer of a background: one grid per frame, cycled; a grid is rows of letters from the background's palette, '.' (or anything it has no colour for) transparent. */
+export type LayerFrames = readonly (readonly string[])[]
+
 /**
- * A picture behind everything; it shows only where nothing else is drawn. It stands on the ground: its last row on the first ground row (and repeated under it),
- * and it repeats sideways across the world from where the character stands.
+ * A picture behind everything, in up to three layers of its own (each optional, each with frames of its own); it shows only where nothing in front is drawn.
+ * All repeat sideways across the world from where the character stands, and are drawn back to front: sky, far, ground.
+ *  - sky: the last row of each grid sits on the row just above the ground (the horizon); stars, clouds.
+ *  - far: the same, but it is drawn behind the ground layer, so the hills in front of it hide what reaches below their tops; distant things.
+ *  - ground: the last row sits on the first ground row and is repeated under it, rows above it are hills and grass.
+ * With motion on, a background with more than one frame (in any layer) steps at a slow fixed interval while the sidekick rests; see `backgroundFrames`.
  */
 export type Background = {
   readonly name: string
   /** The most pixels tall the stage may be with this background; a character that needs more cannot be drawn on it and the background is left out. Left out means no cap. */
   readonly heightCap?: number
-  /** One grid per frame of its own, cycled by the animation step; one grid for a still background. */
-  readonly frames: readonly (readonly string[])[]
+  readonly sky?: LayerFrames
+  readonly far?: LayerFrames
+  readonly ground?: LayerFrames
   readonly palette: Readonly<Record<string, number>>
 }
 

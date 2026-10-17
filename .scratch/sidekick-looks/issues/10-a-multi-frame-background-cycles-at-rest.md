@@ -4,12 +4,12 @@
 
 **Blocked by:** 09: Ambient motion with an off switch
 
-**Status:** folded into 21 (2026-10-17): backgrounds become layers there, and its boxes are carried over. Do not build this ticket on its own.
+**Status:** done, built with 21 (2026-10-17): backgrounds became layers there, and its boxes are carried over.
 
-- [ ] At least one background has more than one frame
-- [ ] With that background chosen and the sidekick at rest, the painted background advances frame by frame at a fixed interval and wraps around
-- [ ] A background with one frame causes no repaints and no timer at rest
-- [ ] With motion off the background shows its first frame at rest and no timer is pending
-- [ ] During a state or ambient animation the background steps with the animation's frames, as today
-- [ ] The cycling and the ambient animations don't disturb each other: an ambient animation still plays within its 5 to 15 second gap
-- [ ] Covered by whole-mod tests that advance the mock clock and read the painted cells
+- [x] At least one background has more than one frame
+- [x] With that background chosen and the sidekick at rest, the painted background advances frame by frame at a fixed interval and wraps around
+- [x] A background with one frame causes no repaints and no timer at rest
+- [x] With motion off the background shows its first frame at rest and no timer is pending
+- [x] During a state or ambient animation the background steps with the animation's frames, as today
+- [x] The cycling and the ambient animations don't disturb each other: an ambient animation still plays within its 5 to 15 second gap
+- [x] Covered by whole-mod tests that advance the mock clock and read the painted cells

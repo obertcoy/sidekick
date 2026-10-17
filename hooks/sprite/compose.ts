@@ -2,10 +2,13 @@ import type {
   AnchorName,
   Anchors,
   Animation,
+  Background,
+  BackLayer,
   BodyRole,
   Character,
   Edges,
   FramePlan,
+  LayerFrames,
   Layers,
   Mask,
   Needed,
@@ -16,7 +19,7 @@ import type {
   Role,
   Slot,
 } from './types'
-import { LIST_ANCHORS, OPTIONAL_POINT_ANCHORS, POSES, REQUIRED_ANCHORS, REQUIRED_BODY_ROLES, SLOTS } from './types'
+import { BACK_LAYERS, LIST_ANCHORS, OPTIONAL_POINT_ANCHORS, POSES, REQUIRED_ANCHORS, REQUIRED_BODY_ROLES, SLOTS } from './types'
 
 /** The most pixels a character may measure either way; a bigger one is refused at load. */
 export const MAX_CHARACTER = 64
@@ -113,6 +116,19 @@ export const stageFor = (character: Character, cap?: number): Stage => {
 /** The stage of a look's layers: the character's, under its background's height cap. */
 export const stageOf = (look: Layers): Stage => stageFor(look.character, look.background?.heightCap)
 
+const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b))
+
+/**
+ * How many frames a background has in all: the number of steps before every layer is back where it started (the least common multiple of its layers' frame counts, so a layer with fewer frames wraps cleanly).
+ * One for a still background and for none; more than one means it moves.
+ */
+export const backgroundFrames = (background: Background | null): number =>
+  BACK_LAYERS.reduce((all, layer) => {
+    const count = background?.[layer]?.length ?? 0
+
+    return count === 0 ? all : (all * count) / gcd(all, count)
+  }, 1)
+
 /** The whole stage as a view, as when nothing crops it. */
 export const wholeStage = (stage: Stage): View => ({ left: 0, top: 0, columns: stage.columns, rows: stage.rows })
 
@@ -143,6 +159,16 @@ export const PROPS: Readonly<Record<PropRole, number>> = {
   spark: 0x7cf0ff,
   flash: 0xffffff,
   check: 0x40c057,
+  glow: 0x4dabf7,
+  glowDim: 0x2b5d8a,
+  ember: 0xffa94d,
+  coal: 0x9c3d10,
+  scorch: 0x141116,
+  smoke: 0x6b6878,
+  smokeDim: 0x45424f,
+  dust: 0x5a5262,
+  skyLit: 0x2a2838,
+  skyFlash: 0x4a4766,
 }
 
 /**
@@ -300,10 +326,10 @@ const placed = (anchors: Anchors, by: Point): Anchors =>
   ) as unknown as Anchors
 
 /**
- * One frame as stage pixels, in layer order: background, body (with the frame's head bob, then its squash or stretch, mirror and move),
+ * One frame as stage pixels, in layer order (`LAYERS`): the background's sky, far and ground, each followed by the dots the frame lays on it, then the body (with the frame's head bob, then its squash or stretch, mirror and move),
  * accessories (each on its slot's anchor, which bobs where the character declares the slot bobs, and squashes, mirrors and moves with the body;
  * a slot the animation hides is skipped),
- * then the animation's props and effects. Also the frame's mask: the pixels the body and the accessories cover, before any props and effects.
+ * then the animation's effects and, last, its overlay. Also the frame's mask: the pixels the body and the accessories cover, before any props and effects.
  * The background has its own frame; by default it steps with the animation. `view` is what the pane looks at (the whole stage unless given):
  * the animation is told its edges, but the pixels returned are the whole stage. `onClip` hears of each opaque pixel drawn off the stage.
  */
@@ -341,19 +367,38 @@ const compose = (
     }
   }
 
-  // The background's picture stands on the ground: its last row on the first ground row (and repeated under it), repeated sideways across the world from where the character stands.
+  const colorOf = (role: Role | number): number | undefined =>
+    typeof role === 'number'
+      ? role
+      : ((plan.recolor as Partial<Record<Role, number>> | undefined)?.[role] ??
+        (character.palette as Partial<Record<Role, number>>)[role] ??
+        (PROPS as Partial<Record<Role, number>>)[role])
   const background = look.background
-  if (background) {
-    const grid = background.frames[backgroundFrame % background.frames.length] ?? []
+  // Each layer's own frame: the background's frame (the animation's step unless given) wraps around the frames the layer has.
+  const picture = (frames: LayerFrames | undefined, layer: BackLayer): void => {
+    if (background === null || frames === undefined || frames.length === 0) return
+    const grid = frames[backgroundFrame % frames.length] ?? []
     const last = grid.length - 1
+    // Sky and far stand on the horizon, the row above the ground; the ground layer's last row is the ground and repeats under it.
+    const bottom = layer === 'ground' ? stage.ground : stage.ground - 1
     for (let y = 0; y < stage.height; y++) {
-      const row = grid[Math.min(y - stage.ground + last, last)]
+      const at = layer === 'ground' ? Math.min(y - stage.ground + last, last) : y > bottom ? -1 : y - bottom + last
+      const row = grid[at]
       if (row === undefined || row.length === 0) continue
       for (let x = 0; x < stage.width; x++) {
         const from = (((x - stage.offset.x) % row.length) + row.length) % row.length
         put(x, y, background.palette[row[from] ?? '.'])
       }
     }
+  }
+  const lay = (layer: BackLayer | 'overlay'): void => {
+    for (const [x, y, role] of plan.layers?.[layer] ?? []) put(x, y, colorOf(role))
+  }
+
+  // Back to front: sky, far, ground, each its picture and then what the frame lays on it; the character; the effects; the overlay.
+  for (const layer of BACK_LAYERS) {
+    picture(background?.[layer], layer)
+    lay(layer)
   }
 
   // The body, with the head region moved down by the bob; what it leaves behind is transparent. Its body roles may be recoloured for this frame.
@@ -402,11 +447,8 @@ const compose = (
   }
 
   const mask: Mask = (x, y) => covered[y]?.[x] === true
-  const colorOf = (role: Role): number | undefined =>
-    (plan.recolor as Partial<Record<Role, number>> | undefined)?.[role] ??
-    (character.palette as Partial<Record<Role, number>>)[role] ??
-    (PROPS as Partial<Record<Role, number>>)[role]
   for (const [x, y, role] of [...(plan.dots ?? []), ...(plan.aimed?.(mask) ?? [])]) put(x, y, colorOf(role))
+  lay('overlay')
 
   return { pixels, mask }
 }

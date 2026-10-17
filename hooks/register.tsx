@@ -37,7 +37,7 @@ import {
 import type { Target } from './look'
 import { changeLook, lookReport, parseSaved, targetOf } from './look'
 import { changeMotion, MOTION, motionReport, parseMotion } from './motion'
-import { ambientFor, cellsOf, DEFAULT_PANE, leftOut, listRoom, type Pane, playsFor, viewIn } from './sprite'
+import { ambientFor, backdropFrames, cellsOf, DEFAULT_PANE, leftOut, listRoom, type Pane, playsFor, viewIn } from './sprite'
 import { projectRoot, setCurrentRoot, setProjectLook, setSavedLook } from './sprite/look-in-use'
 import type { SavedLook } from './sprite/types'
 import { BURN_STEPS, BURNS, HITS, isStruck, LANDS, LEAVES, STRIKE_REST_STEPS } from './strike'
@@ -269,12 +269,13 @@ const sceneOf = ($: Dollar): Scene => {
     pending: undefined,
     activity: createActivity(
       { every: (ms, fn) => $.clock.every(ms, fn), after: (ms, fn) => $.clock.after(ms, fn) },
-      ({ animation, frame }) => {
-        void $.ui.blit({ requestId: PANE, key: BUDDY, cells: cellsOf(animation, frame, undefined, paneSeen) }).catch(() => undefined)
+      ({ animation, frame }, background) => {
+        void $.ui.blit({ requestId: PANE, key: BUDDY, cells: cellsOf(animation, frame, background, paneSeen) }).catch(() => undefined)
       },
       playsFor,
       ambientFor,
       () => isPaneShown($),
+      backdropFrames,
     ),
   }
   scenes.set(PANE, scene)
@@ -1454,7 +1455,7 @@ export const register: Register = on => {
 
             const { animation, frame } = activity.shown()
 
-            return <Raster key={BUDDY} columns={camera.columns} rows={camera.rows} cells={cellsOf(animation, frame, undefined, pane)} />
+            return <Raster key={BUDDY} columns={camera.columns} rows={camera.rows} cells={cellsOf(animation, frame, activity.background(), pane)} />
           })()
         : null
 

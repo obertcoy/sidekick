@@ -19,13 +19,13 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 | 11 | 08c Zap raises its arm with a pose | 08b | done |
 | 12 | 08d The sidekick can blink | 08c | done (by-eye check of the classic blink pending) |
 | 13 | 09 Ambient motion with an off switch | 07, 08d | done |
-| 14 | 10 A multi-frame background cycles at rest | 09 | folded into 21 |
+| 14 | 10 A multi-frame background cycles at rest | 09 | done (built with 21) |
 | 15 | 11 A character replaces a state animation | 07 | done |
 | 16 | 13 Animations wait until the pane is shown | 09 | done |
 | 17 | 18 Moments and movesets, with plain defaults | 13 | done |
 | 18 | 19 The stage fits the character, and a camera follows it | 18 | done (owner review of golden frames pending) |
 | 19 | 20 The body moves and can change colour | 19 | done |
-| 20 | 21 Layers and an effects library (absorbs 10) | 20 | ready |
+| 20 | 21 Layers and an effects library (absorbs 10) | 20 | done |
 | 21 | 22 The sidekick has a place and can walk | 21 | ready |
 | 22 | 23 The classic animations move onto the new engine | 22 | ready (golden re-record needs the owner) |
 | 23 | 24 The classic gets the storm, the jump and the power-up | 23 | ready |

@@ -1,7 +1,7 @@
 // The sidekick's sprite, as register.tsx draws it. The pieces live in ./sprite/: characters,
 // animations, accessories and backgrounds, each one file, put together by ./sprite/registry.ts;
 // ./sprite/look-in-use.ts resolves what is worn now.
-import { cameraFor, render, stageOf, type View } from './sprite/compose'
+import { backgroundFrames, cameraFor, render, stageOf, type View } from './sprite/compose'
 import { characterInUse, drawable } from './sprite/look-in-use'
 import { ambientAnimationsOf, animationOf, type Moment } from './sprite/registry'
 import type { Animation, Layers } from './sprite/types'
@@ -44,6 +44,9 @@ export const playsFor = (moment: Moment): Animation => animationOf(characterInUs
 
 /** The ambient animations the character drawn now plays on its own; none when it lists none. The activity asks again whenever the answer matters. */
 export const ambientFor = (): Animation[] => ambientAnimationsOf(characterInUse())
+
+/** How many frames the background drawn now has in all; one when it is still or there is none. The activity asks again whenever the answer matters, to know whether the background moves at rest. */
+export const backdropFrames = (): number => backgroundFrames(drawable().background)
 
 /**
  * One frame of an animation as a Raster's cells: each cell a half block coloured by its upper and lower pixel, of the part of the stage the pane's camera looks at (all of it with no pane).

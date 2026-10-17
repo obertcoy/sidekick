@@ -134,7 +134,7 @@ test('a developer who never chose a look sees the bare foxkit and the listing of
       '  face: glasses',
       '  neck: scarf',
       '  held: flag',
-      'Backgrounds: dusk',
+      'Backgrounds: dusk, twinkle',
       'Set parts with /sidekick-look part=name, e.g. character=classic head=cap background=dusk',
     ].join('\n'),
   )
@@ -152,7 +152,7 @@ const REFUSALS: [string, string, string][] = [
   ['an unknown part', 'hat=cap', 'Unknown part "hat"; the parts are: character, head, face, neck, held, background'],
   ['an unknown character', 'character=snake', 'No character named "snake"; known: foxkit, classic'],
   ['an unknown accessory', 'head=crown', 'No accessory named "crown" for head; known: cap'],
-  ['an unknown background', 'background=night', 'No background named "night"; known: dusk'],
+  ['an unknown background', 'background=night', 'No background named "night"; known: dusk, twinkle'],
   ['an accessory in the wrong slot', 'neck=cap', '"cap" is a head accessory and does not go in the neck slot'],
   ['a word without a name', 'head', 'No accessory named "" for head; known: cap'],
 ]

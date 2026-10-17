@@ -15,6 +15,7 @@ import { tailFlick } from './animations/tailFlick'
 import { write } from './animations/write'
 import { zap } from './animations/zap'
 import { dusk } from './backgrounds/dusk'
+import { twinkle } from './backgrounds/twinkle'
 import { classic } from './characters/classic'
 import { foxkit } from './characters/foxkit'
 import type { Accessory, Anchors, Animation, Background, Character, FramePlan, Look, Moment, Slot } from './types'
@@ -269,7 +270,7 @@ for (const character of Object.values(CHARACTERS)) requirePlayed(character)
 
 export const ACCESSORIES: Readonly<Record<string, Accessory>> = { cap, flag, glasses, scarf }
 
-export const BACKGROUNDS: Readonly<Record<string, Background>> = { dusk }
+export const BACKGROUNDS: Readonly<Record<string, Background>> = { dusk, twinkle }
 
 /** The look nothing was chosen for: the bare foxkit. */
 export const DEFAULT_LOOK: Look = { character: 'foxkit', outfit: {}, background: null }
