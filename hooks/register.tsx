@@ -6,8 +6,24 @@ import type { Activity } from './activity'
 import { createActivity } from './activity'
 import type { CostKind, SavedSession } from './cost'
 import { addCall, costReport, dollarsOf, parseSession, parseTotals, shortDollars, totalOf } from './cost'
-import type { FileTicket, Inbox, TicketRef } from './inbox'
-import { activeSince, addItems, fit, inboxTitle, parseItems, readInbox, readSince, reviewLine, sectionsOf, tidy, workingLine } from './inbox'
+import type { Detail, FileTicket, Inbox, Opened, TicketRef } from './inbox'
+import {
+  activeSince,
+  addItems,
+  detailOf,
+  fit,
+  inboxTitle,
+  markReviewed,
+  parseItems,
+  readInbox,
+  readReviewed,
+  readSince,
+  reviewLine,
+  sectionsOf,
+  tidy,
+  tidyReviewed,
+  workingLine,
+} from './inbox'
 import type { Target } from './look'
 import { changeLook, lookReport, parseSaved, targetOf } from './look'
 import { changeMotion, MOTION, motionReport, parseMotion } from './motion'
@@ -523,6 +539,9 @@ const inboxOf = async ($: Dollar, root: string): Promise<Inbox> => readInbox(awa
 // When the mod first saw each ticket active, for WORKING's time active; one entry per project.
 const sinceKey = (root: string): string => `active-since:${root}`
 
+// The tickets the developer marked reviewed, by `keyOf`; one entry per project. Never written to a ticket file.
+const reviewedKey = (root: string): string => `reviewed:${root}`
+
 /** Every ticket of the sets as its file says, the sets in the order given. */
 const fileTicketsOf = async ($: Dollar, root: string, sets: TicketSet[]): Promise<FileTicket[]> =>
   (
@@ -536,7 +555,8 @@ const ticketRefsOf = async ($: Dollar, root: string, sets: TicketSet[]): Promise
   (await fileTicketsOf($, root, sets)).map(({ set, title }) => ({ set, title }))
 
 /**
- * Drops the items whose ticket is in no set any more, and keeps when each active ticket went active.
+ * Drops the items whose ticket is in no set any more, and forgets a reviewed ticket once it is not done; keeps when
+ * each active ticket went active.
  * With no set read at all nothing changes: a project that cannot be read now has not lost its tickets.
  */
 const tidyInbox = async ($: Dollar, root: string, sets: TicketSet[]): Promise<void> => {
@@ -549,6 +569,9 @@ const tidyInbox = async ($: Dollar, root: string, sets: TicketSet[]): Promise<vo
     await $.clock.now(),
   )
   if (JSON.stringify(since) !== JSON.stringify(held)) await $.store.set(sinceKey(root), since)
+  const reviewed = readReviewed(await $.store.get(reviewedKey(root)))
+  const stillDone = tidyReviewed(reviewed, tickets)
+  if (stillDone.length !== reviewed.length) await $.store.set(reviewedKey(root), stillDone)
   if ((await $.store.get(inboxKey(root))) === undefined) return
   const inbox = await inboxOf($, root)
   const kept = tidy(inbox, tickets)
@@ -557,7 +580,70 @@ const tidyInbox = async ($: Dollar, root: string, sets: TicketSet[]): Promise<vo
 
 /** The inbox the pane draws: the items, and the tickets of the active set (none when no set is active). */
 const inboxViewOf = async ($: Dollar, root: string, set: TicketSet | undefined): Promise<InboxView> =>
-  sectionsOf(await inboxOf($, root), set === undefined ? [] : await fileTicketsOf($, root, [set]), readSince(await $.store.get(sinceKey(root))))
+  sectionsOf(
+    await inboxOf($, root),
+    set === undefined ? [] : await fileTicketsOf($, root, [set]),
+    readSince(await $.store.get(sinceKey(root))),
+    readReviewed(await $.store.get(reviewedKey(root))),
+  )
+
+// The detail view: an inbox entry opened in the inbox's place in the pane, until Back or Mark reviewed.
+/** What the pane shows instead of the inbox, with the glyph its row had; undefined: the inbox. */
+let opened: { of: Opened; detail: Detail; mark: Mark } | undefined
+/** Where the pane's window stood over the inbox at its last drawing, and where Back puts it again. */
+let inboxOffset = 0
+let backOffset = 0
+/** Where the mod's own next scroll of the pane lands; the engine is asked for the top and this is put in its place. */
+let scrollTo: number | undefined
+
+/** The text of a ticket's own file, read afresh; undefined for a checklist line, or a ticket no set holds. */
+const ticketFileOf = async ($: Dollar, root: string, ticket: TicketRef): Promise<string | undefined> => {
+  const set = (await setsOf($, root)).sets.find(one => one.id === ticket.set)
+  if (set === undefined || set.place.kind !== 'files') return undefined
+  for (const file of set.files) {
+    const [one] = await ticketsOf($, root, set.place, file)
+    if (one?.title === ticket.title) return $.fs.read(`${root}/${file.path}`).catch(() => undefined)
+  }
+
+  return undefined
+}
+
+/**
+ * Opens an entry's detail in the inbox's place, its goal read from the ticket's file now. `isMarkable`: the entry can
+ * be marked reviewed (an open item, a ticket ready to review). Opening marks nothing.
+ */
+const openDetail = async ($: Dollar, of: Opened, mark: Mark, isMarkable: boolean): Promise<void> => {
+  const root = await rootOf($)
+  const inbox = await inboxOf($, root)
+  const ticket = 'ticket' in of ? of.ticket : (inbox.items.find(item => item.id === of.item)?.ticket ?? null)
+  const detail = detailOf(inbox, of, ticket === null ? undefined : await ticketFileOf($, root, ticket))
+  if (detail === undefined) return
+  backOffset = inboxOffset
+  opened = { of, detail: { ...detail, isReviewable: detail.isReviewable && isMarkable }, mark }
+  $.ui.invalidate('ui.render')
+  await $.ui.scroll({ to: { key: 'detail' }, in: PANE, block: 'start' }).catch(() => undefined)
+}
+
+/** Back to the inbox, its window where it stood when the detail opened. */
+const closeDetail = async ($: Dollar): Promise<void> => {
+  opened = undefined
+  scrollTo = backOffset
+  $.ui.invalidate('ui.render')
+  await $.ui.scroll({ to: 'start', in: PANE }).catch(() => undefined)
+  scrollTo = undefined
+}
+
+/** Marks the open entry reviewed, in the mod's store only, and goes back to the inbox. */
+const markOpened = async ($: Dollar): Promise<void> => {
+  if (opened === undefined) return
+  const { of } = opened
+  const root = await rootOf($)
+  const marked = markReviewed({ inbox: await inboxOf($, root), reviewed: readReviewed(await $.store.get(reviewedKey(root))) }, of)
+  if ('item' in of) await $.store.set(inboxKey(root), marked.inbox)
+  else await $.store.set(reviewedKey(root), marked.reviewed)
+  await refresh($)
+  await closeDetail($)
+}
 
 /** Refreshes the pane. `isOffering` (a rescan) opens the set picker; a new session opens it by itself. */
 const refresh = async ($: Dollar, hint?: string, cover?: string, isOffering = false): Promise<View> => {
@@ -789,6 +875,8 @@ export const register: Register = on => {
     })
     // A session that ended mid-turn may never have raised turn.complete; the new one starts with no turn running.
     sceneOf($).activity.set('turn', false)
+    // A new session shows the inbox, not a detail an earlier one left open.
+    opened = undefined
     setSavedLook((await storedLook($, LOOK)) ?? {})
     const root = await rootOrNone($)
     setProjectLook((await storedLook($, lookKey('project', root))) ?? {}, root)
@@ -1016,6 +1104,13 @@ export const register: Register = on => {
     return ended
   })
 
+  // The engine scrolls only to something drawn, never to a row number, so going back asks for the top and lands where the inbox stood.
+  on('ui.scroll', { component: 'Pane', requestId: PANE }, async (_, e, next) => {
+    if (scrollTo === undefined || e.origin.kind !== 'plugin') return next(e)
+
+    return next({ ...e, offset: scrollTo })
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     // The host draws the pane when it is shown, so a render is also the news that it is, before the picture is read.
     await syncShown($)
@@ -1099,15 +1194,62 @@ export const register: Register = on => {
         {fit(text, columns)}
       </Text>
     )
-    const entry = (key: string, mark: Mark, title: string, detail?: string) => (
+    // A NEEDS YOU row opens its detail from the ▸ at its end (a click on the row itself is the reply's, ticket 10).
+    const asked = (one: InboxView['needsYou'][number]) => {
+      const mark = ASKED[one.kind]
+
+      return (
+        <Box key={`ask-${one.id}`} flexDirection="column">
+          <Box flexDirection="row" justifyContent="space-between">
+            <Text>
+              <Text color={mark.color}>{mark.glyph} </Text>
+              {fit(one.ticket === null ? one.short : inboxTitle(one.ticket), columns - 4)}
+            </Text>
+            <Button key={`open-ask-${one.id}`} plain label="▸" onPress={() => quietly(openDetail($, { item: one.id }, mark, true), $)} />
+          </Box>
+          {/* An item of no ticket is its short line alone; one of a ticket has the ticket above it. */}
+          {one.ticket !== null && <Text>{`  ${fit(one.short, columns - 2)}`}</Text>}
+        </Box>
+      )
+    }
+    // Any other row is a Button as a whole: a click, or Enter under the keyboard's focus, opens its detail.
+    const entry = (key: string, mark: Mark, title: string, detail: string, onPress: () => void) => (
       <Box key={key} flexDirection="column">
-        <Text>
-          <Text color={mark.color}>{mark.glyph} </Text>
-          {fit(title, columns - 2)}
-        </Text>
-        {detail !== undefined && <Text>{`  ${fit(detail, columns - 2)}`}</Text>}
+        <Button key={`open-${key}`} plain label={`${mark.glyph} ${fit(title, columns - 2)}`} onPress={onPress} />
+        <Text>{`  ${fit(detail, columns - 2)}`}</Text>
       </Box>
     )
+    const ticketOf = (title: string): TicketRef => ({ set: current, title })
+    // The detail in the inbox's place: every line wraps to the pane, and the pane scrolls a detail taller than it.
+    const detailView = (shown: NonNullable<typeof opened>) => {
+      const { detail, mark } = shown
+      const line = (key: string, text: string, isBold = false) => (
+        <Text key={key} wrap="wrap" bold={isBold}>
+          {text}
+        </Text>
+      )
+
+      return (
+        <Box key="detail" flexDirection="column" marginTop={1}>
+          <Text dimColor>{'─'.repeat(columns)}</Text>
+          <Button key="back" plain hotkey="b" label="← Back" onPress={() => quietly(closeDetail($), $)} />
+          <Text wrap="wrap" bold>
+            <Text color={mark.color}>{mark.glyph} </Text>
+            {detail.title}
+          </Text>
+          {detail.short !== null && line('short', detail.short)}
+          {detail.goal !== null && line('goal-heading', 'Goal', true)}
+          {detail.goal !== null && line('goal', detail.goal)}
+          {detail.long !== '' && line('long', detail.long)}
+          {detail.happened.length > 0 && line('happened-heading', 'What happened', true)}
+          {detail.happened.map((one, at) => line(`happened-${at}`, `· ${one}`))}
+          {detail.boxes > 0 && line('evidence-heading', `Evidence · ${detail.ticked.length}/${detail.boxes} ticked`, true)}
+          {detail.ticked.map((one, at) => line(`ticked-${at}`, `${GLYPH.done} ${one}`))}
+          {detail.isReviewable && <Button key="mark-reviewed" plain hotkey="r" label="Mark reviewed" onPress={() => quietly(markOpened($), $)} />}
+        </Box>
+      )
+    }
+    if (opened === undefined) inboxOffset = e.props.scroll.offset
     const dropped = leftOut()
     // Only the terminal has a cell grid to draw the character on.
     const buddy =
@@ -1215,40 +1357,47 @@ export const register: Register = on => {
             )}
           </Box>
         )}
-        <Box key="inbox" flexDirection="column" marginTop={1}>
-          <Text dimColor>{'─'.repeat(columns)}</Text>
-          {isInboxEmpty && <Text dimColor>{fit('Nothing in the inbox yet.', columns)}</Text>}
-          {inbox.needsYou.length > 0 && (
-            <Box flexDirection="column">
-              {heading(`NEEDS YOU · ${inbox.needsYou.length}`, 'warning')}
-              {inbox.needsYou.map((one, at) =>
-                // An item of no ticket is its short line alone; one of a ticket has the ticket above it.
-                one.ticket === null ? entry(`ask-${at}`, ASKED[one.kind], one.short) : entry(`ask-${at}`, ASKED[one.kind], inboxTitle(one.ticket), one.short),
-              )}
-            </Box>
-          )}
-          {inbox.review.length > 0 && (
-            <Box flexDirection="column" marginTop={inbox.needsYou.length > 0 ? 1 : 0}>
-              {heading(`READY TO REVIEW · ${inbox.review.length}`, 'suggestion')}
-              {inbox.review.map((one, at) => {
-                const { glyph, text } = reviewLine(one)
+        {opened !== undefined && detailView(opened)}
+        {opened === undefined && (
+          <Box key="inbox" flexDirection="column" marginTop={1}>
+            <Text dimColor>{'─'.repeat(columns)}</Text>
+            {isInboxEmpty && <Text dimColor>{fit('Nothing in the inbox yet.', columns)}</Text>}
+            {inbox.needsYou.length > 0 && (
+              <Box flexDirection="column">
+                {heading(`NEEDS YOU · ${inbox.needsYou.length}`, 'warning')}
+                {inbox.needsYou.map(asked)}
+              </Box>
+            )}
+            {inbox.review.length > 0 && (
+              <Box flexDirection="column" marginTop={inbox.needsYou.length > 0 ? 1 : 0}>
+                {heading(`READY TO REVIEW · ${inbox.review.length}`, 'suggestion')}
+                {inbox.review.map((one, at) => {
+                  const { glyph, text } = reviewLine(one)
+                  const mark: Mark = { glyph, color: glyph === '✓' ? 'success' : 'warning' }
 
-                return entry(`review-${at}`, { glyph, color: glyph === '✓' ? 'success' : 'warning' }, inboxTitle(one.title), text)
-              })}
-            </Box>
-          )}
-          {inbox.working.length > 0 && (
-            <Box flexDirection="column" marginTop={inbox.needsYou.length + inbox.review.length > 0 ? 1 : 0}>
-              {heading(`WORKING · ${inbox.working.length} ${inbox.working.length === 1 ? 'ticket' : 'tickets'}`, 'claude')}
-              {inbox.working.map((one, at) => entry(`working-${at}`, { glyph: GLYPH.active, color: 'claude' }, inboxTitle(one.title), workingLine(one, now)))}
-            </Box>
-          )}
-          {inbox.reviewed > 0 && (
-            <Box marginTop={inbox.needsYou.length + inbox.review.length + inbox.working.length > 0 ? 1 : 0}>
-              <Text dimColor>{fit(`REVIEWED · ${inbox.reviewed}`, columns)}</Text>
-            </Box>
-          )}
-        </Box>
+                  return entry(`review-${at}`, mark, inboxTitle(one.title), text, () => quietly(openDetail($, { ticket: ticketOf(one.title) }, mark, true), $))
+                })}
+              </Box>
+            )}
+            {inbox.working.length > 0 && (
+              <Box flexDirection="column" marginTop={inbox.needsYou.length + inbox.review.length > 0 ? 1 : 0}>
+                {heading(`WORKING · ${inbox.working.length} ${inbox.working.length === 1 ? 'ticket' : 'tickets'}`, 'claude')}
+                {inbox.working.map((one, at) => {
+                  const mark: Mark = { glyph: GLYPH.active, color: 'claude' }
+
+                  return entry(`working-${at}`, mark, inboxTitle(one.title), workingLine(one, now), () =>
+                    quietly(openDetail($, { ticket: ticketOf(one.title) }, mark, false), $),
+                  )
+                })}
+              </Box>
+            )}
+            {inbox.reviewed > 0 && (
+              <Box marginTop={inbox.needsYou.length + inbox.review.length + inbox.working.length > 0 ? 1 : 0}>
+                <Text dimColor>{fit(`REVIEWED · ${inbox.reviewed}`, columns)}</Text>
+              </Box>
+            )}
+          </Box>
+        )}
         {progress !== null && (
           <Box marginTop={1}>
             <Text dimColor wrap="truncate-start">

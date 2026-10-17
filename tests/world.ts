@@ -182,6 +182,44 @@ export const addSet = (w: World, root: string, set: string, tickets: Record<stri
   for (const [name, text] of Object.entries(tickets)) w.files[`${scratch}/${set}/issues/${name}`] = text
 }
 
+type Mounted = { find: (query: { key: string }) => Promise<unknown> }
+type Node = { type?: string; props?: Record<string, unknown>; children?: unknown[] }
+
+/**
+ * The lines of the element keyed `key` as painted, top to bottom, its rules left out: each outermost Text is one line,
+ * a Button is a line of its label, and a row of them side by side is one line, its parts a space apart.
+ */
+export const linesIn = async (ui: Mounted, key: string): Promise<string[]> => {
+  const lines: string[] = []
+  // A child is a string or an element as drawn, its own children inside.
+  const textOf = (node: unknown): string => {
+    if (typeof node === 'string') return node
+    if (typeof node !== 'object' || node === null) return ''
+    const one = node as Node
+    if (one.type === 'Button') return String(one.props?.label ?? '')
+    const parts = (one.children ?? []).map(textOf)
+
+    return one.type === 'Box' ? parts.filter(part => part !== '').join(' ') : parts.join('')
+  }
+  const walk = (node: unknown): void => {
+    if (typeof node !== 'object' || node === null) return
+    const one = node as Node
+    if (one.type === 'Text' || one.type === 'Button' || (one.type === 'Box' && one.props?.flexDirection === 'row')) {
+      lines.push(textOf(one))
+
+      return
+    }
+    for (const child of one.children ?? []) walk(child)
+  }
+  walk(await ui.find({ key }))
+
+  return lines.filter(line => !/^─+$/.test(line))
+}
+
+/** The set picker's Buttons in the drawing; the inbox's rows are Buttons too and are left out. */
+export const setButtons = async (ui: { findAll: (query: { type: string }) => Promise<{ key: string | undefined }[]> }): Promise<unknown[]> =>
+  (await ui.findAll({ type: 'Button' })).filter(one => one.key?.startsWith('set-') === true)
+
 export const PANE = {
   plugin: 'sidekick',
   component: 'Pane',

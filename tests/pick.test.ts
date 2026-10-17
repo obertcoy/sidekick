@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 import { expect, mock } from 'claude-code/testing'
 import type { World } from './world'
-import { addSet, answered, PANE, RECIPE, RUN, SURFACES, test, ticket, world } from './world'
+import { addSet, answered, PANE, RECIPE, RUN, SURFACES, setButtons, test, ticket, world } from './world'
 
 const ROOT = '/work/shop'
 const SEARCH = { '01-index.md': ticket('01: Index', 'done'), '02-query.md': ticket('02: Query', 'open') }
@@ -43,7 +43,7 @@ const END = { turnId: 't1', answer: 'Done.', durationMs: 1, isAborted: false, re
 type Pane = { buttons: number; has: (text: string | RegExp) => Promise<boolean> }
 const look = async ($: Engine): Promise<Pane> => {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const buttons = (await ui.findAll({ type: 'Button' })).length
+  const buttons = (await setButtons(ui)).length
   const found = new Map<string | RegExp, boolean>()
   for (const text of PROBES) found.set(text, (await ui.find({ type: 'Text', text })) !== undefined)
   await ui.unmount()
@@ -267,7 +267,7 @@ test('a rescan with two sets mid-session reopens the picker, keeps the current s
   await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
   await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.findAll({ type: 'Button' })).length).toBe(2)
+  expect((await setButtons(ui)).length).toBe(2)
   expect(await ui.find({ type: 'Button', text: /› 2: search/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: SEARCH_SRC })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '1/2 done' })).toBeDefined()
@@ -284,7 +284,7 @@ test('a single set shows no list', async ($, on) => {
   mock.store(on)
   await setup($, on, ['search'])
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Button' })).toBeUndefined()
+  expect(await setButtons(ui)).toEqual([])
   expect(await ui.find({ type: 'Text', text: /sets · / })).toBeUndefined()
   await ui.unmount()
 })
@@ -294,7 +294,7 @@ test('with 9 sets the pane still draws one button per set and no Select', async 
   mock.store(on)
   await setup($, on, [...NAMES, 'eta', 'theta', 'iota'])
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.findAll({ type: 'Button' })).length).toBe(9)
+  expect((await setButtons(ui)).length).toBe(9)
   expect(await ui.find({ type: 'Select' })).toBeUndefined()
   await ui.unmount()
 })
@@ -410,7 +410,7 @@ test('the picker the command opened closes when the next main-agent turn ends', 
 test('with 10 sets the pane draws a Select of all of them and picking one makes it active', async ($, on) => {
   const { clock } = await fresh($, on, MANY)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.findAll({ type: 'Button' })).toHaveLength(0)
+  expect(await setButtons(ui)).toHaveLength(0)
   expect(await ui.find({ type: 'Text', text: 'Pick a ticket set:' })).toBeDefined()
   expect(await ui.find({ type: 'Select' })).toBeDefined()
   await ui.select({ key: 'set-select', value: '.scratch/s03/issues' })

@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 import { expect, mock } from 'claude-code/testing'
 import type { Reply, World } from './world'
-import { addSet, answered, failed, PANE, RECIPE, RUN, SURFACES, test, ticket, world } from './world'
+import { addSet, answered, failed, PANE, RECIPE, RUN, SURFACES, setButtons, test, ticket, world } from './world'
 
 const ROOT = '/work/shop'
 const CHECKOUT = {
@@ -96,7 +96,7 @@ test('a Write of a ticket in a new folder adds a place and keeps the old one, wi
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ type: 'Text', text: '.scratch/checkout/issues' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '2 sets · /sidekick-pick' })).toBeDefined()
-    expect(await ui.find({ type: 'Button' })).toBeUndefined()
+    expect(await setButtons(ui)).toEqual([])
     await ui.unmount()
   }
   // Creating the ticket was no touch; reading it is.
@@ -116,7 +116,7 @@ test('a rescan with a hint adds the place it finds and keeps the old one, and a 
   expect(w.asked[1]).toContain('`.scratch/*/issues/*.md`')
   // Both places are read now: the picker lists both sets.
   let ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.findAll({ type: 'Button' })).length).toBe(2)
+  expect((await setButtons(ui)).length).toBe(2)
   await ui.unmount()
 
   // A plain rescan adds a third place the model finds, with the others still there.
@@ -128,7 +128,7 @@ test('a rescan with a hint adds the place it finds and keeps the old one, and a 
   await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
   await clock.settle()
   ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.findAll({ type: 'Button' })).length).toBe(3)
+  expect((await setButtons(ui)).length).toBe(3)
   await ui.unmount()
 })
 
@@ -139,7 +139,7 @@ test('a place whose glob is already known is replaced with the new rules, not du
   w.answer = () => answered(RECIPE.replace('"done"', '"done","shipped-it"'))
   await $.command.run({ command: 'sidekick-rescan', args: '', ...RUN })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Button' })).toBeUndefined()
+  expect(await setButtons(ui)).toEqual([])
   expect(await ui.find({ type: 'Text', text: /sets/ })).toBeUndefined()
   await ui.unmount()
 })

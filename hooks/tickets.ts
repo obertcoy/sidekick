@@ -233,6 +233,17 @@ export const parseTicketFile = (name: string, text: string, recipe: Extract<Plac
   return { title, isDone: boxes > 0 && ticked === boxes, isActive: false, ticked, boxes }
 }
 
+/** A ticket file's checkboxes in file order, each with its text and whether it is ticked. */
+export const boxesIn = (text: string): { text: string; isTicked: boolean }[] =>
+  text.split(/\r?\n/).flatMap(line => {
+    const found = CHECKBOX.exec(line)
+
+    return found === null ? [] : [{ text: (found[2] ?? '').trim(), isTicked: found[1]?.toLowerCase() === 'x' }]
+  })
+
+/** The text of a ticket file's ticked boxes, in file order: the evidence the inbox shows beside what the ticket says. */
+export const tickedOf = (text: string): string[] => boxesIn(text).flatMap(box => (box.isTicked ? [box.text] : []))
+
 /** One ticket per checklist line. */
 export const parseChecklist = (text: string): Ticket[] =>
   text.split(/\r?\n/).flatMap(line => {

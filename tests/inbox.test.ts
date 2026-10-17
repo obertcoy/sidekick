@@ -4,19 +4,25 @@ import {
   activeSince,
   addItems,
   ago,
+  detailOf,
   fit,
+  goalOf,
   HISTORY_LINES,
   historyOf,
   inboxTitle,
   keyOf,
+  markReviewed,
   parseItems,
   readInbox,
+  readReviewed,
   readSince,
   reviewLine,
   sectionsOf,
   tidy,
+  tidyReviewed,
   workingLine,
 } from '../hooks/inbox'
+import { tickedOf } from '../hooks/tickets'
 import { test } from './world'
 
 const CART: TicketRef = { set: '.scratch/shop/issues', title: '01: Cart' }
@@ -155,8 +161,8 @@ test('NEEDS YOU holds the open questions, blockers and changes of direction: no 
     'Waiting on the API key',
     'Dropped the queue',
   ])
-  expect(needsYou[0]).toEqual({ kind: 'needs-you', ticket: null, short: 'Ship on Friday?' })
-  expect(needsYou[2]).toEqual({ kind: 'needs-you', ticket: '01: Cart', short: 'Keep the old cart?' })
+  expect(needsYou[0]).toEqual({ id: 7, kind: 'needs-you', ticket: null, short: 'Ship on Friday?' })
+  expect(needsYou[2]).toEqual({ id: 5, kind: 'needs-you', ticket: '01: Cart', short: 'Keep the old cart?' })
   // Notes are a ticket's history, not news for the inbox; a reviewed question is counted in REVIEWED.
   expect(reviewed).toBe(1)
 })
@@ -241,4 +247,102 @@ test('a line longer than its room is cut with an ellipsis', () => {
   expect(fit('Keep timed-out payments pending?', 10)).toHaveLength(10)
   expect(fit('abc', 3)).toBe('abc')
   expect(fit('abcd', 1)).toBe('…')
+})
+
+const TICKET_FILE = `# 02: Payment
+
+**What to build:** Retries reuse the
+payment id, so a retry never charges twice.
+
+**Status:** done
+
+- [x] Retries reuse the id
+- [ ] A timeout stays pending
+- [X] Covered by tests
+`
+
+test("a ticket's goal is its first paragraph after the title, on one line without emphasis; none when it has none", () => {
+  expect(goalOf(TICKET_FILE)).toBe('What to build: Retries reuse the payment id, so a retry never charges twice.')
+  expect(goalOf('# 01: Cart\r\n\r\n- [ ] a step\r\n')).toBeNull()
+  expect(goalOf('# 01: Cart\n\n**Status:** open\n')).toBeNull()
+  expect(goalOf('---\ntitle: Cart\n---\n\nThe cart keeps lines.\n')).toBe('The cart keeps lines.')
+  expect(goalOf('')).toBeNull()
+})
+
+test('the evidence of a ticket is the text of its ticked boxes, in file order', () => {
+  expect(tickedOf(TICKET_FILE)).toEqual(['Retries reuse the id', 'Covered by tests'])
+  expect(tickedOf('No boxes.')).toEqual([])
+})
+
+test('a ticket marked reviewed leaves READY TO REVIEW for the REVIEWED count; questions carry their ids', () => {
+  const tickets = [fromFile('02: Payment', { isDone: true, ticked: 3, boxes: 3 }), fromFile('03: Emails', { isDone: true, ticked: 1, boxes: 3 })]
+  const inbox: Inbox = { items: [asking(4, 'needs-you', PAY, 'Which provider?'), asking(5, 'blocked', null, 'Staging is down', true)], next: 6 }
+  const { needsYou, review, reviewed } = sectionsOf(inbox, tickets, {}, [keyOf(PAY)])
+  expect(review).toEqual([{ title: '03: Emails', ticked: 1, boxes: 3 }])
+  expect(reviewed).toBe(2)
+  expect(needsYou).toEqual([{ id: 4, kind: 'needs-you', ticket: PAY.title, short: 'Which provider?' }])
+})
+
+test('marking reviewed: an item of a ticket is kept as reviewed, an item of no ticket is deleted, a ticket is remembered by its key', () => {
+  const inbox: Inbox = { items: [asking(1, 'needs-you', PAY, 'Which provider?'), asking(2, 'blocked', null, 'Staging is down')], next: 3 }
+  const first = markReviewed({ inbox, reviewed: [] }, { item: 1 })
+  expect(first.inbox.items.map(item => [item.id, item.isReviewed])).toEqual([
+    [1, true],
+    [2, false],
+  ])
+  const second = markReviewed(first, { item: 2 })
+  expect(second.inbox.items.map(item => item.id)).toEqual([1])
+  expect(second.inbox.next).toBe(3)
+  const third = markReviewed(second, { ticket: PAY })
+  expect(third.reviewed).toEqual([keyOf(PAY)])
+  // Twice is once.
+  expect(markReviewed(third, { ticket: PAY }).reviewed).toEqual([keyOf(PAY)])
+})
+
+test('a reviewed ticket is remembered only while it is done in its file, so one done again comes back to review', () => {
+  const tickets = [fromFile('01: Cart', { isActive: true }), fromFile('02: Payment', { isDone: true })]
+  expect(tidyReviewed([keyOf(CART), keyOf(PAY), 'gone\nticket'], tickets)).toEqual([keyOf(PAY)])
+  expect(readReviewed(['a', 3, 'b'])).toEqual(['a', 'b'])
+  expect(readReviewed('junk')).toEqual([])
+})
+
+test("an item's detail: its ticket's goal, its long explanation, the ticket's history newest first and the ticked boxes", () => {
+  const inbox = addItems(
+    EMPTY,
+    [
+      note('Cart started'),
+      { kind: 'note', ticket: PAY, short: 'Retries built', long: 'Each retry reuses the payment id.' },
+      { kind: 'needs-you', ticket: PAY, short: 'Keep timed-out payments pending?', long: 'A timed-out payment may still go through.' },
+      { kind: 'note', ticket: PAY, short: 'Tests pass', long: '' },
+      { kind: 'blocked', ticket: null, short: 'Staging is down', long: 'Nothing can be tried there.' },
+    ],
+    10,
+  )
+  expect(detailOf(inbox, { item: 3 }, TICKET_FILE)).toEqual({
+    title: '02 Payment',
+    short: 'Keep timed-out payments pending?',
+    goal: 'What to build: Retries reuse the payment id, so a retry never charges twice.',
+    long: 'A timed-out payment may still go through.',
+    happened: ['Tests pass', 'Retries built'],
+    ticked: ['Retries reuse the id', 'Covered by tests'],
+    boxes: 3,
+    isReviewable: true,
+  })
+  // An item of no ticket has no goal, no history and no evidence: its short line is its title.
+  expect(detailOf(inbox, { item: 5 }, undefined)).toEqual({
+    title: 'Staging is down',
+    short: null,
+    goal: null,
+    long: 'Nothing can be tried there.',
+    happened: [],
+    ticked: [],
+    boxes: 0,
+    isReviewable: true,
+  })
+  // A ticket's own detail is explained by its newest note that explains anything.
+  expect(detailOf(inbox, { ticket: PAY }, TICKET_FILE)).toMatchObject({ title: '02 Payment', short: null, long: 'Each retry reuses the payment id.' })
+  expect(detailOf(inbox, { ticket: CART }, undefined)).toMatchObject({ title: '01 Cart', long: '', happened: ['Cart started'], goal: null })
+  // An item that is gone has no detail; one already reviewed cannot be marked again.
+  expect(detailOf(inbox, { item: 99 }, undefined)).toBeUndefined()
+  expect(detailOf(markReviewed({ inbox, reviewed: [] }, { item: 3 }).inbox, { item: 3 }, TICKET_FILE)?.isReviewable).toBe(false)
 })

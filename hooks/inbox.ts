@@ -4,7 +4,7 @@
 
 import type { Asking, Checked, InboxView } from '../types'
 import type { Ticket } from './tickets'
-import { jsonIn } from './tickets'
+import { boxesIn, jsonIn } from './tickets'
 
 export const ITEM_KINDS = ['needs-you', 'blocked', 'changed-direction', 'note'] as const
 export type ItemKind = (typeof ITEM_KINDS)[number]
@@ -109,21 +109,23 @@ const checkedOf = ({ title, ticked, boxes }: FileTicket): Checked => ({ title, t
 /**
  * The inbox's sections. NEEDS YOU: the open questions, blockers and changes of direction, those of no ticket first,
  * then by kind, newest first. READY TO REVIEW: the tickets done in their files, those with boxes unticked first.
- * WORKING: the tickets active in their files. REVIEWED: how many items were reviewed (a note is history, never one).
+ * Tickets the developer marked reviewed leave READY TO REVIEW. WORKING: the tickets active in their files.
+ * REVIEWED: how many items and tickets were reviewed (a note is history, never one).
  */
-export const sectionsOf = (inbox: Inbox, tickets: readonly FileTicket[], since: Since): InboxView => {
+export const sectionsOf = (inbox: Inbox, tickets: readonly FileTicket[], since: Since, reviewed: Reviewed = []): InboxView => {
   const open = inbox.items.filter((item): item is Item & { kind: Asking['kind'] } => isAsking(item.kind) && !item.isReviewed)
   const needsYou = open
     .sort((a, b) => Number(a.ticket !== null) - Number(b.ticket !== null) || ASKING.indexOf(a.kind) - ASKING.indexOf(b.kind) || b.id - a.id)
-    .map(item => ({ kind: item.kind, ticket: item.ticket?.title ?? null, short: item.short }))
-  const done = tickets.filter(ticket => ticket.isDone)
+    .map(item => ({ id: item.id, kind: item.kind, ticket: item.ticket?.title ?? null, short: item.short }))
+  const isReviewed = (ticket: FileTicket): boolean => reviewed.includes(keyOf(ticket))
+  const done = tickets.filter(ticket => ticket.isDone && !isReviewed(ticket))
   const isShort = (ticket: FileTicket): boolean => ticket.ticked < ticket.boxes
 
   return {
     needsYou,
     review: [...done.filter(isShort), ...done.filter(ticket => !isShort(ticket))].map(checkedOf),
     working: tickets.filter(ticket => ticket.isActive).map(ticket => ({ ...checkedOf(ticket), since: since[keyOf(ticket)] ?? null })),
-    reviewed: inbox.items.filter(item => item.isReviewed && item.kind !== 'note').length,
+    reviewed: inbox.items.filter(item => item.isReviewed && item.kind !== 'note').length + tickets.filter(ticket => ticket.isDone && isReviewed(ticket)).length,
   }
 }
 
@@ -161,6 +163,93 @@ export const workingLine = (ticket: InboxView['working'][number], now: number): 
 
 /** A ticket's title as the inbox shows it: its number kept, without the colon ("08: Payment" is "08 Payment"). */
 export const inboxTitle = (title: string): string => title.replace(/^#?(\d+)\s*[:.)-]\s+/, '$1 ')
+
+/**
+ * A ticket's goal: the first paragraph of its file after the title, on one line, without emphasis; null when it has
+ * none. Front matter, headings, checkboxes and a status line are not a goal.
+ */
+export const goalOf = (file: string): string | null => {
+  const lines = file.split(/\r?\n/)
+  const body = lines[0]?.trim() === '---' ? lines.slice(lines.findIndex((line, at) => at > 0 && line.trim() === '---') + 1) : lines
+  const paragraphs = body
+    .join('\n')
+    .split(/\n\s*\n/)
+    .map(block => block.split('\n').filter(line => line.trim() !== '' && !/^\s*#/.test(line)))
+  const goal = paragraphs.find(
+    block => block.length > 0 && !/^\s*[-*+]\s+\[.\]/.test(block[0] ?? '') && !(block.length === 1 && /^[\s>*_-]*status[*_]*\s*:/i.test(block[0] ?? '')),
+  )
+
+  return goal === undefined ? null : text(goal.join(' ').replace(/\*\*|__/g, ''))
+}
+
+/** Which entry of the inbox a detail shows: an item by its id, or a ticket of the active set. */
+export type Opened = { item: number } | { ticket: TicketRef }
+
+/** What the detail view shows for one entry. */
+export type Detail = {
+  /** The ticket's title as the inbox shows it, or the short line of an item with no ticket. */
+  title: string
+  /** An item's short line under its ticket's title; null when it is the title, or for a ticket's own detail. */
+  short: string | null
+  /** The ticket's first paragraph, read from its file when the detail opens; null for no ticket or no file. */
+  goal: string | null
+  long: string
+  /** The ticket's history, newest first. */
+  happened: string[]
+  /** The ticked boxes' text, and how many boxes the file has. */
+  ticked: string[]
+  boxes: number
+  /** Whether Mark reviewed is offered: an open item, or a ticket done in its file and not yet reviewed (the caller says). */
+  isReviewable: boolean
+}
+
+/** Reviewed tickets, by `keyOf`; Sidekick's display state only, never written to a ticket file. */
+export type Reviewed = readonly string[]
+
+/**
+ * The detail of an entry, with `file` the text of its ticket's file when it has one; undefined when the item is gone.
+ * A ticket's own detail is explained by its newest note that explains anything.
+ */
+export const detailOf = (inbox: Inbox, opened: Opened, file: string | undefined): Detail | undefined => {
+  const item = 'item' in opened ? inbox.items.find(one => one.id === opened.item) : undefined
+  if ('item' in opened && item === undefined) return undefined
+  const ticket = 'ticket' in opened ? opened.ticket : (item?.ticket ?? null)
+  const history = ticket === null ? [] : historyOf(inbox, ticket)
+  const boxes = ticket === null || file === undefined ? [] : boxesIn(file)
+
+  return {
+    title: ticket === null ? (item?.short ?? '') : inboxTitle(ticket.title),
+    short: ticket === null ? null : (item?.short ?? null),
+    goal: ticket === null || file === undefined ? null : goalOf(file),
+    long: item?.long ?? history.find(one => one.long !== '')?.long ?? '',
+    happened: history.map(one => one.short),
+    ticked: boxes.filter(box => box.isTicked).map(box => box.text),
+    boxes: boxes.length,
+    isReviewable: item === undefined || !item.isReviewed,
+  }
+}
+
+/**
+ * Marks an entry reviewed: an item of a ticket is kept as reviewed, an item of no ticket is deleted (it has nothing
+ * left to show), and a ticket is remembered by its key.
+ */
+export const markReviewed = (held: { inbox: Inbox; reviewed: Reviewed }, opened: Opened): { inbox: Inbox; reviewed: Reviewed } => {
+  if ('ticket' in opened) {
+    const key = keyOf(opened.ticket)
+
+    return { ...held, reviewed: held.reviewed.includes(key) ? held.reviewed : [...held.reviewed, key] }
+  }
+  const items = held.inbox.items.flatMap(item => (item.id !== opened.item ? [item] : item.ticket === null ? [] : [{ ...item, isReviewed: true }]))
+
+  return { ...held, inbox: { ...held.inbox, items } }
+}
+
+/** The reviewed tickets still done in their files; one that is not done any more is forgotten, so it comes back to review once done again. */
+export const tidyReviewed = (reviewed: Reviewed, tickets: readonly FileTicket[]): string[] =>
+  reviewed.filter(key => tickets.some(ticket => ticket.isDone && keyOf(ticket) === key))
+
+/** The reviewed tickets the store holds; anything unreadable is left out. */
+export const readReviewed = (stored: unknown): string[] => (Array.isArray(stored) ? stored.filter((one): one is string => typeof one === 'string') : [])
 
 const readRef = (value: unknown): TicketRef | null | undefined => {
   if (value === null) return null

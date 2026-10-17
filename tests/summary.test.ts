@@ -258,8 +258,8 @@ test('a short line longer than the pane is cut with an ellipsis when drawn, and 
   await endTurn($, clock)
   expect((await inboxOf(store))?.items.map(item => item.short)).toEqual([done, question])
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  // 40 columns less the padding: 38, of which the glyph and its space take 2.
-  expect(await ui.find({ type: 'Text', text: /^\? Keep timed-out payments pending for…$/ })).toBeDefined()
+  // 40 columns less the padding: 38, of which the glyph and its space take 2, and the ▸ that opens its detail with its space 2.
+  expect(await ui.find({ type: 'Text', text: /^\? Keep timed-out payments pending f…$/ })).toBeDefined()
   await ui.unmount()
 })
 

@@ -1,7 +1,7 @@
 import type { Engine, MockClock } from 'claude-code/testing'
 import { expect, mock } from 'claude-code/testing'
 import type { World } from './world'
-import { addSet, answered, openStore, PANE, RECIPE, RUN, SURFACES, test, world } from './world'
+import { addSet, answered, linesIn, openStore, PANE, RECIPE, RUN, SURFACES, test, world } from './world'
 
 // The inbox in the pane: NEEDS YOU from the items the summary writes, READY TO REVIEW and WORKING from the ticket files.
 const SHOP = '/work/shop'
@@ -20,34 +20,10 @@ const items = (...list: unknown[]): string => JSON.stringify({ items: list })
 
 const ANSWERED = { answer: 'Built it.', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as const
 
-type Mounted = { find: (query: { key: string }) => Promise<unknown> }
-type Node = { type?: string; children?: unknown[] }
-
-/** The inbox's lines as painted, top to bottom, the rule above it left out: each outermost Text is one line. */
-const linesOf = async (ui: Mounted): Promise<string[]> => {
-  const lines: string[] = []
-  // A child is a string or an element as drawn, its own children inside.
-  const textOf = (node: unknown): string =>
-    typeof node === 'string' ? node : typeof node === 'object' && node !== null ? ((node as Node).children ?? []).map(textOf).join('') : ''
-  const walk = (node: unknown): void => {
-    if (typeof node !== 'object' || node === null) return
-    const one = node as Node
-    if (one.type === 'Text') {
-      lines.push(textOf(one))
-
-      return
-    }
-    for (const child of one.children ?? []) walk(child)
-  }
-  walk(await ui.find({ key: 'inbox' }))
-
-  return lines.filter(line => !/^─+$/.test(line))
-}
-
 /** The pane mounted at `bodyColumns` on the surface, its inbox read, and unmounted again. */
 const paint = async ($: Engine, surface: (typeof SURFACES)[number] = 'terminal', bodyColumns = 40): Promise<{ lines: string[]; all: string[] }> => {
   const ui = await $.ui.mount({ ...PANE, surface, props: { ...PANE.props, bodyColumns } })
-  const lines = await linesOf(ui)
+  const lines = await linesIn(ui, 'inbox')
   const all = (await ui.findAll({ type: 'Text' })).map(one => one.text)
   await ui.unmount()
 
@@ -98,11 +74,11 @@ test('the four sections draw in order, each sorted, with the evidence beside eac
     const { lines, all } = await paint($, surface)
     expect(lines).toEqual([
       'NEEDS YOU · 4',
-      '? Ship on Friday?',
-      '✗ Staging is down',
-      '? 02 Payment',
+      '? Ship on Friday? ▸',
+      '✗ Staging is down ▸',
+      '? 02 Payment ▸',
       '  Which provider?',
-      '! 01 Cart',
+      '! 01 Cart ▸',
       '  Dropped the queue',
       'READY TO REVIEW · 3',
       '◐ 03 Emails',
@@ -158,11 +134,11 @@ test('an empty section is not drawn', async ($, on) => {
   expect((await paint($)).lines).toEqual(['Nothing in the inbox yet.'])
 
   await endTurn($, clock, w, items({ kind: 'blocked', ticket: 1, short: 'Waiting on the API key', long: '' }))
-  expect((await paint($)).lines).toEqual(['NEEDS YOU · 1', '✗ 05 Ship', '  Waiting on the API key'])
+  expect((await paint($)).lines).toEqual(['NEEDS YOU · 1', '✗ 05 Ship ▸', '  Waiting on the API key'])
 
   // Notes alone fill no section.
   await endTurn($, clock, w, items({ kind: 'note', ticket: 1, short: 'Started shipping', long: '' }))
-  expect((await paint($)).lines).toEqual(['NEEDS YOU · 1', '✗ 05 Ship', '  Waiting on the API key'])
+  expect((await paint($)).lines).toEqual(['NEEDS YOU · 1', '✗ 05 Ship ▸', '  Waiting on the API key'])
 })
 
 test('every line of the inbox fits the pane at 40 and 72 columns', async ($, on) => {
@@ -186,9 +162,9 @@ test('every line of the inbox fits the pane at 40 and 72 columns', async ($, on)
       const { lines } = await paint($, surface, bodyColumns)
       expect(lines.length).toBe(10)
       for (const line of lines) expect([...line].length).toBeLessThanOrEqual(columns)
-      // A line too long is cut with an ellipsis at the pane's edge: the question, the change of direction and the three titles.
-      expect(lines.filter(line => line.endsWith('…')).every(line => [...line].length === columns)).toBe(true)
-      expect(lines.filter(line => line.endsWith('…')).length).toBe(5)
+      // A line too long is cut with an ellipsis that fills it to the pane's edge (before a NEEDS YOU row's ▸): the question, the change of direction and the three titles.
+      expect(lines.filter(line => line.includes('…')).every(line => [...line].length === columns)).toBe(true)
+      expect(lines.filter(line => line.includes('…')).length).toBe(5)
     }
   }
 })

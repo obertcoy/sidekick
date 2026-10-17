@@ -1,5 +1,7 @@
 /** A NEEDS YOU line of the inbox: a question, a blocker or a change of direction, with its ticket's title or none. */
 export type Asking = {
+  /** The inbox item's id, which its detail opens by. */
+  id: number
   kind: 'needs-you' | 'blocked' | 'changed-direction'
   ticket: string | null
   short: string
@@ -15,11 +17,11 @@ export type Checked = {
 /** The inbox as the pane draws it, each section in its order; an empty one is not drawn. */
 export type InboxView = {
   needsYou: Asking[]
-  /** Tickets done in their files. */
+  /** Tickets done in their files and not yet reviewed. */
   review: Checked[]
   /** Tickets active in their files, with when the mod first saw each active (null: just now). */
   working: (Checked & { since: number | null })[]
-  /** How many items have been reviewed. */
+  /** How many items, and tickets of the set, have been reviewed. */
   reviewed: number
 }
 

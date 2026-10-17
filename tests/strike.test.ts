@@ -101,10 +101,12 @@ test('a finished ticket is struck: charge, bolt from the critter, flash, burning
   await clock.advance(2 * STEP)
   const done = await rowOf(ui, 'Payment')
   expect(done).toMatchObject({ text: '✓ Payment', props: { strikethrough: true, dimColor: true } })
-  const drawn = JSON.stringify(await ui.drawn())
+  // The picture, without the handles a Button's press is kept under: each drawing hands out new ones.
+  const picture = async (): Promise<string> => JSON.stringify(await ui.drawn()).replace(/"handle":\d+/g, '')
+  const drawn = await picture()
   const painted = blits.length
   await clock.advance(5000)
-  expect(JSON.stringify(await ui.drawn())).toBe(drawn)
+  expect(await picture()).toBe(drawn)
   expect(blits.length).toBe(painted)
   expect(await ui.find({ type: 'Text', text: /^━+─+$/ })).toBeDefined()
   await ui.unmount()
