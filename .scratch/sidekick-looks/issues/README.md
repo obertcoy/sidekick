@@ -19,10 +19,17 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 | 11 | 08c Zap raises its arm with a pose | 08b | done |
 | 12 | 08d The sidekick can blink | 08c | done (by-eye check of the classic blink pending) |
 | 13 | 09 Ambient motion with an off switch | 07, 08d | done |
-| 14 | 10 A multi-frame background cycles at rest | 09 | ready |
+| 14 | 10 A multi-frame background cycles at rest | 09 | folded into 21 |
 | 15 | 11 A character replaces a state animation | 07 | done |
 | 16 | 13 Animations wait until the pane is shown | 09 | ready |
-| 17 | 12 README and vocabulary match the new system | 06, 10, 11, 13 | ready (last) |
+| 17 | 18 Moments and movesets, with plain defaults | 13 | ready |
+| 18 | 19 The stage fits the character, and a camera follows it | 18 | ready (golden re-record needs the owner) |
+| 19 | 20 The body moves and can change colour | 19 | ready |
+| 20 | 21 Layers and an effects library (absorbs 10) | 20 | ready |
+| 21 | 22 The sidekick has a place and can walk | 21 | ready |
+| 22 | 23 The classic animations move onto the new engine | 22 | ready (golden re-record needs the owner) |
+| 23 | 24 The classic gets the storm, the jump and the power-up | 23 | ready |
+| 24 | 12 README and vocabulary match the new system | 06, 11, 13, 24 | ready (last) |
 | — | 08e A fuller raised arm | 08c | optional, needs the owner's decision |
 | — | 17 Tests pass on a busy machine (independent; can run alongside any ticket) | — | done |
 
@@ -52,6 +59,11 @@ git config core.hooksPath .githooks
 - No breathing idle loop: at rest the sidekick stands still apart from ambient motion (`PRODUCT.md`).
 - Poses are added only together with the animation that first uses them; the `timeline` helper waits for the first animation that holds a frame.
 
+- Ticket 13: a once-only animation that arrives while the pane is hidden, the set-done cheer included, waits and plays when the pane is next shown (owner, 2026-10-17).
+- The engine is rebuilt for richer motion (tickets 18–24), after the owner chose variant C of the motion prototype (`../../sidekick/prototypes.html#motion`, 2026-10-17): character size is dynamic, the stage fits the character, and on a narrow pane the camera centres on the character.
+- Animations are separate from when they play: moments (detectable events), a library of animations, and a moveset per character, with a plain default for every moment so a character never plays one that does not suit it (18).
+
 ## Open decisions
 
-- Ticket 13: a once-only animation that arrives while the pane is hidden plays when the pane is next shown (the ticket says so); not yet confirmed by the owner.
+- Where the power-up plays. Placeholder: the classic plays it for "last ticket started" (24).
+- `tests/sprite-golden.ts` is re-recorded in 19 and 23, only with the owner's approval of the new frames.

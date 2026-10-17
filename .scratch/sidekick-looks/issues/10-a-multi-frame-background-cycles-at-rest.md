@@ -4,7 +4,7 @@
 
 **Blocked by:** 09: Ambient motion with an off switch
 
-**Status:** ready-for-agent
+**Status:** folded into 21 (2026-10-17): backgrounds become layers there, and its boxes are carried over. Do not build this ticket on its own.
 
 - [ ] At least one background has more than one frame
 - [ ] With that background chosen and the sidekick at rest, the painted background advances frame by frame at a fixed interval and wraps around

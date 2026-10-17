@@ -40,6 +40,26 @@ Approval, implementation and verification must be represented separately. Approv
 
 Receipts should distinguish what is known from what has not been checked. They should not infer verification from an agent finishing or reporting “done”.
 
+### Evidence, not a verdict (developer's choice, 2026-10-17)
+
+Sidekick never labels anything “verified”. Next to what the agent says, it shows only evidence it can check itself, and the developer judges:
+
+```text
+✓ 12 Checkout validation
+  agent says done · 7/7 · tests passed
+◐ 14 Order emails
+  agent says done · 3/6 ticked
+⚠ 11 Tax rounding
+  agent says done · 4/4 · tests failed
+```
+
+- Ticked boxes in the ticket file (`7/7`) come first: the easiest and most useful evidence.
+- The last test run in the session (passed, failed, or not run since the last change) comes next.
+- Within a group, the most worrying items come first (`⚠`, then `◐`, then `✓`).
+- An item leaves the inbox only when the developer marks it reviewed; opening it is not enough.
+
+Inbox lines must fit the pane: the summary asks for a short question or line plus a full explanation for the detail view, and the code truncates the short line with `…` as a last resort.
+
 ## 3. When agents return: reconnect results to the goal
 
 Do not show disconnected completion reports without the reason the work existed.
@@ -115,7 +135,7 @@ This expands the content within the pane's existing width; it does not mean phys
 
 Sidekick already uses buttons for its ticket-set picker. Explore using the same interaction pattern for inbox rows and Back:
 
-- Allow mouse activation where the terminal and Claude Code UI support it; this support still needs to be verified.
+- Allow mouse activation where the terminal and Claude Code UI support it. The developer confirmed (2026-10-17) that clicking the ticket-set picker's buttons works in their terminal.
 - Provide keyboard selection and activation so the workflow does not depend on mouse support.
 - Make the selected item and the route back clear.
 - Keep unread/review state distinct from approval and verification; merely opening details grants neither.

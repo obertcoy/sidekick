@@ -146,6 +146,18 @@ body { overflow-wrap: anywhere; }
 
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+.rm-bar { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; padding: 10px 0; margin: 10px 0 16px; }
+.rm-group { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.rm-group > .lbl { font: .72rem var(--mono); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-right: 4px; }
+.rm-panels { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+.rm-panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 14px; max-width: 100%; }
+.rm-panel h2 { font: 600 .95rem var(--mono); }
+.rm-panel .rm-need { color: var(--muted); font-size: .82rem; margin: 2px 0 10px; max-width: 62ch; }
+.rm-screen { background: #17161d; padding: 8px; border-radius: 4px; display: inline-block; max-width: 100%; overflow-x: auto; }
+.rm-screen canvas { display: block; image-rendering: pixelated; }
+.rm-state { font: .78rem var(--mono); color: var(--muted); margin-top: 8px; font-variant-numeric: tabular-nums; }
+.rm-state b { color: var(--ink); font-weight: 600; }
+.rm-cap { font-size: .85rem; margin-top: 2px; min-height: 2.6em; max-width: 62ch; }
 </style>
 </head>
 <body>
@@ -159,6 +171,7 @@ body { overflow-wrap: anywhere; }
     <a href="#pane" data-tab="pane">Pane</a>
     <a href="#critter" data-tab="critter">Critter</a>
     <a href="#strike" data-tab="strike">Ticket strike</a>
+    <a href="#motion" data-tab="motion">Motion</a>
     <a href="#status" data-tab="status">Status</a>
   </nav>
 
@@ -264,6 +277,40 @@ body { overflow-wrap: anywhere; }
         <p class="tick" id="s-queue"></p>
       </div>
     </div>
+  </section>
+
+  <!-- 5. Motion -->
+  <section id="sec-motion" aria-labelledby="h-motion" hidden>
+    <h2 id="h-motion">Motion: a richer engine (prototype)</h2>
+    <p class="lede">The same moment drawn three ways. <b>A</b> is what today's engine can do. <b>B</b> keeps the 18 × 8 cell stage but lets the body move and particles fly. <b>C</b> (chosen) adds a 40 × 10 cell stage, a storm sky and the power-up. Classic character only.</p>
+    <div class="rm-bar">
+      <div class="rm-group" role="group" aria-label="Scene"><span class="lbl">Scene</span>
+      <button data-scene="zap" aria-pressed="true">Ticket done (bolt)</button>
+      <button data-scene="walk" aria-pressed="false">Walk</button>
+      <button data-scene="cheer" aria-pressed="false">Set done (cheer)</button>
+      <button data-scene="power" aria-pressed="false">Power up</button>
+    </div>
+    <div class="rm-group"><span class="lbl">Play</span>
+      <button id="rm-play" aria-pressed="true">Pause</button>
+      <button id="rm-step">Step</button>
+      <button id="rm-replay">Replay</button>
+    </div>
+    <div class="rm-group" role="group" aria-label="Speed"><span class="lbl">Speed</span>
+      <button data-speed="1" aria-pressed="true">1×</button>
+      <button data-speed="0.25" aria-pressed="false">¼×</button>
+    </div>
+    <div class="rm-group" role="group" aria-label="Storm sky (C)"><span class="lbl">Storm (C)</span>
+      <button data-storm="on" aria-pressed="true">On</button>
+      <button data-storm="off" aria-pressed="false">Off</button>
+    </div>
+    <div class="rm-group" role="group" aria-label="Zoom"><span class="lbl">Pixel</span>
+      <button data-zoom="8" aria-pressed="false">8px ≈ real</button>
+      <button data-zoom="12" aria-pressed="true">12px</button>
+      <button data-zoom="18" aria-pressed="false">18px</button>
+    </div>
+  
+    </div>
+    <div class="rm-panels" id="rm-panels"></div>
   </section>
 
   <!-- 4. Status -->
@@ -1417,7 +1464,7 @@ body { overflow-wrap: anywhere; }
   })
 
   // ---------- tabs (bare #anchors) ----------
-  const TABS = ['pane', 'critter', 'strike', 'status']
+  const TABS = ['pane', 'critter', 'strike', 'motion', 'status']
   let tab = 'pane'
   function showTab(name, fromHash) {
     const family = FAMILIES.includes(name) ? name : null
@@ -1463,6 +1510,552 @@ body { overflow-wrap: anywhere; }
   showTab(location.hash ? location.hash.slice(1) : store.get('tab', 'pane'), false)
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(renderAll, () => {})
   window.__sidekick = { paneModel, progressOf, BASE, SUMMARY, SOURCE, V, start, tick: () => { tick(); renderStrike() }, state: () => S }
+})()
+</script>
+<script>
+// ---------- Motion tab: rich-motion prototype, self-contained ----------
+;(() => {
+const sec = document.getElementById('sec-motion')
+
+// ---------- palette ----------
+const C = {
+  outline: '#2b2b3a', base: '#ffd43b', shade: '#8b5a2b', eye: '#1a1a24', cheek: '#e5484d',
+  paper: '#f1f3f5', ink: '#4a5160', spark: '#7cf0ff', flash: '#ffffff', check: '#40c057',
+  glow: '#4dabf7', glowDim: '#2b5d8a', ember: '#ffa94d', coal: '#9c3d10', scorch: '#141116',
+  smoke: '#6b6878', smoke2: '#45424f', dust: '#5a5262',
+  star: '#5c5470', star2: '#8a82a0', ground: '#3a3340', ground2: '#2c2732', hill: '#221e2a', grass: '#4d4560',
+  bg0: '#17161d', bg1: '#2a2838', bg2: '#4a4766',
+}
+const CONFETTI = ['#ff6b6b', '#ffd43b', '#69db7c', '#4dabf7', '#da77f2', '#ffffff']
+
+// ---------- grid ----------
+const grid = (w, h) => ({ w, h, bg: C.bg0, px: new Array(w * h).fill(null) })
+const put = (g, x, y, c) => {
+  x = Math.round(x); y = Math.round(y)
+  if (c && x >= 0 && y >= 0 && x < g.w && y < g.h) g.px[y * g.w + x] = c
+}
+const get = (g, x, y) => (x >= 0 && y >= 0 && x < g.w && y < g.h ? g.px[y * g.w + x] : null)
+const rng = seed => () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
+
+// ---------- the classic character (from hooks/sprite/characters/classic.ts), rows from y = 2 ----------
+const BODY = [
+  '',
+  '',
+  '..k......k',
+  '..yy....yy',
+  '...yy..yy',
+  '...yyyyyy',
+  '..yyyyyyyy',
+  '..yyeyyeyy',
+  'yyryyyyyyr',
+  '.y.yyyyyy',
+  'yy.yyyyyy',
+  '.nnyyyyyy',
+  '...yyyyyy',
+  '...yy..yy',
+]
+const LEGEND = { k: 'outline', y: 'base', n: 'shade', e: 'eye', r: 'cheek' }
+const LEGS = { stand: '...yy..yy', a: '..yy...yy', pass: '....yyy', b: '...yy...yy' }
+const W = 12 // body width including the raised arm
+
+/**
+ * Draws the character. Feet stand on row `feet`. Today's engine supports only `bob` and `poses`;
+ * everything else here (dx, dy, mirror, squash, legs) is the "body moves" addition.
+ * Returns `at(x, y)`: where a body pixel (in classic.ts coordinates) lands on screen, for effects to aim at.
+ */
+function drawChar(g, o) {
+  const { x = 0, feet = 14, dx = 0, dy = 0, mirror = false, squash = 0, poses = [], legs = 'stand', bob = 0 } = o
+  const rows = BODY.map(r => r.padEnd(W, '.').split(''))
+  const set = (px, py, l) => { rows[py - 2][px] = l }
+  rows[14 - 2] = LEGS[legs].padEnd(W, '.').split('')
+  if (poses.includes('armUp')) { set(10, 8, 'k'); set(10, 9, 'y'); set(9, 10, 'k') }
+  if (poses.includes('armsUp')) { set(10, 8, 'k'); set(10, 9, 'y'); set(9, 10, 'k'); set(1, 7, 'k'); set(1, 8, 'y') }
+  if (poses.includes('blink')) { set(4, 8, 'n'); set(7, 8, 'n') }
+  if (poses.includes('happy')) { set(4, 8, 'k'); set(7, 8, 'k'); set(4, 7, 'y'); set(7, 7, 'y') }
+  if (poses.includes('earsUp')) { set(2, 2, 'k'); set(9, 2, 'k') }
+  if (poses.includes('tailUp')) { set(0, 8, 'y'); set(0, 9, '.'); set(1, 9, 'y') }
+  if (poses.includes('tailDown')) { set(0, 9, '.'); set(0, 10, 'y') }
+  const head = (px, py) => py >= 3 && py <= 9 && px >= 2
+  const sx = px => x + dx + (mirror ? W - 1 - px : px)
+  const sy = (px, py) => {
+    let y = feet + dy - (14 - py)
+    if (squash > 0 && py < 13) y += squash
+    if (squash < 0 && py <= 12) y += squash
+    if (head(px, py)) y += bob
+    return y
+  }
+  if (poses.includes('spiky')) { set(2, 2, 'k'); set(9, 2, 'k'); set(3, 2, 'y'); set(8, 2, 'y') }
+  // A recolour of the body roles, for the power-up.
+  const colour = l => (o.colors && o.colors[LEGEND[l]]) || C[LEGEND[l]]
+  const paint = which => {
+    for (let py = 2; py <= 14; py++) {
+      for (let px = 0; px < W; px++) {
+        const l = rows[py - 2][px]
+        if (l === '.' || head(px, py) !== which) continue
+        if (squash > 0 && py === 13) continue
+        put(g, sx(px), sy(px, py), colour(l))
+        // A stretch duplicates the belly row so the body grows a pixel.
+        if (squash < 0 && py === 12) put(g, sx(px), sy(px, py) + 1, colour(l))
+      }
+    }
+  }
+  paint(false)
+  paint(true)
+  return { at: (px, py) => [sx(px), sy(px, py)] }
+}
+
+// ---------- effects ----------
+function boltPath(seed, x0, y0, x1, y1) {
+  const r = rng(seed); const pts = []; let x = x0
+  for (let y = y0; y <= y1; y++) {
+    pts.push([x, y])
+    const left = y1 - y, need = x1 - x
+    if (Math.abs(need) >= left && need !== 0) { x += Math.sign(need); if (Math.abs(need) > left) pts.push([x, y]) }
+    else { const v = r(); if (v < 0.35) { x -= 1; pts.push([x, y]) } else if (v < 0.7) { x += 1; pts.push([x, y]) } }
+  }
+  return pts
+}
+function drawBolt(g, pts, core, glow) {
+  if (glow) for (const [x, y] of pts) for (const d of [-1, 1]) if (!pts.some(([a, b]) => a === x + d && b === y)) put(g, x + d, y, glow)
+  for (const [x, y] of pts) put(g, x, y, core)
+}
+function branch(seed, from, len, dir) {
+  const r = rng(seed); const pts = []; let [x, y] = from
+  for (let i = 0; i < len; i++) { x += dir; if (r() < 0.6) y += 1; pts.push([x, y]) }
+  return pts
+}
+/** Sparks thrown from a point; `t` is frames since the burst. Deterministic, so Step and Replay match. */
+function burst(g, { seed, n, x, y, t, ground, speed = 1.6, spread = 2.4, grav = 0.28, life = 9, colors }) {
+  const r = rng(seed)
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + (r() - 0.5) * spread, v = speed * (0.5 + r()), L = life * (0.6 + 0.6 * r())
+    const pick = r()
+    if (t < 0 || t > L) continue
+    let px = x + Math.cos(a) * v * t, py = y + Math.sin(a) * v * t + 0.5 * grav * t * t
+    if (py > ground) py = ground
+    const age = t / L
+    const c = colors ? colors[Math.floor(pick * colors.length)] : age < 0.2 ? C.flash : age < 0.45 ? C.spark : age < 0.75 ? C.ember : C.coal
+    put(g, px, py, c)
+  }
+}
+function confetti(g, { seed, n, t, w, top = -2, fall = 0.55 }) {
+  const r = rng(seed)
+  for (let i = 0; i < n; i++) {
+    const x0 = r() * w, delay = r() * 6, c = CONFETTI[Math.floor(r() * CONFETTI.length)], sway = r() * 6
+    const tt = t - delay
+    if (tt < 0) continue
+    const y = top + tt * fall * (0.7 + r() * 0.6)
+    put(g, x0 + Math.sin((tt + sway) / 2) * 1.2, y, c)
+  }
+}
+function smoke(g, { seed, n, x, y, t, life = 14 }) {
+  const r = rng(seed)
+  for (let i = 0; i < n; i++) {
+    const delay = r() * 4, ox = (r() - 0.5) * 4, drift = (r() - 0.3) * 0.25, tt = t - delay
+    if (tt < 0 || tt > life) continue
+    put(g, x + ox + drift * tt + Math.sin(tt / 2 + i), y - tt * 0.45, tt < life * 0.5 ? C.smoke : C.smoke2)
+  }
+}
+function shockwave(g, { x, row, t, reach, speed = 2 }) {
+  if (t < 0) return
+  const d = Math.round(t * speed)
+  if (d > reach) return
+  for (const s of [-1, 1]) {
+    put(g, x + s * d, row, d < reach * 0.5 ? C.flash : C.spark)
+    put(g, x + s * (d - 1), row, C.glow)
+    put(g, x + s * d, row - 1, d < reach * 0.4 ? C.spark : null)
+  }
+}
+function scorch(g, { x, row, r, t, seed, embers = 6 }) {
+  for (let dx = -r; dx <= r; dx++) put(g, x + dx, row, C.scorch)
+  const rr = rng(seed + Math.floor(t / 2))
+  const left = Math.max(0, embers - Math.floor(t / 3))
+  for (let i = 0; i < left; i++) put(g, x - r + Math.floor(rr() * (2 * r + 1)), row, rr() < 0.5 ? C.ember : C.coal)
+}
+const CHECK = [[4, 0], [3, 1], [0, 2], [2, 2], [1, 3]]
+const CHECK_BIG = [[6, 0], [5, 1], [4, 2], [0, 2], [1, 3], [3, 3], [2, 4]]
+function check(g, x, y, big, outline) {
+  const pts = big ? CHECK_BIG : CHECK
+  if (outline) for (const [a, b] of pts) for (const [p, q] of [[0, 1], [1, 0], [-1, 0], [0, -1]]) if (!get(g, x + a + p, y + b + q)) put(g, x + a + p, y + b + q, '#1d4d2a')
+  for (const [a, b] of pts) put(g, x + a, y + b, C.check)
+}
+
+// ---------- the power-up ----------
+const SS_MID = { base: '#ffe680', outline: '#c98a10', cheek: '#ff7a5c' }
+const SS_FULL = { base: '#fff3b0', shade: '#ffc94d', outline: '#e8a400', eye: '#2bd9ff', cheek: '#ff8a5c' }
+const AURA = ['#e8a400', '#ffd43b', '#fff3a0']
+/** The pixels the character covers when drawn with `o`, so the aura can hug them. */
+function maskOf(g, o) {
+  const t = grid(g.w, g.h); drawChar(t, o)
+  const m = new Set(); t.px.forEach((c, i) => { if (c) m.add(i) })
+  return (x, y) => x >= 0 && y >= 0 && x < g.w && y < g.h && m.has(y * g.w + x)
+}
+/** A flickering aura `size` pixels thick around the body, with flames licking up off the top. */
+function aura(g, has, step, size, seed) {
+  const r = rng(seed + step * 7)
+  for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
+    if (has(x, y)) continue
+    let d = 99
+    for (let dy = -size; dy <= size; dy++) for (let dx = -size; dx <= size; dx++) if (Math.abs(dx) + Math.abs(dy) <= size && has(x + dx, y + dy)) d = Math.min(d, Math.abs(dx) + Math.abs(dy))
+    if (d <= size && r() < (d === 1 ? 0.9 : 0.55)) put(g, x, y, d === 1 ? AURA[2] : d === 2 ? AURA[1] : AURA[0])
+  }
+  for (let x = 0; x < g.w; x++) {
+    let top = -1
+    for (let y = 0; y < g.h; y++) if (has(x, y)) { top = y; break }
+    if (top < 0) continue
+    const tall = Math.floor(r() * (size + 3))
+    for (let i = 1; i <= size + tall; i++) if (r() < 0.8) put(g, x + (r() < 0.2 ? (r() < 0.5 ? -1 : 1) : 0), top - i, i <= size ? AURA[1] : AURA[0])
+  }
+}
+/** A short crackle of lightning somewhere in the aura. */
+function crackle(g, x, y, seed) {
+  const r = rng(seed); let px = x, py = y
+  for (let i = 0; i < 4; i++) { put(g, px, py, i === 0 ? C.flash : C.spark); px += r() < 0.5 ? -1 : 1; py += 1 }
+}
+/** Pebbles that tremble, lift off the ground and float while the power is up, then drop. */
+function rocks(g, step, lift, ground, xs) {
+  xs.forEach((x, i) => {
+    const up = lift * (0.6 + (i % 3) * 0.3) + (lift > 0 ? Math.sin(step / 2 + i) * 0.8 : step % 2 === i % 2 ? -0.6 : 0)
+    put(g, x, ground - up, i % 2 ? C.dust : C.ground)
+    if (i % 3 === 0) put(g, x + 1, ground - up, C.smoke2)
+  })
+}
+/** The whole power-up on a stage `P`: charge, the bolt from the sky, the transformed hold, power down. */
+function powerUp(g, s, P) {
+  const { feet, cx, ground, wide } = P
+  const phase = s < 6 ? 'charge' : s < 12 ? 'rise' : s < 15 ? 'burst' : s < 34 ? 'hold' : 'down'
+  const flash = s === 12 ? 2 : s === 13 ? 1 : 0
+  const sky = wide && state.storm ? storm(g, s, [{ at: 4, x: 34, seed: 2 }, { at: 8, x: 5, seed: 7 }, { at: 10, x: 30, seed: 9 }, { at: 20, x: 36, seed: 5 }, { at: 27, x: 3, sheet: true }]) : null
+  if (sky && phase === 'burst') { const draw = sky.draw; sky.draw = () => { draw(); clouds(g, [{ x: cx + 6, r: 40, level: s === 12 ? 2 : 1 }]) } }
+  if (wide) duskWide(g, s, flash, null, sky); else duskSmall(g, flash)
+  // Ground cracks from the burst on.
+  if (s >= 12) { const reach = Math.min(wide ? 14 : 6, (s - 11) * 3); for (let d = 0; d <= reach; d += 2) { put(g, cx + 5 - d, ground, C.scorch); put(g, cx + 6 + d, ground, C.scorch) } }
+  const pebbles = wide ? [cx - 6, cx - 3, cx + 14, cx + 17, cx + 21, cx - 9] : [cx - 3, cx + 13, cx - 1]
+  const lift = phase === 'charge' ? 0 : phase === 'rise' ? (s - 5) * 0.5 : phase === 'down' ? Math.max(0, 6 - (s - 34) * 2) * 0.6 : wide ? 4 : 2.5
+  rocks(g, s, lift, feet, pebbles)
+
+  const o = { x: cx, feet, poses: [], colors: null }
+  let cap
+  if (phase === 'charge') { o.squash = 1; o.poses = ['blink']; cap = 'Crouches, eyes shut; the ground trembles.' }
+  else if (phase === 'rise') { o.dx = s % 2 ? 1 : -1; o.poses = ['blink', 'earsUp']; o.colors = s >= 9 ? SS_MID : null; cap = 'Shaking with power; pebbles lift, the aura sparks on.' }
+  else if (phase === 'burst') { o.squash = -1; o.dy = s === 12 ? -1 : 0; o.poses = ['spiky', 'armsUp']; o.colors = SS_FULL; cap = 'A bolt from the sky strikes it: transformation!' }
+  else if (phase === 'hold') { o.poses = ['spiky', s % 9 === 0 ? 'blink' : 'earsUp']; o.colors = SS_FULL; o.dy = s % 4 < 2 ? 0 : -1; cap = 'Powered up: golden body, glowing eyes, a roaring aura, floating rocks.' }
+  else { o.colors = s < 36 ? SS_MID : null; o.poses = s < 36 ? ['earsUp'] : []; cap = 'Powers down; the rocks drop.' }
+
+  const has = maskOf(g, o)
+  const size = phase === 'charge' ? (s % 2 ? 1 : 0) : phase === 'rise' ? 1 : phase === 'down' ? (s < 36 ? 1 : 0) : 2
+  if (size > 0) aura(g, has, s, size, 50)
+  drawChar(g, o)
+  if (phase !== 'charge' && phase !== 'down' && s % 2 === 0) { const r = rng(60 + s); crackle(g, cx - 1 + Math.floor(r() * 13), feet - 12 + Math.floor(r() * 8), 70 + s) }
+  if (phase === 'hold') { const r = rng(80 + s); for (let i = 0; i < 3; i++) put(g, cx - 2 + Math.floor(r() * 16), feet - 13 - Math.floor(r() * 4), AURA[2]) }
+  if (phase === 'burst') {
+    const top = boltPath(31, cx + 7, 0, cx + 6, feet - 12)
+    if (s <= 13) drawBolt(g, top, s === 12 ? C.flash : C.spark, s === 12 ? C.glow : C.glowDim)
+    shockwave(g, { x: cx + 5, row: ground, t: s - 12, reach: wide ? 20 : 9, speed: 2.6 })
+    burst(g, { seed: 90, n: wide ? 20 : 10, x: cx + 5, y: feet - 6, t: s - 12 + 1, ground: feet, speed: wide ? 1.9 : 1.2, grav: 0.1, life: 7, colors: [C.flash, AURA[1], AURA[2], C.spark] })
+  }
+  return cap
+}
+
+// ---------- backgrounds ----------
+function duskSmall(g, flash = 0) {
+  g.bg = [C.bg0, C.bg1, C.bg2][flash]
+  put(g, 15, 1, C.star); put(g, 2, 4, C.star)
+  for (let x = 0; x < 18; x++) put(g, x, 15, C.ground)
+}
+// The storm: a cloud bank across the top that lights up near a flash, and thin far-off bolts behind the hills.
+const CLOUD = ['#1d1b27', '#34314a', '#5a5680']
+function clouds(g, lights) {
+  for (let x = 0; x < g.w; x++) {
+    const depth = Math.round(2.2 + Math.sin(x / 3.1) * 1.1 + Math.sin(x / 1.7 + 2) * 0.7)
+    for (let y = 0; y < depth; y++) {
+      let level = 0
+      for (const l of lights) level = Math.max(level, Math.abs(x - l.x) <= l.r ? l.level : 0)
+      put(g, x, y, CLOUD[level])
+    }
+  }
+}
+function distantBolt(g, seed, x, level) {
+  const r = rng(seed); let px = x
+  const bottom = 13 + Math.floor(r() * 3)
+  for (let y = 2; y <= bottom; y++) {
+    put(g, px, y, level === 2 ? '#c8d4ff' : '#5b6aa0')
+    const v = r(); if (v < 0.3) px -= 1; else if (v < 0.6) px += 1
+    if (y === 6 && level === 2) { put(g, px + 1, y + 1, '#7f8fd0'); put(g, px + 2, y + 2, '#7f8fd0') }
+  }
+}
+/** Far-off strikes at fixed steps of a scene; each one flashes on its step and glows the step after. */
+function storm(g, step, strikes) {
+  const lights = [], bolts = []
+  for (const s of strikes) {
+    if (step === s.at) { lights.push({ x: s.x, r: s.sheet ? 14 : 7, level: 2 }); if (!s.sheet) bolts.push([s.seed, s.x, 2]) }
+    if (step === s.at + 1) { lights.push({ x: s.x, r: 5, level: 1 }); if (!s.sheet) bolts.push([s.seed, s.x, 1]) }
+  }
+  const lit = lights.some(l => l.level === 2)
+  return { lit, draw: () => { clouds(g, lights); for (const [seed, x, level] of bolts) distantBolt(g, seed, x, level) } }
+}
+// The far-off strikes behind each wide scene; the zap's own bolt adds its cloud flash on top.
+const STORM = {
+  zap: [{ at: 1, x: 34, seed: 2 }, { at: 5, x: 12, seed: 7 }, { at: 15, x: 22, seed: 9 }, { at: 22, x: 4, seed: 3 }, { at: 28, x: 36, sheet: true }, { at: 34, x: 16, seed: 5 }],
+  walk: [{ at: 4, x: 33, seed: 2 }, { at: 17, x: 8, sheet: true }, { at: 29, x: 20, seed: 9 }, { at: 44, x: 36, seed: 5 }, { at: 55, x: 5, seed: 3 }],
+  cheer: [{ at: 3, x: 6, seed: 2 }, { at: 5, x: 34, seed: 7 }, { at: 14, x: 24, seed: 9 }, { at: 22, x: 10, sheet: true }],
+}
+function duskWide(g, step, flash = 0, crater = null, sky = null) {
+  if (sky && sky.lit && flash === 0) flash = 1
+  g.bg = [C.bg0, C.bg1, C.bg2][flash]
+  const stars = [[3, 2], [11, 1], [19, 4], [26, 1], [34, 3], [38, 6], [15, 7], [30, 6]]
+  stars.forEach(([x, y], i) => put(g, x, y, (step + i * 3) % 11 === 0 ? C.star2 : C.star))
+  if (sky) sky.draw()
+  // Far hills.
+  for (let x = 0; x < 40; x++) {
+    const h = Math.round(2 + Math.sin(x / 4.5) * 1.3 + Math.sin(x / 2.1 + 1) * 0.6)
+    for (let y = 17 - h; y < 18; y++) put(g, x, y, C.hill)
+  }
+  for (let x = 0; x < 40; x++) { put(g, x, 18, C.ground); put(g, x, 19, C.ground2) }
+  for (const x of [1, 8, 13, 21, 25, 33, 37]) put(g, x, 17, C.grass)
+  if (crater) for (let dx = -crater.r; dx <= crater.r; dx++) put(g, crater.x + dx, 18, C.scorch)
+}
+
+// ---------- scenes ----------
+// Each: { frames, ms, draw(g, step) -> caption }
+const A = {
+  w: 18, h: 16, title: 'A · Today', size: '18 × 8 cells',
+  need: 'What the engine draws today: the head bobs a pixel, small pose patches, loose dots. The body never moves.',
+  zap: { frames: 12, ms: 110, draw(g, s) {
+    duskSmall(g)
+    const poses = s >= 2 && s <= 4 ? ['armUp'] : []
+    drawChar(g, { poses })
+    const boltFrom = [14, 2], tail = [[0, 9], [0, 11]], ears = [[2, 3], [9, 3]], paw = [9, 11], reach = [10, 9]
+    const paper = [paw[0] + 1, paw[1] - 1]
+    const BOLT = [[0, 0], [-1, 1], [0, 1], [-1, 2], [-2, 3], [-1, 3], [0, 3], [-1, 4], [-2, 5], [-1, 5], [-2, 6]]
+    const dot = (p, dx, dy, c) => put(g, p[0] + dx, p[1] + dy, C[c])
+    const glow = c => { dot([2, 9], 1, 0, c); dot([9, 9], 1, 0, c) }
+    const glowBeside = c => { dot([2, 9], 1, 0, c) }
+    const bolt = c => BOLT.forEach(([dx, dy]) => dot(boltFrom, dx, dy, c))
+    const near = (dx, dy, c) => dot(paper, dx, dy, c)
+    switch (s) {
+      case 0: dot(tail[0], 0, 0, 'spark'); dot(tail[1], 0, 0, 'spark'); glow('spark'); return 'Cheeks and tail charge.'
+      case 1: dot(ears[0], 0, 0, 'flash'); dot(boltFrom, -2, 3, 'spark'); dot(tail[0], 0, 0, 'spark'); dot(tail[1], 0, 0, 'flash'); glow('flash'); return 'Charge flickers.'
+      case 2: bolt('flash'); glowBeside('flash'); return 'An 11-pixel bolt hits the raised paw.'
+      case 3: bolt('spark'); dot([12, 8], 1, 0, 'flash'); dot(tail[0], 1, -1, 'spark'); glowBeside('spark'); near(1, -1, 'spark'); near(3, 0, 'flash'); near(2, 2, 'spark'); near(4, 3, 'flash'); return 'Sparks around the paw.'
+      case 4: dot(tail[0], 0, -1, 'spark'); dot(reach, 0, 0, 'spark'); near(4, -2, 'spark'); near(4, 0, 'spark'); near(1, 3, 'spark'); return 'Sparks fade.'
+      case 5: near(1, 0, 'spark'); near(4, 4, 'spark'); return 'Last sparks.'
+      default: CHECK.forEach(([dx, dy]) => put(g, paper[0] + dx, paper[1] + dy, C.check)); return 'Check mark holds.'
+    }
+  } },
+  walk: { frames: 12, ms: 200, draw(g) {
+    duskSmall(g); drawChar(g, {})
+    return 'Not possible: a frame cannot move the body, so there is no walk, hop or lean.'
+  } },
+  cheer: { frames: 10, ms: 130, draw(g, s) {
+    duskSmall(g)
+    const climb = [0, -1, -2, -2, -1, -2, -2, -2, -1, 0]
+    const bob = s < 9 && (s % 4 === 1 || s % 4 === 2) ? 1 : 0
+    drawChar(g, { bob })
+    if (s < 9) {
+      const c = s % 2 === 0 ? C.spark : C.flash
+      put(g, 2, 2 + climb[s], c); put(g, 9, 2 + climb[s], c)
+      if (s > 0) put(g, 10, 2 + climb[s - 1], C.spark)
+    }
+    return 'The head bobs while a spark climbs from each ear.'
+  } },
+  power: { frames: 12, ms: 200, draw(g, s) {
+    duskSmall(g); drawChar(g, {})
+    if (s % 2 === 0) { put(g, 3, 9, C.spark); put(g, 10, 9, C.spark) }
+    return 'Not possible: no recolouring, no aura around the body, nothing that moves on its own. Cheek sparks are the most it can do.'
+  } },
+}
+
+const B = {
+  w: 18, h: 16, title: 'B · Body moves + particles', size: '18 × 8 cells (same stage)',
+  need: 'Adds whole-body shift, hop, squash and stretch, a walk cycle, and particles that move on their own. Same stage, so everything is cramped.',
+  zap: { frames: 30, ms: 80, draw(g, s) {
+    const X = 14, GY = 15
+    const flash = s === 4 ? 2 : s === 5 ? 1 : 0
+    duskSmall(g, flash)
+    if (s >= 6) scorch(g, { x: X, row: GY, r: 1, t: s - 6, seed: 3, embers: 4 })
+    if (s >= 9) smoke(g, { seed: 5, n: 6, x: X, y: GY - 1, t: s - 9, life: 12 })
+    let o = { poses: [] }, cap
+    if (s <= 2) { o.poses = ['earsUp', s % 2 ? 'tailUp' : 'tailDown']; o.squash = s === 2 ? 1 : 0; cap = 'Crouch and charge: ears up, tail flicks, cheeks crackle.' }
+    else if (s === 3) { o = { poses: ['armUp', 'earsUp'], squash: -1 }; cap = 'Stretch up, arm raised; a faint leader drops from the sky.' }
+    else if (s <= 5) { o = { poses: ['armUp', 'blink'] }; cap = 'The bolt hits the ground; the whole sky flashes.' }
+    else if (s <= 8) { o = { dx: -1, squash: 1, poses: ['blink'] }; cap = 'Recoil from the blast; sparks spray, the ground scorches.' }
+    else if (s <= 14) { cap = 'Embers glow, smoke rises.' }
+    else if (s <= 18) { const hop = [0, -1, -2, -1, 0][s - 14]; o = { dy: hop, squash: s === 15 ? -1 : s === 18 ? 1 : 0, poses: ['happy'] }; cap = 'A little hop: done!' }
+    else { o = { poses: s < 22 ? ['happy'] : [] }; cap = 'The check mark holds over the scorch.' }
+    const ch = drawChar(g, o)
+    if (s <= 2) { const [a, b] = ch.at(2, 9), [c, d] = ch.at(9, 9); put(g, a + 1, b, s % 2 ? C.flash : C.spark); put(g, c + 1, d, s % 2 ? C.spark : C.flash); if (s > 0) put(g, a - 1 + s, b - 3, C.spark) }
+    if (s === 3) for (const [x, y] of boltPath(9, X + 1, 0, X, GY)) if (y % 2 === 0) put(g, x, y, C.glowDim)
+    if (s === 4) { drawBolt(g, boltPath(9, X + 1, 0, X, GY - 1), C.flash, C.glow); for (let dx = -2; dx <= 2; dx++) put(g, X + dx, GY, C.flash) }
+    if (s === 5) { drawBolt(g, boltPath(9, X + 1, 0, X, GY - 1), C.spark, C.glowDim); put(g, X - 1, GY - 1, C.flash); put(g, X + 1, GY - 1, C.flash) }
+    shockwave(g, { x: X, row: GY, t: s - 5, reach: 5 })
+    if (s >= 5) burst(g, { seed: 11, n: 14, x: X, y: GY - 1, t: s - 5, ground: GY - 1, speed: 1.3, life: 8 })
+    if (s >= 19) check(g, X - 2, 6, false, true)
+    return cap
+  } },
+  walk: { frames: 36, ms: 100, draw(g, s) {
+    duskSmall(g)
+    // 7 steps right, a pause and turn, 7 steps left, a pause.
+    let x, mirror, moving
+    if (s < 8) { x = s; mirror = false; moving = s < 7 } else if (s < 18) { x = 7; mirror = s >= 10; moving = false } else if (s < 26) { x = 7 - (s - 18); mirror = true; moving = s < 25 } else { x = 0; mirror = s < 28; moving = false }
+    const cycle = ['a', 'pass', 'b', 'pass'][s % 4]
+    const legs = moving ? cycle : 'stand'
+    const dy = moving && cycle === 'pass' ? -1 : 0
+    drawChar(g, { x, mirror, legs, dy, poses: moving ? [s % 4 < 2 ? 'tailUp' : 'tailDown'] : s === 9 || s === 27 ? ['blink'] : [] })
+    return moving ? 'Walk cycle: legs alternate, body rises on the passing step, tail sways.' : 'Turn around.'
+  } },
+  cheer: { frames: 22, ms: 90, draw(g, s) {
+    duskSmall(g)
+    const plan = [[0, 1], [0, 1], [-1, -1], [-2, 0], [-3, 0], [-3, 0], [-2, 0], [-1, -1], [0, 1], [0, 0], [0, 1], [-1, -1], [-2, 0], [-1, 0], [0, 1], [0, 0]]
+    const [dy, squash] = plan[s] ?? [0, 0]
+    drawChar(g, { dy, squash, poses: s >= 2 && s < 15 ? ['armsUp', 'happy', 'earsUp'] : s < 2 ? [] : ['happy'] })
+    confetti(g, { seed: 21, n: 16, t: s - 2, w: 18 })
+    return s < 2 ? 'Crouch...' : s < 9 ? 'Jump with both arms up; confetti falls.' : s < 15 ? 'A second, smaller hop.' : 'Land and beam.'
+  } },
+  power: { frames: 40, ms: 80, draw: (g, s) => powerUp(g, s, { feet: 14, cx: 3, ground: 15, wide: false }) },
+}
+
+const Cw = {
+  w: 40, h: 20, title: 'C · Body moves + particles, wide stage', size: '40 × 10 cells',
+  need: 'B on a wider, taller stage: room to walk across, a sky for the bolt to fall through, a ground that shakes. Needs a pane at least ~42 columns wide.',
+  zap: { frames: 44, ms: 80, draw(g, s) {
+    const X = 30, GY = 18, FEET = 17, CX = 6
+    const flash = s === 8 || s === 12 ? 2 : s === 9 || s === 10 || s === 13 ? 1 : 0
+    const sky = state.storm ? storm(g, s, STORM.zap) : null
+    // The main strike and its aftershock light the whole cloud bank.
+    if (sky && (s === 8 || s === 12)) { const draw = sky.draw; sky.draw = () => { draw(); clouds(g, [{ x: X, r: 40, level: 1 }, { x: s === 8 ? X : X - 6, r: 8, level: 2 }]) } }
+    duskWide(g, s, flash, s >= 9 ? { x: X, r: 2 } : null, sky)
+    if (s >= 9) scorch(g, { x: X, row: GY, r: 2, t: s - 9, seed: 4, embers: 7 })
+    if (s >= 13) scorch(g, { x: X - 6, row: GY, r: 1, t: s - 13, seed: 6, embers: 3 })
+    if (s >= 12) smoke(g, { seed: 8, n: 10, x: X, y: GY - 1, t: s - 12, life: 18 })
+    // The shockwave reaches the feet about 9 frames after impact; the sidekick hops over it.
+    const hit = 9 + 8
+    let o = { x: CX, feet: FEET, poses: [] }, cap
+    if (s <= 3) { o.poses = ['earsUp', s % 2 ? 'tailUp' : 'tailDown']; o.squash = s >= 2 ? 1 : 0; cap = 'Crouch and charge: ears up, tail flicks, cheeks crackle with sparks.' }
+    else if (s <= 6) { o.poses = ['armUp', 'earsUp']; o.squash = s === 4 ? -1 : 0; cap = 'Throws the charge into the sky.' }
+    else if (s === 7) { o.poses = ['armUp']; cap = 'A leader crawls down.' }
+    else if (s <= 10) { o.poses = ['armUp', 'blink']; cap = 'The bolt cracks into the ground; the sky lights up.' }
+    else if (s < 12) { o.poses = ['blink']; o.dx = -1; cap = 'Rubble sprays, the ground scorches, a wave runs along it.' }
+    else if (s < hit) { o.poses = s < 14 ? ['blink'] : []; o.dx = s < 14 ? -1 : 0; o.squash = s === 12 ? 1 : 0; cap = 'An aftershock bolt lands closer; the storm keeps flickering behind the hills.' }
+    else if (s < hit + 6) { const h = [-1, -3, -4, -3, -1, 0][s - hit]; o.dy = h; o.squash = s === hit ? -1 : s === hit + 5 ? 1 : 0; o.poses = ['armsUp', 'happy']; cap = 'Hops over the shockwave.' }
+    else { o.poses = s < hit + 12 ? ['happy'] : []; cap = 'The check mark rises over the smoking crater.' }
+    const ch = drawChar(g, o)
+    if (s <= 3) {
+      const [a, b] = ch.at(2, 9), [c, d] = ch.at(9, 9)
+      put(g, a + 1, b, s % 2 ? C.flash : C.spark); put(g, c + 1, d, s % 2 ? C.spark : C.flash)
+      burst(g, { seed: 30 + s, n: 4, x: c + 1, y: d, t: 1.5, ground: FEET, speed: 1.2, grav: 0, life: 3, colors: [C.spark, C.flash] })
+    }
+    if (s >= 4 && s <= 6) {
+      // A streak of charge climbing from the raised paw off the top of the stage.
+      const [px, py] = ch.at(10, 8)
+      const head = py - 1 - (s - 4) * 6
+      for (let i = 0; i < 4; i++) put(g, px + (i % 2), head + i, i === 0 ? C.flash : C.spark)
+    }
+    if (s === 7) { for (const [x, y] of boltPath(17, X + 3, 0, X, GY - 1)) if (y % 2 === 0) put(g, x, y, C.glowDim); put(g, X + 3, 0, C.flash) }
+    if (s === 8 || s === 9) {
+      const main = boltPath(17, X + 3, 0, X, GY - 1)
+      drawBolt(g, main, s === 8 ? C.flash : C.spark, s === 8 ? C.glow : C.glowDim)
+      drawBolt(g, branch(4, main[5], 5, -1), s === 8 ? C.spark : C.glowDim, null)
+      drawBolt(g, branch(6, main[10], 4, 1), s === 8 ? C.spark : C.glowDim, null)
+      if (s === 8) for (let dx = -4; dx <= 4; dx++) put(g, X + dx, GY, C.flash)
+    }
+    if (s === 10) for (const [x, y] of boltPath(17, X + 3, 0, X, GY - 1)) if (y % 3 === 0) put(g, x, y, C.glowDim)
+    // An aftershock: a smaller second bolt lands a little closer.
+    if (s === 12 || s === 13) {
+      drawBolt(g, boltPath(23, X - 4, 0, X - 6, GY - 1), s === 12 ? C.flash : C.spark, s === 12 ? C.glow : C.glowDim)
+      if (s === 12) for (let dx = -2; dx <= 2; dx++) put(g, X - 6 + dx, GY, C.flash)
+    }
+    if (s >= 12) burst(g, { seed: 14, n: 10, x: X - 6, y: GY - 1, t: s - 12, ground: FEET, speed: 1.3, life: 8 })
+    shockwave(g, { x: X, row: GY, t: s - 9, reach: 26, speed: 2.6 })
+    if (s >= 9) {
+      burst(g, { seed: 12, n: 22, x: X, y: GY - 1, t: s - 9, ground: FEET, speed: 1.8, life: 11 })
+      burst(g, { seed: 13, n: 8, x: X, y: GY - 1, t: s - 9, ground: FEET, speed: 1.1, grav: 0.22, life: 14, colors: [C.dust, C.ground, C.smoke2] })
+    }
+    if (s >= hit + 6) { const rise = Math.max(0, 4 - (s - hit - 6)); check(g, X - 3, 6 + rise, true, true) }
+    return cap
+  } },
+  walk: { frames: 64, ms: 90, draw(g, s) {
+    duskWide(g, s, 0, null, state.storm ? storm(g, s, STORM.walk) : null)
+    let x, mirror, moving
+    if (s < 27) { x = 1 + s; mirror = false; moving = s < 26 } else if (s < 32) { x = 27; mirror = s >= 29; moving = false } else if (s < 59) { x = 27 - (s - 32); mirror = true; moving = s < 58 } else { x = 1; mirror = s < 61; moving = false }
+    const cycle = ['a', 'pass', 'b', 'pass'][s % 4]
+    const legs = moving ? cycle : 'stand'
+    const dy = moving && cycle === 'pass' ? -1 : 0
+    drawChar(g, { x, feet: 17, mirror, legs, dy, poses: moving ? [s % 4 < 2 ? 'tailUp' : 'tailDown'] : s === 28 || s === 60 ? ['blink'] : [] })
+    // Dust kicked up behind the feet on each contact step.
+    if (moving && (cycle === 'a' || cycle === 'b')) { const back = mirror ? x + 10 : x + 2; put(g, back, 17, C.dust); put(g, back + (mirror ? 1 : -1), 16, C.smoke2) }
+    return moving ? 'Walks the whole stage: legs alternate, body rises each step, dust kicks up, tail sways.' : 'Stops, blinks, turns around.'
+  } },
+  cheer: { frames: 30, ms: 85, draw(g, s) {
+    duskWide(g, s, 0, null, state.storm ? storm(g, s, STORM.cheer) : null)
+    const plan = [[0, 1], [0, 1], [-1, -1], [-3, 0], [-5, 0], [-6, 0], [-6, 0], [-5, 0], [-3, 0], [-1, -1], [0, 1], [0, 0], [0, 1], [-1, -1], [-3, 0], [-4, 0], [-3, 0], [-1, -1], [0, 1], [0, 0]]
+    const [dy, squash] = plan[s] ?? [0, 0]
+    // A spin at the top of the first jump: the sprite mirrors for two frames.
+    const mirror = s === 5 || s === 6
+    drawChar(g, { x: 14, feet: 17, dy, squash, mirror, poses: s >= 2 && s < 19 ? ['armsUp', 'happy', 'earsUp'] : s < 2 ? [] : ['happy'] })
+    confetti(g, { seed: 22, n: 40, t: s - 2, w: 40, top: -2, fall: 0.6 })
+    if (s >= 4 && s <= 9) burst(g, { seed: 40, n: 12, x: 19, y: 4, t: s - 4, ground: 17, speed: 1.6, grav: 0.05, life: 6, colors: [C.flash, C.base, C.spark] })
+    return s < 2 ? 'Crouch...' : s < 10 ? 'Big jump with a spin; a star burst at the top; confetti everywhere.' : s < 19 ? 'A second hop.' : 'Land and beam.'
+  } },
+  power: { frames: 40, ms: 80, draw: (g, s) => powerUp(g, s, { feet: 17, cx: 14, ground: 18, wide: true }) },
+}
+
+const VARIANTS = [A, B, Cw]
+
+// ---------- player ----------
+const state = { scene: 'zap', playing: true, speed: 1, zoom: 12, storm: true }
+const panels = VARIANTS.map(v => {
+  const el = document.createElement('section')
+  el.className = 'rm-panel'
+  el.innerHTML = `<h2>${v.title}</h2><p class="rm-need">${v.need}</p><div class="rm-screen"><canvas></canvas></div>
+    <p class="rm-state"></p><p class="rm-cap"></p>`
+  document.getElementById('rm-panels').append(el)
+  return { v, el, canvas: el.querySelector('canvas'), stateEl: el.querySelector('.rm-state'), capEl: el.querySelector('.rm-cap'), step: 0, rest: 0, timer: null }
+})
+
+const REST_MS = 900
+function render(p) {
+  const scene = p.v[state.scene]
+  const g = grid(p.v.w, p.v.h)
+  const cap = scene.draw(g, Math.min(p.step, scene.frames - 1))
+  const z = state.zoom, cv = p.canvas
+  cv.width = g.w * z; cv.height = g.h * z
+  const ctx = cv.getContext('2d')
+  ctx.fillStyle = g.bg; ctx.fillRect(0, 0, cv.width, cv.height)
+  for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) { const c = g.px[y * g.w + x]; if (c) { ctx.fillStyle = c; ctx.fillRect(x * z, y * z, z, z) } }
+  p.stateEl.innerHTML = `<b>${p.v.size}</b> · frame ${Math.min(p.step, scene.frames - 1) + 1}/${scene.frames} · ${scene.ms} ms/frame · ${(scene.frames * scene.ms / 1000).toFixed(1)} s`
+  p.capEl.textContent = cap
+}
+function tick(p) {
+  const scene = p.v[state.scene]
+  if (p.step >= scene.frames - 1) { p.step = 0 } else p.step++
+  render(p)
+  schedule(p)
+}
+function schedule(p) {
+  clearTimeout(p.timer)
+  if (!state.playing || sec.hidden) return
+  const scene = p.v[state.scene]
+  const wait = (p.step >= scene.frames - 1 ? REST_MS : scene.ms) / state.speed
+  p.timer = setTimeout(() => tick(p), wait)
+}
+function restart() { for (const p of panels) { p.step = 0; render(p); schedule(p) } }
+
+const pressed = (sel, el) => document.querySelectorAll(sel).forEach(b => b.setAttribute('aria-pressed', String(b === el)))
+sec.querySelectorAll('[data-scene]').forEach(b => b.onclick = () => { state.scene = b.dataset.scene; pressed('[data-scene]', b); restart() })
+sec.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => { state.speed = Number(b.dataset.speed); pressed('[data-speed]', b); panels.forEach(schedule) })
+sec.querySelectorAll('[data-zoom]').forEach(b => b.onclick = () => { state.zoom = Number(b.dataset.zoom); pressed('[data-zoom]', b); panels.forEach(render) })
+const playBtn = document.getElementById('rm-play')
+playBtn.onclick = () => { state.playing = !state.playing; playBtn.textContent = state.playing ? 'Pause' : 'Play'; playBtn.setAttribute('aria-pressed', String(state.playing)); panels.forEach(schedule) }
+document.getElementById('rm-step').onclick = () => {
+  state.playing = false; playBtn.textContent = 'Play'; playBtn.setAttribute('aria-pressed', 'false')
+  for (const p of panels) { clearTimeout(p.timer); const f = p.v[state.scene].frames; p.step = (p.step + 1) % f; render(p) }
+}
+document.getElementById('rm-replay').onclick = restart
+sec.querySelectorAll('[data-storm]').forEach(b => b.onclick = () => { state.storm = b.dataset.storm === 'on'; pressed('[data-storm]', b); panels.forEach(render) })
+new MutationObserver(restart).observe(sec, { attributes: true, attributeFilter: ['hidden'] })
+restart()
+
 })()
 </script>
 </body>
