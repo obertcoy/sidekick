@@ -121,7 +121,7 @@ What the pane looks into the stage through. It keeps the character centred horiz
 _Avoid_: Viewport, window
 
 **Body motion**:
-What a frame can do to the whole character: move it (`dx`, `dy`, in pixels), turn it to face the other way (`mirror`, about the middle of its frame), squash it by a row or stretch it by a row (the feet stay on the same row), and recolour some of its body roles for that frame only. Accessories move, turn, squash and stretch with the body; a recolour reaches only the body, since an accessory has its own colours.
+What a frame can do to the whole character: move it (`dx`, `dy`, in pixels), turn it to face the other way (`mirror`, about the middle of its frame), squash it by a row or stretch it by a row (the feet stay on the same row), and recolour some of its body roles for that frame only. Accessories move, turn, squash and stretch with the body, and a recolour reaches what is worn too: an accessory pixel that is the colour of a recoloured body role follows it, so a cap in the body's yellow turns gold and a lens of its own colour does not. A stretch repeats the row two above the feet, as the motion prototype does. The anchors an animation is given stay where the body is at rest; an effect that must hug the moved body is aimed by the mask.
 _Avoid_: Transform, animation of the body
 
 **Mask**:

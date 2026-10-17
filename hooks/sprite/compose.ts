@@ -274,15 +274,20 @@ const inRegion = (point: Point, character: Character): boolean => {
 export const SLOT_ORDER = ['neck', 'face', 'head', 'held'] as const satisfies readonly Slot[]
 
 /**
- * The rows the character's row `y` is drawn on once squashed: a positive `squash` takes that many rows out just above the feet, a negative one repeats the row above the feet that many times,
- * so the feet row and every row below it stay where they are and the rest of the body moves down (squash) or up (stretch) to meet it.
+ * The rows the character's row `y` is drawn on once squashed: a positive `squash` takes that many rows out just above the feet; a negative one (a stretch) repeats the row two above the feet that many times,
+ * as the motion prototype does, leaving the row just above the feet single. The feet row and every row below it stay where they are and the rest of the body moves down (squash) or up (stretch) to meet it.
  */
 const rowsOf = (y: number, feet: number, squash: number): number[] => {
   if (y >= feet) return [y]
   if (squash >= 0) return y < feet - squash ? [y + squash] : []
 
-  return y === feet - 1 ? Array.from({ length: 1 - squash }, (_, k) => y + squash + k) : [y + squash]
+  if (y === feet - 1) return [y]
+
+  return y === feet - 2 ? Array.from({ length: 1 - squash }, (_, k) => y + squash + k) : [y + squash]
 }
+
+/** A plan's number as whole pixels, rounding halves away from zero so a move and its opposite are mirror images; a number that is not finite is no move. */
+const whole = (n: number | undefined): number => (n === undefined || !Number.isFinite(n) ? 0 : Math.sign(n) * Math.round(Math.abs(n)))
 
 const moved = (point: Point, by: Point): Point => ({ x: point.x + by.x, y: point.y + by.y })
 
@@ -313,13 +318,14 @@ const compose = (
   const { character } = look
   const stage = stageOf(look)
   const at = placed(character.anchors, stage.offset)
+  // `at` is where the anchors are at rest: the plan's move, mirror and squash do not shift them. An effect that must hug the moved body is aimed by the mask (`FramePlan.aimed`), not by anchors.
   const plan = animation.frame(step, at, edgesOf(stage, view ?? wholeStage(stage)))
   const bob = plan.bob ?? 0
-  const dx = Math.round(plan.dx ?? 0)
-  const dy = Math.round(plan.dy ?? 0)
+  const dx = whole(plan.dx)
+  const dy = whole(plan.dy)
   const feet = character.anchors.feet.y
-  // A body cannot lose more rows than it has above the feet.
-  const squash = Math.min(Math.trunc(plan.squash ?? 0), feet)
+  // A body cannot lose more rows than it has above the feet, nor stretch higher than the sky above it.
+  const squash = Math.max(Math.min(Math.trunc(whole(plan.squash)), feet), -stage.offset.y)
   // Mirroring turns the character about the middle of its frame, so it stays where it stands.
   const turn = (x: number): number => (plan.mirror === true ? stage.frame.left + stage.frame.right - x : x)
   const pixels: Pixels = Array.from({ length: stage.height }, () => new Array<number | undefined>(stage.width))
@@ -369,16 +375,28 @@ const compose = (
     }
   }
 
+  // A recolour reaches what is worn too: an accessory pixel that is the colour of a recoloured body role follows that role, so a cap in the body's yellow turns gold with it and a lens of its own colour does not.
+  const followed = new Map<number, number>()
+  for (const [role, color] of Object.entries(plan.recolor ?? {}) as [BodyRole, number][]) {
+    const own = character.palette[role]
+    if (own !== undefined && !followed.has(own)) followed.set(own, color)
+  }
   for (const slot of SLOT_ORDER) {
     const accessory = look.outfit[slot]
     const anchor = at[slot]
     if (accessory === undefined || anchor === undefined || animation.hides.includes(slot)) continue
     // The accessory is carried whole: its anchor moves with the body, and the pixels around it keep their shape (turned about the anchor when mirrored).
-    const lift = (character.bobs[slot] ? bob : 0) + (anchor.y - stage.offset.y < feet ? squash : 0)
+    const lift = (character.bobs[slot] ? bob : 0) + (anchor.y - stage.offset.y < (squash < 0 ? feet - 1 : feet) ? squash : 0)
     const sign = plan.mirror === true ? -1 : 1
     accessory.pixels.forEach((row, y) => {
       for (const [x, letter] of [...row].entries()) {
-        put(turn(anchor.x) + dx + sign * (x - accessory.origin.x), anchor.y + lift + dy - accessory.origin.y + y, accessory.palette[letter], true)
+        const color = accessory.palette[letter]
+        put(
+          turn(anchor.x) + dx + sign * (x - accessory.origin.x),
+          anchor.y + lift + dy - accessory.origin.y + y,
+          color === undefined ? undefined : (followed.get(color) ?? color),
+          true,
+        )
       }
     })
   }

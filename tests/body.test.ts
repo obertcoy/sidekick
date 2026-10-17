@@ -1,7 +1,7 @@
 import { expect } from 'claude-code/testing'
 import { classic } from '../hooks/sprite/characters/classic'
 import { foxkit } from '../hooks/sprite/characters/foxkit'
-import { composePixels, defineCharacter, maskOf, type Pixels, stageFor } from '../hooks/sprite/compose'
+import { composePixels, defineCharacter, maskOf, offStage, type Pixels, stageFor } from '../hooks/sprite/compose'
 import { ACCESSORIES } from '../hooks/sprite/registry'
 import type { Accessory, Animation, Character, FramePlan, Layers } from '../hooks/sprite/types'
 import { test } from './world'
@@ -129,7 +129,7 @@ test('a mirrored frame draws the character facing the other way, accessories and
   }
 })
 
-test('squash takes a row out just above the feet and stretch repeats one, the feet staying on the same row both times', async () => {
+test('squash takes a row out just above the feet and stretch repeats the row two above them, the feet staying on the same row both times', async () => {
   expect(shown(bare(stub), { squash: 1 })).toEqual(['........', '........', '........', '...hh...', '..aaa...', '.bbbbb..', '.cccccc.', '.ff.f...', '........'])
   expect(shown(bare(stub), { squash: -1 })).toEqual([
     '........',
@@ -137,7 +137,7 @@ test('squash takes a row out just above the feet and stretch repeats one, the fe
     '..aaa...',
     '.bbbbb..',
     '.cccccc.',
-    '.dddddd.',
+    '.cccccc.',
     '.dddddd.',
     '.ff.f...',
     '........',
@@ -272,4 +272,27 @@ test('a frame that moves nothing draws what it drew before', async () => {
   for (const layers of FULL) {
     expect(frame(layers, { dx: 0, dy: 0, mirror: false, squash: 0, recolor: {} })).toEqual(frame(layers, {}))
   }
+})
+
+test('a recolour reaches worn pixels in the colour of a recoloured role, and leaves the others', async () => {
+  const body = dot('head', 0x020202)
+  const lens = dot('held', 0x00ff00)
+  const worn: Layers = { character: stub, outfit: { head: body, held: lens }, background: null }
+  const { offset } = stageFor(stub)
+  const gold = frame(worn, { recolor: { base: 0xabcdef } })
+  expect(gold.get(`${2 + offset.x},${offset.y}`)).toBe(0xabcdef)
+  expect(gold.get(`${4 + offset.x},${5 + offset.y}`)).toBe(0x00ff00)
+  expect(frame(worn, { recolor: { shade: 0xabcdef } }).get(`${2 + offset.x},${offset.y}`)).toBe(0x020202)
+})
+
+test('a plan number that is not finite moves nothing, a half pixel rounds away from zero both ways, and a stretch stays under the sky', async () => {
+  const rest = frame(bare(stub), {})
+  for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    expect(frame(bare(stub), { dx: bad, dy: bad, squash: bad }), String(bad)).toEqual(rest)
+  }
+  expect(frame(bare(stub), { dx: 2.5, dy: -2.5 })).toEqual(frame(bare(stub), { dx: 3, dy: -3 }))
+  expect(frame(bare(stub), { dx: -2.5, dy: 2.5 })).toEqual(frame(bare(stub), { dx: -3, dy: 3 }))
+  const { offset } = stageFor(stub)
+  expect(frame(bare(stub), { squash: -99 })).toEqual(frame(bare(stub), { squash: -offset.y }))
+  expect(offStage(bare(stub), doing({ squash: -99 }), 0)).toEqual([])
 })

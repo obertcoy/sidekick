@@ -126,8 +126,9 @@ export type Mask = (x: number, y: number) => boolean
  * A patch inside the character's `headRegion` bobs with the head.
  *  - dx, dy: move the whole character, accessories included, by that many pixels (right, down); whole numbers.
  *  - mirror: the character faces the other way, about the middle of its frame so it stays where it stands; accessories are turned with it.
- *  - squash: whole rows; positive takes that many rows out just above the feet, negative repeats the row there that many times. The feet stay on the same row; the rest of the body, accessories included, moves to meet them.
- *  - recolor: other colours for some body roles in this frame only; the next frame starts from the character's palette again.
+ *  - squash: whole rows; positive takes that many rows out just above the feet, negative (a stretch, at most the sky above the character) repeats the row two above the feet that many times. The feet stay on the same row; the rest of the body, accessories included, moves to meet them.
+ *  - recolor: other colours for some body roles in this frame only; the next frame starts from the character's palette again. A worn pixel that is the colour of a recoloured role follows it.
+ * A number that is not finite counts as 0. The animation is given the anchors at rest: they do not follow the move, mirror or squash, so an effect that must hug the moved body uses `aimed`.
  *  - aimed: dots worked out from the character's mask (the pixels it covers in this frame, accessories included), such as an aura that hugs it; drawn with `dots`.
  */
 export type FramePlan = {

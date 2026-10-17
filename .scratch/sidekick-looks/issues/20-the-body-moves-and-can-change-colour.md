@@ -13,3 +13,8 @@
 - [x] The mask of a frame is exactly the pixels the character covers in it
 - [x] Every existing animation draws the same pixels as before (no golden change)
 - [x] Covered at the pure level, frame by frame, for the classic and a test-only character
+
+**Notes**
+- Recolour reaches accessories by colour: a worn pixel that is the colour of a recoloured body role follows that role, with no change to how accessories are written. A pixel in a colour of its own is left alone.
+- Stretch repeats the row two above the feet (the prototype's choice) and is capped at the sky above the character; a plan number that is not finite counts as 0, and halves round away from zero.
+- Animations are given the anchors at rest. Effects keyed to anchors do not follow the body's move, mirror or squash; effects that hug the body should use `FramePlan.aimed` (the mask). Ticket 21 should build its aura, crackle and similar effects on it.
