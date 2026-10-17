@@ -59,7 +59,7 @@ git config core.hooksPath .githooks
 - No breathing idle loop: at rest the sidekick stands still apart from ambient motion (`PRODUCT.md`).
 - Poses are added only together with the animation that first uses them; the `timeline` helper waits for the first animation that holds a frame.
 
-- Ticket 13: a once-only animation that arrives while the pane is hidden, the set-done cheer included, waits and plays when the pane is next shown (owner, 2026-10-17).
+- Ticket 13: while the pane is hidden, the ticket-done zap (with its strike) and the set-done cheer wait and play when the pane is next shown; ambient motion and the shrug are dropped (owner, 2026-10-16 and 2026-10-17).
 - The engine is rebuilt for richer motion (tickets 18–24), after the owner chose variant C of the motion prototype (`../../sidekick/prototypes.html#motion`, 2026-10-17): character size is dynamic, the stage fits the character, and on a narrow pane the camera centres on the character.
 - Animations are separate from when they play: moments (detectable events), a library of animations, and a moveset per character, with a plain default for every moment so a character never plays one that does not suit it (18).
 

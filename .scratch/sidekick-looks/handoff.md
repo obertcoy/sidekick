@@ -14,12 +14,14 @@ Written 2026-10-16. Supersedes the temp-folder handoffs. Order, status and decis
 
 ## Next
 
-- **10** (multi-frame background) and **13** (pane shown) are both unblocked by 09 and can run in parallel; 13 needs the open decision below first. Then **12** last.
+- Update 2026-10-17: **13** next (rewritten: the zap and the set-done cheer wait while the pane is hidden; ambient and the shrug are dropped). Then the engine track **18–24** (ticket 10 is folded into 21), then **12** last; see `issues/README.md`.
+- In parallel after 13: the inbox track in `../sidekick-inbox/issues/README.md` (01–07 and 10 ready; 08, 09 later).
 - Known pre-existing issue (no ticket yet): after a look change the resting picture keeps the old character until the next state.
 
 ## Open decisions (ask the owner)
 
-- **Ticket 13 (rewrite pending):** owner said animations play only while the pane is shown (shown is enough; keyboard focus not needed). While hidden: ambient and the shrug are dropped; the **ticket-done zap with its strike waits** and plays when the pane is shown. Still open: does the **set-done cheer** wait too, or is it dropped? Then rewrite ticket 13's boxes 3–6 accordingly.
+- **Ticket 13:** settled 2026-10-17 (see above).
+- **Power-up placement** (looks 24) and the **golden re-records** in looks 19 and 23 (owner approves the new frames).
 - **By-eye check (08d box 6):** the classic's blink, tail flick and ear flick are one pixel each and may read weakly. 09 now plays them on its own; check them in the running app (`run` skill). Owner has not confirmed when.
 - **08e / 08f / 08g** optional tickets: not decided.
 
