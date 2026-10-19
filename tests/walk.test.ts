@@ -167,6 +167,35 @@ test('turning motion off during a walk ends it where it was going, and what wait
   expect(kinds(result.effects)).toEqual(['stop', 'start', 'draw', 'every'])
 })
 
+test('a look change during a walk to a character with no walk cycle ends the walk where it was going, and what waited starts', async () => {
+  const walking = feed([queue(entry('ticket-done')), tick]).model
+  const result = feed([{ type: 'look' }], walking, NO_WALK)
+  expect(result.model.phase.kind).toBe('playing')
+  expect(placeOf(result.model)).toEqual({ x: 3, facing: 'right' })
+  expect(kinds(result.effects)).toEqual(['stop', 'start', 'draw', 'every'])
+  // A look change that leaves the walk cycle as it is does not touch the walk.
+  expect(feed([{ type: 'look' }], walking).effects).toEqual([])
+  // Another character's walk cycle ends the walk with the old one too.
+  const other: Room = () => ({ min: -4, max: 5, walk: fake(4, 80) })
+  expect(feed([{ type: 'look' }], walking, other).model.phase.kind).toBe('playing')
+})
+
+test('a room that shrinks during a walk holds the target, however the walk ends', async () => {
+  const shrunk: Room = () => ({ min: -4, max: 2, walk: WALK })
+  const walking = feed([queue(entry('ticket-done')), tick]).model
+  // Ticking on: it stops at the new edge and starts the entry there.
+  const arrived = feed([tick, tick], walking, shrunk)
+  expect(arrived.model.phase.kind).toBe('playing')
+  expect(placeOf(arrived.model).x).toBe(2)
+  // Hidden: it stands at the edge.
+  expect(placeOf(feed([view(false)], walking, shrunk).model).x).toBe(2)
+  // Motion off: the same.
+  expect(placeOf(feed([motion(false)], walking, shrunk).model).x).toBe(2)
+  // A look change that ends the walk too.
+  const noWalk: Room = () => ({ min: -4, max: 2, walk: undefined })
+  expect(placeOf(feed([{ type: 'look' }], walking, noWalk).model).x).toBe(2)
+})
+
 test('entries that arrive during a walk wait behind the one it is for, and a condition only records', async () => {
   const walking = feed([queue(entry('ticket-done'))]).model
   const queued = feed([queue(entry('working'))], walking)

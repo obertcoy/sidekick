@@ -236,7 +236,7 @@ const goAway = (m: Model, room: Room): Result => {
       const entry = m.phase.run?.entry
       const kept = entry !== undefined && isKept(entry) ? [entry] : []
 
-      return { model: { ...away, waiting: [...kept, ...waiting], shown: standAt(m.shown, m.phase.to) }, effects: [{ do: 'stop' }] }
+      return { model: { ...away, waiting: [...kept, ...waiting], shown: standAt(m.shown, within(room, m.phase.to)) }, effects: [{ do: 'stop' }] }
     }
     case 'resting':
     case 'between':
@@ -361,8 +361,10 @@ const advanceAmbient = (m: Model, p: Extract<Phase, { kind: 'ambient' }>, playsF
 
 /** One tick of a walk: a pixel nearer its place, and the next step of the walk cycle; the tick that gets there starts what waited for it (the walk is not drawn that last time). */
 const advanceWalk = (m: Model, p: Extract<Phase, { kind: 'walking' }>, playsFor: Lookup, ambientOf: Ambient, room: Room): Result => {
-  const x = m.shown.place.x + Math.sign(p.to - m.shown.place.x)
-  if (x === p.to) return arrive({ ...m, shown: standAt(m.shown, x) }, p.run, playsFor, ambientOf, room)
+  // The room is asked again: a look that changed it keeps the sidekick on the stage it has now.
+  const to = within(room, p.to)
+  const x = m.shown.place.x + Math.sign(to - m.shown.place.x)
+  if (x === to) return arrive({ ...m, shown: standAt(m.shown, x) }, p.run, playsFor, ambientOf, room)
   const step = p.step + 1
   const shown: Shown = { ...m.shown, frame: step % p.animation.frames, place: { ...m.shown.place, x } }
 
@@ -371,7 +373,7 @@ const advanceWalk = (m: Model, p: Extract<Phase, { kind: 'walking' }>, playsFor:
 
 /**
  * The rest with nothing to wait for becomes a rest with a gap pending, or the other way round, when motion or the character's list changed.
- * An ambient animation under way is cut short (the rest is drawn) when `cutsAmbient` says it can no longer play on; an entry is never touched, nor a walk.
+ * An ambient animation under way is cut short (the rest is drawn) when `cutsAmbient` says it can no longer play on; an entry is never touched. A walk goes on unless the character no longer has the walk cycle it began with: it ends where it was going, and what waited starts.
  */
 const reconsider = (m: Model, playsFor: Lookup, ambientOf: Ambient, cutsAmbient: boolean, room: Room): Result => {
   switch (m.phase.kind) {
@@ -381,9 +383,12 @@ const reconsider = (m: Model, playsFor: Lookup, ambientOf: Ambient, cutsAmbient:
       return waitsAt(m, m.shown.animation, ambientOf) ? same(m) : { model: { ...m, phase: { kind: 'resting' } }, effects: [{ do: 'stop' }] }
     case 'ambient':
       return cutsAmbient ? begin(m, playsFor, ambientOf, false, room) : same(m)
+    case 'walking':
+      return room().walk === m.phase.animation
+        ? same(m)
+        : arrive({ ...m, shown: standAt(m.shown, within(room, m.phase.to)) }, m.phase.run, playsFor, ambientOf, room)
     case 'playing':
     case 'holding':
-    case 'walking':
     case 'away':
       return same(m)
     default:
@@ -502,7 +507,8 @@ const reduce = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient, backdr
 
       const next = { ...m, isMotionOn: e.isOn }
       // A walk does not go on without motion: the sidekick appears where it was going, and what waited for it starts.
-      if (m.phase.kind === 'walking' && !e.isOn) return arrive({ ...next, shown: standAt(m.shown, m.phase.to) }, m.phase.run, playsFor, ambientOf, room)
+      if (m.phase.kind === 'walking' && !e.isOn)
+        return arrive({ ...next, shown: standAt(m.shown, within(room, m.phase.to)) }, m.phase.run, playsFor, ambientOf, room)
 
       // An ambient animation under way is cut short by turning motion off; it is not by turning it on.
       return reconsider(next, playsFor, ambientOf, !e.isOn, room)
