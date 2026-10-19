@@ -50,6 +50,11 @@ const endTurn = async ($: Engine, clock: MockClock, w: World, reply: string): Pr
 const mount = ($: Engine, surface: (typeof SURFACES)[number], offset = 0) =>
   $.ui.mount({ ...PANE, surface, props: { ...PANE.props, scroll: { offset, bodyRows: 30 } } })
 
+type Drawn = { type?: string; props?: Record<string, unknown>; children?: (Drawn | string)[] }
+
+/** A drawn node's text: its string children, joined. */
+const textIn = (node: Drawn | string): string => (typeof node === 'string' ? node : (node.children ?? []).map(textIn).join(''))
+
 type Stored = { items: { id: number; isReviewed: boolean }[] }
 
 const storedItems = (store: Map<string, unknown>): [number, boolean][] => (store.get(`inbox:${SHOP}`) as Stored).items.map(item => [item.id, item.isReviewed])
@@ -67,12 +72,12 @@ test("▸ on a NEEDS YOU row opens the item's detail in the inbox's place; Back 
       '← Back',
       '? 02 Payment',
       'Which provider?',
-      'Goal',
+      'GOAL',
       GOAL,
       'Card is quicker to ship; bank transfer is cheaper per payment.',
-      'What happened',
+      'WHAT HAPPENED',
       '· Retries built',
-      'Evidence · 3/3 ticked',
+      'EVIDENCE · 3/3 ticked',
       '✓ Retries reuse the id',
       '✓ A timeout stays pending',
       '✓ Covered by tests',
@@ -144,12 +149,12 @@ test('a click on a READY TO REVIEW row opens the ticket; Mark reviewed moves it 
   expect(await linesIn(ui, 'detail')).toEqual([
     '← Back',
     '✓ 02 Payment',
-    'Goal',
+    'GOAL',
     GOAL,
     'Each retry reuses the payment id.',
-    'What happened',
+    'WHAT HAPPENED',
     '· Retries built',
-    'Evidence · 3/3 ticked',
+    'EVIDENCE · 3/3 ticked',
     '✓ Retries reuse the id',
     '✓ A timeout stays pending',
     '✓ Covered by tests',
@@ -186,10 +191,27 @@ test('a click on a WORKING row opens the ticket, with nothing to mark reviewed',
   const { store } = await start($, on)
   const ui = await mount($, 'terminal')
   await ui.press({ key: 'open-working-0' })
-  expect(await linesIn(ui, 'detail')).toEqual(['← Back', '◐ 01 Cart', 'Goal', 'The cart keeps lines.', 'Evidence · 1/2 ticked', '✓ add'])
+  // Every box shows, the unticked ones too.
+  expect(await linesIn(ui, 'detail')).toEqual(['← Back', '◐ 01 Cart', 'GOAL', 'The cart keeps lines.', 'EVIDENCE · 1/2 ticked', '✓ add', '○ remove'])
   await ui.press({ key: 'back' })
   expect(await linesIn(ui, 'inbox')).toContain('◐ 01 Cart')
   expect(store.get(`reviewed:${SHOP}`)).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a blank line sets every part of the detail apart, and a list line hangs its text beside its glyph', async ($, on) => {
+  await start($, on)
+  const ui = await mount($, 'terminal')
+  await ui.press({ key: 'open-ask-1' })
+  const parts = (((await ui.find({ key: 'detail' })) as Drawn).children ?? []) as Drawn[]
+  expect(parts.map(one => [one.type, one.props?.marginTop])).toEqual([
+    ['Button', undefined],
+    ...['title', 'short', 'goal', 'long', 'happened', 'evidence', 'review'].map(() => ['Box', 1]),
+  ])
+  // The glyph and the text are side by side, so a wrapped text goes on under itself and not under the glyph.
+  const box = (await ui.find({ key: 'box-1' })) as Drawn
+  expect(box.props?.flexDirection).toBe('row')
+  expect(box.children?.map(textIn)).toEqual(['✓', 'A timeout stays pending'])
   await ui.unmount()
 })
 
@@ -216,11 +238,16 @@ test('the detail wraps to the pane and is drawn whole however tall, for the pane
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, scroll: { offset: 0, bodyRows: 8 } } })
   await ui.press({ key: 'open-ask-1' })
   expect(await linesIn(ui, 'detail')).toContain(long)
-  // Every line of text wraps rather than being cut at the pane's edge.
-  const texts = (await ui.find({ key: 'detail' }))?.children ?? []
-  const wraps = (texts as { type?: string; props?: { wrap?: string } }[]).filter(one => one.type === 'Text').map(one => one.props?.wrap)
-  expect(wraps.length).toBeGreaterThan(0)
-  expect(wraps.every(wrap => wrap === 'wrap')).toBe(true)
+  // Every line of text wraps rather than being cut at the pane's edge; only a glyph before a line's text and a heading, cut to the width as in the inbox, do not.
+  const texts: { text: string; wrap: unknown; isBold: boolean }[] = []
+  const walk = (node: Drawn): void => {
+    if (node.type === 'Text') texts.push({ text: textIn(node), wrap: node.props?.wrap, isBold: node.props?.bold === true })
+    else for (const child of node.children ?? []) if (typeof child !== 'string') walk(child)
+  }
+  walk((await ui.find({ key: 'detail' })) as Drawn)
+  const words = texts.filter(one => [...one.text].length > 1 && !(one.isBold && one.wrap === undefined))
+  expect(words.map(one => one.text)).toContain(long)
+  expect(words.every(one => one.wrap === 'wrap')).toBe(true)
   await ui.press({ key: 'back' })
   await ui.unmount()
 })

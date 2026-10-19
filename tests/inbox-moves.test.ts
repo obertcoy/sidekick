@@ -114,8 +114,8 @@ test('the summary is told the open questions and blockers by id, and moves the o
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await ui.press({ key: 'open-ask-3' })
   const detail = await linesIn(ui, 'detail')
-  expect(detail.slice(detail.indexOf('What happened'), detail.indexOf('What happened') + 2)).toEqual([
-    'What happened',
+  expect(detail.slice(detail.indexOf('WHAT HAPPENED'), detail.indexOf('WHAT HAPPENED') + 2)).toEqual([
+    'WHAT HAPPENED',
     '· Staging is down · unblocked: staging is back',
   ])
   await ui.press({ key: 'back' })

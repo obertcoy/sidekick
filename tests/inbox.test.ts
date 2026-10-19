@@ -26,7 +26,7 @@ import {
   workingHeading,
   workingLine,
 } from '../hooks/inbox'
-import { tickedOf } from '../hooks/tickets'
+import { boxesIn } from '../hooks/tickets'
 import { test } from './world'
 
 const CART: TicketRef = { set: '.scratch/shop/issues', title: '01: Cart' }
@@ -281,9 +281,13 @@ test("a ticket's goal is its first paragraph after the title, on one line withou
   expect(goalOf('')).toBeNull()
 })
 
-test('the evidence of a ticket is the text of its ticked boxes, in file order', () => {
-  expect(tickedOf(TICKET_FILE)).toEqual(['Retries reuse the id', 'Covered by tests'])
-  expect(tickedOf('No boxes.')).toEqual([])
+test('the evidence of a ticket is its boxes in file order, ticked or not', () => {
+  expect(boxesIn(TICKET_FILE)).toEqual([
+    { text: 'Retries reuse the id', isTicked: true },
+    { text: 'A timeout stays pending', isTicked: false },
+    { text: 'Covered by tests', isTicked: true },
+  ])
+  expect(boxesIn('No boxes.')).toEqual([])
 })
 
 test('a ticket marked reviewed leaves READY TO REVIEW for the REVIEWED count; questions carry their ids', () => {
@@ -318,7 +322,7 @@ test('a reviewed ticket is remembered only while it is done in its file, so one 
   expect(readReviewed('junk')).toEqual([])
 })
 
-test("an item's detail: its ticket's goal, its long explanation, the ticket's history newest first and the ticked boxes", () => {
+test("an item's detail: its ticket's goal, its long explanation, the ticket's history newest first and its boxes", () => {
   const inbox = addItems(
     EMPTY,
     [
@@ -336,8 +340,7 @@ test("an item's detail: its ticket's goal, its long explanation, the ticket's hi
     goal: 'What to build: Retries reuse the payment id, so a retry never charges twice.',
     long: 'A timed-out payment may still go through.',
     happened: ['Tests pass', 'Retries built'],
-    ticked: ['Retries reuse the id', 'Covered by tests'],
-    boxes: 3,
+    boxes: boxesIn(TICKET_FILE),
     isReviewable: true,
   })
   // An item of no ticket has no goal, no history and no evidence: its short line is its title.
@@ -347,8 +350,7 @@ test("an item's detail: its ticket's goal, its long explanation, the ticket's hi
     goal: null,
     long: 'Nothing can be tried there.',
     happened: [],
-    ticked: [],
-    boxes: 0,
+    boxes: [],
     isReviewable: true,
   })
   // A ticket's own detail is explained by its newest note that explains anything.

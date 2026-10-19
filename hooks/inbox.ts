@@ -3,7 +3,7 @@
 // The pane draws the inbox in sections: NEEDS YOU from the items, READY TO REVIEW and WORKING from the ticket files.
 
 import type { Asking, Checked, InboxView } from '../types'
-import type { Ticket } from './tickets'
+import type { Checkbox, Ticket } from './tickets'
 import { boxesIn, jsonIn } from './tickets'
 
 export const ITEM_KINDS = ['needs-you', 'blocked', 'changed-direction', 'note'] as const
@@ -245,9 +245,8 @@ export type Detail = {
   long: string
   /** The ticket's history, newest first. */
   happened: string[]
-  /** The ticked boxes' text, and how many boxes the file has. */
-  ticked: string[]
-  boxes: number
+  /** The ticket file's checkboxes in file order, ticked or not: the evidence beside what the ticket says. */
+  boxes: Checkbox[]
   /** Whether Mark reviewed is offered: an open item, or a ticket done in its file and not yet reviewed (the caller says). */
   isReviewable: boolean
 }
@@ -272,7 +271,6 @@ export const detailOf = (inbox: Inbox, opened: Opened, file: string | undefined)
   if ('item' in opened && item === undefined) return undefined
   const ticket = 'ticket' in opened ? opened.ticket : (item?.ticket ?? null)
   const history = ticket === null ? [] : historyOf(inbox, ticket)
-  const boxes = ticket === null || file === undefined ? [] : boxesIn(file)
 
   return {
     title: ticket === null ? (item?.short ?? '') : inboxTitle(ticket.title),
@@ -280,8 +278,7 @@ export const detailOf = (inbox: Inbox, opened: Opened, file: string | undefined)
     goal: ticket === null || file === undefined ? null : goalOf(file),
     long: item?.long ?? history.find(one => one.long !== '')?.long ?? '',
     happened: ticket === null ? [] : happenedOf(inbox, ticket),
-    ticked: boxes.filter(box => box.isTicked).map(box => box.text),
-    boxes: boxes.length,
+    boxes: ticket === null || file === undefined ? [] : boxesIn(file),
     isReviewable: item === undefined || !item.isReviewed,
   }
 }

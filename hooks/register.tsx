@@ -1,4 +1,4 @@
-import type { AgentStatus, EngineInterface, ModelCompleteRequest, ModelCompleteResult, Register } from 'claude-code'
+import type { AgentStatus, EngineInterface, ModelCompleteRequest, ModelCompleteResult, Register, RenderNode } from 'claude-code'
 import { atom, read, update } from 'claude-code'
 
 import type { InboxView, SetEntry, Tab, View } from '../types'
@@ -97,6 +97,8 @@ const LIKELY = /issue|ticket|task|todo|backlog|plan|roadmap|scratch|stor(y|ies)|
 const GLYPH = { done: '✓', active: '◐', open: '○' } as const
 /** A glyph and its colour; the glyph alone tells the kind, so it never rests on colour. */
 type Mark = { glyph: string; color: 'warning' | 'error' | 'success' | 'claude' | 'suggestion' }
+/** What a part of the pane draws: a node, or nothing. */
+type Shown = RenderNode | null | undefined
 /** How NEEDS YOU marks each kind: a question, a blocker, a change of direction. */
 const ASKED = {
   'needs-you': { glyph: '?', color: 'warning' },
@@ -1382,28 +1384,56 @@ export const register: Register = on => {
     // The detail in the inbox's place: every line wraps to the pane, and the pane scrolls a detail taller than it.
     const detailView = (shown: NonNullable<typeof opened>) => {
       const { detail, mark } = shown
-      const line = (key: string, text: string, isBold = false) => (
-        <Text key={key} wrap="wrap" bold={isBold}>
-          {text}
-        </Text>
+      const ticked = detail.boxes.filter(box => box.isTicked).length
+      // A blank line above every part, so each stands apart; a section opens with a heading styled as the inbox's.
+      const part = (key: string, ...children: Shown[]) => (
+        <Box key={key} flexDirection="column" marginTop={1}>
+          {children}
+        </Box>
       )
+      // A list line: a glyph, then its text, which wraps under itself rather than under the glyph.
+      const listed = (key: string, glyph: Shown, text: string, isDim = false) => (
+        <Box key={key} flexDirection="row" gap={1}>
+          {glyph}
+          <Text wrap="wrap" dimColor={isDim}>
+            {text}
+          </Text>
+        </Box>
+      )
+      const body = (text: string) => <Text wrap="wrap">{text}</Text>
 
       return (
         <Box key="detail" flexDirection="column" marginTop={1}>
           <Button key="back" plain hotkey="b" label="← Back" onPress={() => quietly(closeDetail($), $)} />
-          <Text wrap="wrap" bold>
-            <Text color={mark.color}>{mark.glyph} </Text>
-            {detail.title}
-          </Text>
-          {detail.short !== null && line('short', detail.short)}
-          {detail.goal !== null && line('goal-heading', 'Goal', true)}
-          {detail.goal !== null && line('goal', detail.goal)}
-          {detail.long !== '' && line('long', detail.long)}
-          {detail.happened.length > 0 && line('happened-heading', 'What happened', true)}
-          {detail.happened.map((one, at) => line(`happened-${at}`, `· ${one}`))}
-          {detail.boxes > 0 && line('evidence-heading', `Evidence · ${detail.ticked.length}/${detail.boxes} ticked`, true)}
-          {detail.ticked.map((one, at) => line(`ticked-${at}`, `${GLYPH.done} ${one}`))}
-          {detail.isReviewable && <Button key="mark-reviewed" plain hotkey="r" label="Mark reviewed" onPress={() => quietly(markOpened($), $)} />}
+          {part(
+            'title',
+            <Box flexDirection="row" gap={1}>
+              <Text bold color={mark.color}>
+                {mark.glyph}
+              </Text>
+              <Text wrap="wrap" bold>
+                {detail.title}
+              </Text>
+            </Box>,
+          )}
+          {detail.short !== null && part('short', body(detail.short))}
+          {detail.goal !== null && part('goal', heading('GOAL', 'claude'), body(detail.goal))}
+          {detail.long !== '' && part('long', body(detail.long))}
+          {detail.happened.length > 0 &&
+            part('happened', heading('WHAT HAPPENED', 'claude'), ...detail.happened.map((one, at) => listed(`happened-${at}`, <Text>·</Text>, one)))}
+          {/* Every box in file order: a ticked one in colour, an unticked one dimmed, each with its own glyph. */}
+          {detail.boxes.length > 0 &&
+            part(
+              'evidence',
+              heading(`EVIDENCE · ${ticked}/${detail.boxes.length} ticked`, 'claude'),
+              ...detail.boxes.map((box, at) =>
+                box.isTicked
+                  ? listed(`box-${at}`, <Text color="success">{GLYPH.done}</Text>, box.text)
+                  : listed(`box-${at}`, <Text dimColor>{GLYPH.open}</Text>, box.text, true),
+              ),
+            )}
+          {detail.isReviewable &&
+            part('review', <Button key="mark-reviewed" plain hotkey="r" label="Mark reviewed" onPress={() => quietly(markOpened($), $)} />)}
         </Box>
       )
     }
