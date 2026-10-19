@@ -454,7 +454,7 @@ test('looking, shrugging and cheering hide no slot, and what they draw is on the
       let bobbed = 0
       let drawn = 0
       for (let step = 0; step < animation.frames; step++) {
-        const plan = animation.frame(step, character.anchors, edges)
+        const plan = animation.frame(step, character.anchors, edges, 'right', character.headRegion)
         if ((plan.bob ?? 0) > 0) bobbed += 1
         // The same frame with the head where the bob puts it, wearing everything, and nothing but the animation's own dots left out.
         const without = whole({ ...animation, frame: () => ({ bob: plan.bob ?? 0 }) }, step)
@@ -463,6 +463,14 @@ test('looking, shrugging and cheering hide no slot, and what they draw is on the
           const [x, y] = [dotX + offset.x, dotY + offset.y]
           const label = `${name} ${mode} ${step} dot ${dotX},${dotY}`
           expect(x >= 0 && x < stage.width && y >= 0 && y < stage.height, `${label} is on the stage`).toBe(true)
+          if (mode === 'cheer') {
+            // The cheer's sparks stay in the headroom rows above the ears (one row lower while the ear bobs with the head).
+            expect(dotY, `${label} is above the ears`).toBeLessThanOrEqual(Math.max(...(character.anchors.ears ?? []).map(ear => ear.y)))
+            expect(y, `${label} is in the headroom`).toBeGreaterThanOrEqual(0)
+          } else {
+            // Looking and shrugging stay inside the character's own frame area, as they always have.
+            expect(dotX >= 0 && dotX < LOCAL.width && dotY >= 0 && dotY < LOCAL.height, `${label} is in the character's frame area`).toBe(true)
+          }
           expect(without[y]?.[x], `${label} lands on nothing worn or grown`).toBeUndefined()
           expect(full[y]?.[x], `${label} is drawn`).toBeDefined()
           drawn += 1

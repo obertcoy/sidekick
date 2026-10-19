@@ -23,10 +23,10 @@ export const zap = defineAnimation({
   once: true,
   // The bolt is drawn at the paw, where a held accessory would be; the raised arm is the armUp pose.
   hides: ['held'],
-  frame: (step, { boltFrom, cheeks, ears, paw, reach, tail }, edges) => {
+  frame: (step, { boltFrom, cheeks, ears, paw, reach, tail }, edges, facing = 'right') => {
     const paper = { x: paw.x + 1, y: paw.y - 1 }
-    // Two pixels right of the raised paw and one up: where the bolt ends.
-    const strike = { x: reach.x + 2, y: reach.y - 1 }
+    // Two pixels ahead of the raised paw (the way it faces) and one up: where the bolt ends.
+    const strike = { x: reach.x + (facing === 'left' ? -2 : 2), y: reach.y - 1 }
     const glow = (role: Role): Dot[] => cheeks.flatMap(cheek => at(cheek, 1, 0, role))
     // The raised arm is part of the body, so a dot would draw over it. Where a glow lands on the paw (the classic's right cheek), the arm stays on top, as it always was.
     const glowBesideArm = (role: Role): Dot[] => glow(role).filter(([x, y]) => x !== reach.x || y !== reach.y)

@@ -18,6 +18,7 @@ import type {
   Point,
   PoseName,
   PropRole,
+  Region,
   Role,
   Slot,
 } from './types'
@@ -194,7 +195,13 @@ export const defineAnimation = <N extends AnchorName, P extends PoseName>(
   animation: Omit<Animation, 'needs' | 'poses' | 'frame'> & {
     readonly needs: readonly N[]
     readonly poses: readonly P[]
-    readonly frame: (step: number, at: Needed<N>, edges: Edges, facing?: Facing) => Omit<FramePlan, 'poses'> & { readonly poses?: readonly NoInfer<P>[] }
+    readonly frame: (
+      step: number,
+      at: Needed<N>,
+      edges: Edges,
+      facing?: Facing,
+      headRegion?: Region,
+    ) => Omit<FramePlan, 'poses'> & { readonly poses?: readonly NoInfer<P>[] }
   },
 ): Animation => animation as unknown as Animation
 
@@ -373,7 +380,17 @@ const compose = (
   // The animation is given the anchors where the sidekick stands and turned to the way it faces; they are not shifted by the plan's move, mirror and squash.
   // An effect that must hug the moved body is aimed by the mask (`FramePlan.aimed`), not by anchors.
   const given = turned(at, isFacingLeft ? stage.frame.left + stage.frame.right : undefined, place.x)
-  const plan = animation.frame(step, given, edgesOf(stage, view ?? wholeStage(stage)), place.facing)
+  // The bob region, moved and turned the same way as the anchors, for an effect that starts on the head.
+  const { headRegion } = character
+  const [near, far] = [headRegion.left + stage.offset.x, headRegion.right + stage.offset.x]
+  const centre = stage.frame.left + stage.frame.right
+  const bobRegion: Region = {
+    left: (isFacingLeft ? centre - far : near) + place.x,
+    right: (isFacingLeft ? centre - near : far) + place.x,
+    top: headRegion.top + stage.offset.y,
+    bottom: headRegion.bottom + stage.offset.y,
+  }
+  const plan = animation.frame(step, given, edgesOf(stage, view ?? wholeStage(stage)), place.facing, bobRegion)
   const bob = plan.bob ?? 0
   const dx = whole(plan.dx) + place.x
   const dy = whole(plan.dy)

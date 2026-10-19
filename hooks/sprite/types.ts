@@ -212,8 +212,9 @@ export type Animation = {
   /**
    * One frame, worked out from the character's anchors (already on the stage, moved to where the sidekick stands and turned to the way it faces) and the stage's named edges only, never from its pixels or a fixed coordinate.
    * `facing` is the way it faces (right when left out), for an effect that trails behind it.
+   * `headRegion` is the character's bob region on the stage, moved and turned like the anchors (left out when not known): a point inside it rides the frame's own `bob`, so an effect that starts on the head or the ears is placed with `ridingBob`.
    */
-  readonly frame: (step: number, at: Anchors, edges: Edges, facing?: Facing) => FramePlan
+  readonly frame: (step: number, at: Anchors, edges: Edges, facing?: Facing, headRegion?: Region) => FramePlan
 }
 
 /** The places an accessory can go. Every character has the head slot; the others are optional per character. Each is also the name of its anchor. */

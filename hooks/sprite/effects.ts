@@ -312,3 +312,9 @@ const CHECK_MARK: readonly (readonly [number, number])[] = [
 
 /** A check mark five pixels wide and four tall, its top-left corner at `at`. It takes no frame: the animation owns its timing, and puts it on the `overlay` layer to keep it in front of everything. */
 export const checkMark = ({ at }: { at: Point }): Dot[] => CHECK_MARK.map(([dx, dy]) => dot(at.x + dx, at.y + dy, 'check'))
+
+/** An anchor as the frame draws it: moved down by the frame's `bob` when it lies inside `headRegion` (what the head bob moves), else where it is. For an effect that starts on the head or an ear (start it a row above the result); with no region given, `at` stays. */
+export const ridingBob = (at: Point, bob: number, headRegion?: Region): Point =>
+  headRegion !== undefined && at.x >= headRegion.left && at.x <= headRegion.right && at.y >= headRegion.top && at.y <= headRegion.bottom
+    ? { x: at.x, y: at.y + bob }
+    : at

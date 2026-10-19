@@ -1,5 +1,5 @@
 import { defineAnimation } from '../compose'
-import { burst, confetti, smoke } from '../effects'
+import { burst, confetti, ridingBob, smoke } from '../effects'
 
 // The plain defaults: what plays for a moment when a character's moveset leaves it out. Each one needs no anchor beyond the head and feet
 // and no pose, so any character can play it (a knight is never handed the bolt). They move the head and, for the moments that happen once, draw an effect
@@ -27,10 +27,14 @@ export const sink = defineAnimation({
   msPerFrame: 150,
   once: true,
   hides: [],
-  frame: (step, { head }) => ({
-    bob: step >= 1 && step <= 6 ? 1 : 0,
-    dots: smoke({ seed: 9, at: { x: head.x, y: head.y - 1 }, frame: step - 1, count: 3, life: 6 }),
-  }),
+  frame: (step, { head }, _edges, _facing, headRegion) => {
+    const bob = step >= 1 && step <= 6 ? 1 : 0
+
+    return {
+      bob,
+      dots: smoke({ seed: 9, at: { x: head.x, y: ridingBob(head, bob, headRegion).y - 1 }, frame: step - 1, count: 3, life: 6 }),
+    }
+  },
 })
 
 /**

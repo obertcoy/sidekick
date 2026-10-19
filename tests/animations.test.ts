@@ -180,3 +180,40 @@ test('the plain defaults still need nothing but the head and the feet, no pose, 
   }
   expect(ANIMATIONS[PLAIN['ticket-done']].frames).toBeGreaterThanOrEqual(MIN_STRIKE_FRAMES)
 })
+
+test('facing left, the zap strikes two pixels to the left of the raised paw, not the right: the bolt lands ahead of the sidekick', async () => {
+  for (const { anchors, name } of SHIPPED) {
+    const { reach, boltFrom } = anchors
+    if (reach === undefined || boltFrom === undefined) throw new Error(`${name} lacks an anchor`)
+    const lit = new Set(at(ANIMATIONS.zap.frame(LANDS, anchors, edgesFor(anchors), 'left').dots ?? []))
+    expect(lit.has(`${reach.x - 2},${reach.y - 1}`), `${name} left`).toBe(true)
+    expect(lit.has(`${reach.x + 2},${reach.y - 1}`), `${name} not right`).toBe(false)
+    const right = at(ANIMATIONS.zap.frame(LANDS, anchors, edgesFor(anchors), 'right').dots ?? [])
+    expect(right, name).toContain(`${reach.x + 2},${reach.y - 1}`)
+    expect(at(ANIMATIONS.zap.frame(LANDS, anchors, edgesFor(anchors)).dots ?? []), 'facing right when left out').toEqual(right)
+  }
+})
+
+test("effects that start on the head or the ears ride the frame's own bob when that point is in the bob region, and stay where they are when it is not", async () => {
+  const region = { left: 3, top: 1, right: 17, bottom: 8 }
+  // Foxkit ears: the left (x 0) is outside the region, the right (x 14) inside it.
+  const { anchors } = foxkit
+  const edges = edgesFor(anchors)
+  const [outside, inside] = anchors.ears ?? []
+  if (outside === undefined || inside === undefined) throw new Error('no ears')
+  const bobStep = 1
+  expect(ANIMATIONS.cheer.frame(bobStep, anchors, edges).bob).toBe(1)
+  const without = ANIMATIONS.cheer.frame(bobStep, anchors, edges).dots ?? []
+  const withRegion = ANIMATIONS.cheer.frame(bobStep, anchors, edges, 'right', region).dots ?? []
+  // Same sparks, the right ear's one row lower and the left ear's where they were.
+  const leftOf = (dots: readonly Dot[]): Dot[] => dots.filter(([x]) => x < anchors.head.x)
+  const rightOf = (dots: readonly Dot[]): Dot[] => dots.filter(([x]) => x >= anchors.head.x)
+  expect(leftOf(withRegion)).toEqual(leftOf(without))
+  expect(rightOf(withRegion)).toEqual(rightOf(without).map(([x, y, role]) => [x, y + 1, role]))
+  // The sink's puff is on the head, which bobs.
+  const sink = ANIMATIONS.sink
+  const still = sink.frame(3, anchors, edges).dots ?? []
+  const riding = sink.frame(3, anchors, edges, 'right', region).dots ?? []
+  expect(riding).toEqual(still.map(([x, y, role]) => [x, y + 1, role]))
+  expect(still.length).toBeGreaterThan(0)
+})

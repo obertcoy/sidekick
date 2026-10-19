@@ -1,8 +1,11 @@
 import { defineAnimation } from '../compose'
-import { burst } from '../effects'
-import type { Dot } from '../types'
+import { burst, ridingBob } from '../effects'
+import type { Dot, Point } from '../types'
 
 // What the sparks thrown from the ear tips are made of: bright, not cooling to embers.
+// The row just above a point.
+const above = (point: Point): Point => ({ x: point.x, y: point.y - 1 })
+
 const SPARKS = ['spark', 'flash'] as const
 
 /**
@@ -16,11 +19,13 @@ export const cheer = defineAnimation({
   msPerFrame: 130,
   once: true,
   hides: [],
-  frame: (step, { ears }, edges) => {
+  frame: (step, { ears }, edges, _facing, headRegion) => {
+    const bob = step < 9 && (step % 4 === 1 || step % 4 === 2) ? 1 : 0
     const dots: Dot[] = ears.flatMap((ear, which) =>
       burst({
         seed: 21 + which,
-        at: { x: ear.x, y: ear.y - 1 },
+        // An ear inside the bob region moves down with the head, and its sparks start from where it is drawn.
+        at: above(ridingBob(ear, bob, headRegion)),
         frame: step,
         floor: edges.ground - 1,
         count: 5,
@@ -33,6 +38,6 @@ export const cheer = defineAnimation({
     )
 
     // The last frame is the resting one, so the cheer ends where it began.
-    return { bob: step < 9 && (step % 4 === 1 || step % 4 === 2) ? 1 : 0, dots }
+    return { bob, dots }
   },
 })
