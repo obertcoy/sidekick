@@ -95,7 +95,7 @@ test('an animation that names a start place is preceded by a walk there: one pix
   expect(arrived.model.phase.kind).toBe('playing')
   expect(arrived.effects).toEqual([
     { do: 'stop' },
-    { do: 'start', entry: entry('ticket-done'), steps: 2 },
+    { do: 'start', entry: entry('ticket-done'), steps: 2, animation: playsFor('ticket-done') },
     { do: 'draw', shown: { moment: 'ticket-done', animation: playsFor('ticket-done'), frame: 0, place: { x: 3, facing: 'right' } } },
     { do: 'every', ms: 50 },
   ])
@@ -143,7 +143,7 @@ test('with motion off the sidekick does not walk: it appears at the start place,
   expect(started.model.phase.kind).toBe('playing')
   expect(started.effects).toEqual([
     { do: 'stop' },
-    { do: 'start', entry: entry('ticket-done'), steps: 2 },
+    { do: 'start', entry: entry('ticket-done'), steps: 2, animation: playsFor('ticket-done') },
     { do: 'draw', shown: { moment: 'ticket-done', animation: playsFor('ticket-done'), frame: 0, place: { x: 3, facing: 'right' } } },
     { do: 'every', ms: 50 },
   ])

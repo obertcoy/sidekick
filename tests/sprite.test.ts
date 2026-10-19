@@ -24,7 +24,7 @@ import {
   requirePoses,
   slotRefusal,
 } from '../hooks/sprite/registry'
-import type { Accessory, Animation, Background, Character, Layers, PoseName, Slot } from '../hooks/sprite/types'
+import type { Accessory, Animation, Background, Character, FramePlan, Layers, PoseName, Slot } from '../hooks/sprite/types'
 import { MOMENTS, POSES, SLOTS } from '../hooks/sprite/types'
 import { isStruck, strikeSteps } from '../hooks/strike'
 import { GOLDEN } from './sprite-golden'
@@ -123,7 +123,18 @@ test('a background shows only where every layer above it is transparent', async 
     ground: [Array.from({ length: STAGE.height }, () => 'x'.repeat(STAGE.width))],
     palette: { x: wall },
   }
-  for (const [mode, animation] of Object.entries(ANIMATIONS)) {
+  // The sky and the far layer are behind the ground layer by design (a flash is hidden by the ground, a distant bolt by the hills; layers.test.ts), so only what is drawn in front of the ground picture is held to this.
+  const inFront = (animation: Animation): Animation => ({
+    ...animation,
+    frame: (...args) => {
+      const plan = animation.frame(...args)
+      const { sky: _sky, far: _far, ...front } = plan.layers ?? {}
+
+      return { ...plan, layers: front }
+    },
+  })
+  for (const [mode, whole] of Object.entries(ANIMATIONS)) {
+    const animation = inFront(whole)
     for (let step = 0; step < animation.frames; step++) {
       const front = composePixels({ character: foxkit, outfit: capped, background: null }, animation, step)
       const behind = composePixels({ character: foxkit, outfit: capped, background: solid }, animation, step)
@@ -535,8 +546,11 @@ test('an animation reads only the anchors it declares', async () => {
     const declared = Object.fromEntries(
       ['head', 'feet', ...animation.needs].map(anchor => [anchor, foxkit.anchors[anchor as keyof typeof foxkit.anchors]]),
     ) as Character['anchors']
+    // What an effect aimed by the mask draws is compared by what it draws on a mask of its own (two functions are never equal).
+    const mask = (x: number, y: number): boolean => x >= 3 && x <= 9 && y >= 3 && y <= 12
+    const plainly = (plan: FramePlan): unknown => ({ ...plan, aimed: plan.aimed?.(mask) })
     for (let step = 0; step < animation.frames; step++) {
-      expect(animation.frame(step, declared, EDGES), `${name} step ${step}`).toEqual(animation.frame(step, foxkit.anchors, EDGES))
+      expect(plainly(animation.frame(step, declared, EDGES)), `${name} step ${step}`).toEqual(plainly(animation.frame(step, foxkit.anchors, EDGES)))
     }
   }
 })
@@ -683,8 +697,8 @@ const padded = (character: Character): string[] => character.body.map(row => row
 const withPoses = (name: string, poses: unknown): Character => ({ ...foxkit, name, poses }) as unknown as Character
 const armless = defineCharacter({ ...foxkit, name: 'armless', poses: {} })
 
-test('the pose names are one fixed list that holds armUp, blink, the tail and ear flicks and the three legs of a walk cycle', async () => {
-  expect(POSES).toEqual(['armUp', 'blink', 'tailUp', 'earsUp', 'walkA', 'walkB', 'walkPass'])
+test('the pose names are one fixed list that holds the arms, blink, the tail and ear poses, the spiky ears of the power-up and the three legs of a walk cycle', async () => {
+  expect(POSES).toEqual(['armUp', 'armsUp', 'blink', 'tailUp', 'tailDown', 'earsUp', 'spiky', 'walkA', 'walkB', 'walkPass'])
 })
 
 test('posed lays each patch over the body: a space keeps the pixel, a dot clears it, a letter sets it', async () => {
@@ -715,7 +729,7 @@ test('a character with a pose that is not a known name, is off the body, or uses
   const load = (poses: unknown, extra: Partial<Character> = {}): Character =>
     defineCharacter({ ...foxkit, name: 'odd', ...extra, poses } as unknown as Character)
   expect(() => load({ nod: { at: { x: 0, y: 0 }, rows: ['o'] } })).toThrow(
-    'sprite: character "odd" has the pose "nod", which is not one of: armUp, blink, tailUp, earsUp',
+    'sprite: character "odd" has the pose "nod", which is not one of: armUp, armsUp, blink, tailUp, tailDown, earsUp, spiky',
   )
   expect(() => load({ armUp: { at: { x: MAX_CHARACTER - 1, y: 0 }, rows: ['oo'] } })).toThrow('character "odd" has the pose "armUp" off the body')
   expect(() => load({ armUp: { at: { x: 0, y: 15 }, rows: ['o', 'o'] } })).toThrow('character "odd" has the pose "armUp" off the body')
@@ -744,9 +758,10 @@ test('the load check goes through the moment to animation lookup: zap is found a
   expect(() => requireDeclaredPoses(foxkit, { 'zap (ticket-done)': bad })).toThrow('the animation "zap (ticket-done)" asks for the pose "armUp"')
 })
 
-test('every shipped character has every pose the shipped animations use, and every animation declares what its frames ask for', async () => {
+test('every shipped character has every pose the animations it plays use (the classic, every one in the library), and every animation declares what its frames ask for', async () => {
+  expect(() => requirePoses(classic, ANIMATIONS), 'classic').not.toThrow()
   for (const character of Object.values(CHARACTERS)) {
-    expect(() => requirePoses(character, ANIMATIONS), character.name).not.toThrow()
+    expect(() => requirePlayed(character), character.name).not.toThrow()
     for (const [name, animation] of Object.entries(ANIMATIONS)) {
       for (let step = 0; step < animation.frames; step++) {
         for (const pose of animation.frame(step, character.anchors, EDGES).poses ?? []) {

@@ -1,5 +1,5 @@
 import { expect } from 'claude-code/testing'
-import { aura, bolt, boltPath, burst, checkMark, confetti, crackle, flash, rng, shockwave, smoke } from '../hooks/sprite/effects'
+import { aura, bolt, boltPath, burst, checkMark, confetti, crackle, flash, inView, rng, scorch, shockwave, smoke } from '../hooks/sprite/effects'
 import type { Dot, Edges, Mask, Point } from '../hooks/sprite/types'
 import { test } from './world'
 
@@ -237,4 +237,60 @@ test('a check mark is five pixels in the check colour, from its top-left corner,
   expect(mark.map(([x, y]) => `${x - at.x},${y - at.y}`)).toEqual(['4,0', '3,1', '0,2', '2,2', '1,3'])
   const away = checkMark({ at: { x: at.x + 7, y: at.y - 3 } })
   expect(away.map(([x, y]) => [x - 7, y + 3])).toEqual(mark.map(([x, y]) => [x, y]))
+})
+
+test('a big check mark is seven pixels wide and five tall, and an outline goes round it in dark green, under it', async () => {
+  const at: Point = { x: 10, y: 6 }
+  const big = checkMark({ at, big: true })
+  expect(big.map(([x, y]) => `${x - at.x},${y - at.y}`)).toEqual(['6,0', '5,1', '4,2', '0,2', '1,3', '3,3', '2,4'])
+  expect(new Set(big.map(dot => dot[2]))).toEqual(new Set(['check']))
+  const outlined = checkMark({ at, big: true, outline: true })
+  expect(outlined.filter(dot => dot[2] === 'check').map(key)).toEqual(big.map(key))
+  // The outline comes first, so the mark is drawn over it; it is never on a pixel of the mark, has each pixel once, and touches the mark.
+  const lines = outlined.filter(dot => dot[2] !== 'check')
+  expect(outlined.slice(0, lines.length)).toEqual(lines)
+  expect(lines.length).toBeGreaterThan(big.length)
+  expect(new Set(lines.map(key)).size).toBe(lines.length)
+  const lit = new Set(big.map(([x, y]) => `${x},${y}`))
+  for (const [x, y] of lines) {
+    expect(lit.has(`${x},${y}`)).toBe(false)
+    const touches = [
+      [0, 1],
+      [1, 0],
+      [-1, 0],
+      [0, -1],
+    ].some(([dx = 0, dy = 0]) => lit.has(`${x + dx},${y + dy}`))
+    expect(touches).toBe(true)
+  }
+  // The plain check mark has no outline.
+  expect(checkMark({ at }).length).toBe(5)
+})
+
+test('a scorch is a row of dark pixels across the ground that stays, with embers on it that die down, and nothing before it begins', async () => {
+  const at: Point = { x: 20, y: 18 }
+  const marks = scorch({ seed: 4, at, radius: 2, frame: 0, embers: 7 }).filter(dot => dot[2] === 'scorch')
+  expect(marks.map(([x, y]) => `${x},${y}`)).toEqual(['18,18', '19,18', '20,18', '21,18', '22,18'])
+  const embers = (frame: number): Dot[] => scorch({ seed: 4, at, radius: 2, frame, embers: 7 }).filter(dot => dot[2] !== 'scorch')
+  expect(embers(0).length).toBe(7)
+  expect(embers(0).every(dot => dot[2] === 'ember' || dot[2] === 'coal')).toBe(true)
+  expect(embers(0).every(([x, y]) => x >= 18 && x <= 22 && y === 18)).toBe(true)
+  // Fewer every three frames, none in the end; the scorch stays.
+  expect(embers(3).length).toBe(6)
+  expect(embers(21).length).toBe(0)
+  expect(scorch({ seed: 4, at, radius: 2, frame: 40, embers: 7 }).filter(dot => dot[2] === 'scorch')).toHaveLength(5)
+  expect(same(scorch({ seed: 4, at, radius: 2, frame: 5 }), scorch({ seed: 4, at, radius: 2, frame: 5 }))).toBe(true)
+  expect(scorch({ seed: 4, at, radius: 2, frame: -1 }), 'not begun').toEqual([])
+  expect(scorch({ seed: 4, at, radius: 1, frame: 0, embers: 0 }).length).toBe(3)
+})
+
+test('what is in view is between the side edges and from the sky top down to the ground row: the rest is cut', async () => {
+  const dots: Dot[] = [
+    [EDGES.left, EDGES.skyTop, 'spark'],
+    [EDGES.right, EDGES.ground, 'spark'],
+    [EDGES.left - 1, 5, 'spark'],
+    [EDGES.right + 1, 5, 'spark'],
+    [10, EDGES.skyTop - 1, 'spark'],
+    [10, EDGES.ground + 1, 'spark'],
+  ]
+  expect(inView(dots, EDGES)).toEqual([dots[0], dots[1]])
 })

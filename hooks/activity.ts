@@ -50,14 +50,16 @@ export type Entry = {
   readonly moment: Moment
   /** Keeps the entry going this many steps past the last frame of the animation that plays when it starts: the ticket strike has one step more than the animation for the ticket-done moment has frames. The sidekick rests meanwhile. */
   readonly restSteps?: number
-  /** Called when the entry starts to play, before its first frame is drawn, with the steps it will have in all (rest steps included). */
-  readonly onStart?: (steps: number) => void
+  /** Called when the entry starts to play, before its first frame is drawn, with the steps it will have in all (rest steps included) and the animation resolved for it, which it keeps in step with. */
+  readonly onStart?: (steps: number, animation: Animation) => void
   /** Called at every tick after the first, with the step it is at; it includes the rest steps. */
   readonly onStep?: (step: number) => void
   /** Called when the entry is over, before what comes next is drawn. */
   readonly onEnd?: () => void
   /** The entry is kept when it arrives while the pane is not shown, and plays once when the pane is next shown. An entry without it is dropped then: its moment has passed. */
   readonly isKeptWhenHidden?: boolean
+  /** The entry plays only with motion on: it is dropped when it arrives with motion off, and one still waiting when motion is turned off is dropped. One under way plays out. */
+  readonly needsMotion?: boolean
 }
 
 /** The part of the clock the activity needs; `$.clock` has it. */
@@ -158,7 +160,7 @@ export type Effect =
   | { readonly do: 'every'; readonly ms: number }
   /** Cancel the timer there is, and start the one gap: a random wait within `AMBIENT_GAP_MS`, chosen by the shell. */
   | { readonly do: 'wait' }
-  | { readonly do: 'start'; readonly entry: Entry; readonly steps: number }
+  | { readonly do: 'start'; readonly entry: Entry; readonly steps: number; readonly animation: Animation }
   | { readonly do: 'step'; readonly entry: Entry; readonly step: number }
   | { readonly do: 'end'; readonly entry: Entry }
 
@@ -286,7 +288,7 @@ const startEntry = (m: Model, entry: Entry, animation: Animation): Result => {
 
   return {
     model: { ...m, phase: { kind: 'playing', entry, animation, step: 0, steps }, shown },
-    effects: [{ do: 'stop' }, { do: 'start', entry, steps }, { do: 'draw', shown }, { do: 'every', ms: animation.msPerFrame }],
+    effects: [{ do: 'stop' }, { do: 'start', entry, steps, animation }, { do: 'draw', shown }, { do: 'every', ms: animation.msPerFrame }],
   }
 }
 
@@ -466,6 +468,8 @@ const reduce = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient, backdr
       }
     }
     case 'queue': {
+      // An entry that needs motion is not for a sidekick that holds still.
+      if (e.entry.needsMotion === true && !m.isMotionOn) return same(m)
       const next = { ...m, waiting: [...m.waiting, e.entry] }
       switch (m.phase.kind) {
         case 'away':
@@ -505,7 +509,7 @@ const reduce = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient, backdr
     case 'motion': {
       if (m.isMotionOn === e.isOn) return same(m)
 
-      const next = { ...m, isMotionOn: e.isOn }
+      const next = { ...m, isMotionOn: e.isOn, waiting: e.isOn ? m.waiting : m.waiting.filter(entry => entry.needsMotion !== true) }
       // A walk does not go on without motion: the sidekick appears where it was going, and what waited for it starts.
       if (m.phase.kind === 'walking' && !e.isOn)
         return arrive({ ...next, shown: standAt(m.shown, within(room, m.phase.to)) }, m.phase.run, playsFor, ambientOf, room)
@@ -598,7 +602,7 @@ export const createActivity = (
 
         return
       case 'start':
-        effect.entry.onStart?.(effect.steps)
+        effect.entry.onStart?.(effect.steps, effect.animation)
 
         return
       case 'step':

@@ -8,11 +8,23 @@
 
 **Blocked by:** 23: The classic animations move onto the new engine
 
-**Status:** ready-for-agent
+**Status:** done, except the by-eye check by the owner
 
-- [ ] The ticket-done bolt, set-done jump and storm sky play for the classic as in prototype C; the ticket strike stays in step with the new ticket-done
-- [ ] The foxkit still plays its own animations or the plain defaults, never the classic's bolt
-- [ ] With motion off, the storm sky holds still at rest and the power-up does not play
-- [ ] While the pane is not shown none of it plays; once-only moments wait as ticket 13 says
-- [ ] "Last ticket started" is a moment only if it comes from the ticket files' real state; the owner decides where the power-up finally goes
+- [x] The ticket-done bolt, set-done jump and storm sky play for the classic as in prototype C; the ticket strike stays in step with the new ticket-done
+- [x] The foxkit still plays its own animations or the plain defaults, never the classic's bolt
+- [x] With motion off, the storm sky holds still at rest and the power-up does not play
+- [x] While the pane is not shown none of it plays; once-only moments wait as ticket 13 says
+- [x] "Last ticket started" is a moment only if it comes from the ticket files' real state; the owner decides where the power-up finally goes (the moment is read from the files' state; where the power-up finally goes is still the owner's to decide)
 - [ ] By-eye check in the running app by the owner
+
+## Notes
+
+How the sentences above were read:
+
+- **The animations are the classic's own.** The foxkit plays the shared zap and cheer, which the golden frames record, so the classic's moveset names new library animations: `thunder` (ticket done, 44 frames at 80 ms), `jump` (set done, 30 frames at 85 ms) and `powerUp` (40 frames at 80 ms). They follow the prototype's plans step by step (poses, crouch and stretch, the hop plan, the spin as two mirrored frames, the shake as one pixel either way, the colours of the gold body and its glowing eyes); the prototype's coordinates became anchors and the stage's edges. The strike point is fourteen pixels ahead of the raised paw (the way it faces), brought in to the camera's edge on a narrow pane; the shockwave is paced to reach the feet as the hop begins.
+- **Poses.** The prototype's `armsUp`, `tailDown` and `spiky` are new poses (added with the animations that first use them). Its `happy` pose is not: it changes the eyes from one near-black to another and is not visible, so it was left out. Its `spiky` is a row of ear points above the ear tips.
+- **"The classic's background".** Backgrounds belong to the look, not to a character, so the storm is a background in the catalog (`/sidekick-look background=storm`), not something the classic carries. It is drawn for the classic's stage (a world 40 wide and 23 rows of sky); a stage with less sky shows its lower part. Its far layer has one picture per step of the prototype's zap schedule (44), so an animation steps the storm with its own frames (the zap's bolts flash at the prototype's steps) and the rest steps it at the fixed 2 s of ticket 21: a far-off strike at rest is a picture that stays for 2 s rather than a flicker. A faster rest cadence for one background would be a change to ticket 21's mechanism, and was not made.
+- **The sky flash.** The zap's flash lights the sky layer, which the clouds and the hills are in front of, so the sky behind them brightens and the clouds do not (the prototype lit the clouds too). The storm's far-off strikes light the clouds themselves.
+- **The strike's beats.** The strike was paced for a twelve-frame zap (the bolt leaves at step 2, lands at 3). An animation can now declare the steps its bolt leaves and lands (`Animation.strikeAt`); the flash and the burn follow, and the registry checks that it has the frames they need. The storm declares 4 and 8: the streak leaves the paw at 4, the bolt cracks the ground at 8, the row flashes at 9, the strike-through burns 10 to 15, the row stays struck while the check mark rises and settles in the last two steps. The activity's `onStart` now also hands over the animation that plays, so the pane keeps the beats of the animation it is striking with.
+- **Last ticket started.** A new moment `last-started`, read from the ticket files' state: at one refresh of a set a ticket was open, at the next it is active while every other ticket is done (a set of one ticket has no last; a set cut short by the 300-row list is not judged). The classic plays the power-up for it; the foxkit has no power-up, so it plays the moment's plain default, a nod (the same `nod` it has for working). The moment is kept while the pane is not shown, as the zap and the cheer are, and needs motion on: an entry that needs motion is dropped when it arrives with motion off, and one waiting is dropped when motion is turned off (`Entry.needsMotion`).
+- **Not done here.** The zap's paper and check mark still sit at `paw.x + 1` whatever the facing; nothing in this ticket makes the sidekick face left (no animation names a place), so they were left. The whole-mod walk test of ticket 22 is still not possible for the same reason.

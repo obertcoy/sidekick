@@ -10,6 +10,7 @@ import {
   globReach,
   globToRegExp,
   groupSets,
+  isLastStarted,
   labelOf,
   namedIn,
   orderSets,
@@ -177,6 +178,45 @@ test('a prompt names a set by label or id, ignoring case and - _ spaces; two mat
   expect(named('research it')).toBeUndefined()
   // "search-v2" also contains the word "search".
   expect(named('work on search-v2')).toBeUndefined()
+})
+
+/** A set as the pane keeps it: one state per title, in order. */
+const setOf = (...states: ('done' | 'active' | 'open')[]) =>
+  progressOf(
+    states.map((state, at) => ({ title: `t${at}`, isDone: state === 'done', isActive: state === 'active', ticked: 0, boxes: 0 })),
+    'x',
+  )
+
+test('the last open ticket is started when it was open at the refresh before and is active now, with every other ticket done', async () => {
+  expect(isLastStarted(setOf('done', 'done', 'open'), setOf('done', 'done', 'active'))).toBe(true)
+  expect(isLastStarted(setOf('done', 'open'), setOf('done', 'active'))).toBe(true)
+  // The ticket before it finishing at the same refresh counts: the last one is what is left.
+  expect(isLastStarted(setOf('active', 'open'), setOf('done', 'active'))).toBe(true)
+})
+
+test('it is not the last ticket started while another ticket is open or active, when it was active already, or when nothing is left', async () => {
+  // Another ticket still open or active.
+  expect(isLastStarted(setOf('done', 'open', 'open'), setOf('done', 'active', 'open'))).toBe(false)
+  expect(isLastStarted(setOf('open', 'open', 'open'), setOf('active', 'active', 'open'))).toBe(false)
+  expect(isLastStarted(setOf('active', 'open', 'open'), setOf('active', 'active', 'open'))).toBe(false)
+  // Active at the refresh before: nothing was started now, and it does not repeat at the next refresh.
+  expect(isLastStarted(setOf('done', 'active'), setOf('done', 'active'))).toBe(false)
+  // Finished, or still open.
+  expect(isLastStarted(setOf('done', 'open'), setOf('done', 'done'))).toBe(false)
+  expect(isLastStarted(setOf('done', 'open'), setOf('done', 'open'))).toBe(false)
+  // A ticket that was not in the set before is not one that was started.
+  expect(isLastStarted(setOf('done'), setOf('done', 'active'))).toBe(false)
+})
+
+test('a set of one ticket has no last ticket to start, and a set the list cuts short is not judged', async () => {
+  expect(isLastStarted(setOf('open'), setOf('active'))).toBe(false)
+  const long = (state: 'open' | 'active') =>
+    progressOf(
+      Array.from({ length: 301 }, (_, at) => ({ title: `t${at}`, isDone: at < 300, isActive: at === 300 && state === 'active', ticked: 0, boxes: 0 })),
+      'x',
+    )
+  expect(long('active').rows.length).toBe(300)
+  expect(isLastStarted(long('open'), long('active'))).toBe(false)
 })
 
 test('progress counts done tickets and names the one in progress, else the first open', async () => {

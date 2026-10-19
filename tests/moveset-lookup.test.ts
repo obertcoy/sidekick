@@ -102,16 +102,32 @@ test('a moment left out of the moveset plays its plain default, for a character 
   for (const moment of MOMENTS) expect(animationOf(bare, moment), moment).toBe(ANIMATIONS[PLAIN[moment]])
 })
 
-test('the foxkit and the classic name the animations they played before, so they behave as before', async () => {
+test('the foxkit names the animations it played before, so it behaves as before, and plays the plain default for the moment that is new', async () => {
   const before = { working: 'write', searching: 'look', 'search-failed': 'shrug', 'ticket-done': 'zap', 'set-done': 'cheer' } as const
-  for (const character of Object.values(CHARACTERS)) {
-    for (const [moment, name] of Object.entries(before)) expect(animationNameOf(character, moment as Moment), `${character.name} ${moment}`).toBe(name)
-    expect(animationOf(character, 'resting'), character.name).toBe(ANIMATIONS.idle)
-  }
+  const fox = CHARACTERS.foxkit
+  if (fox === undefined) throw new Error('no foxkit')
+  for (const [moment, name] of Object.entries(before)) expect(animationNameOf(fox, moment as Moment), moment).toBe(name)
+  expect(animationNameOf(fox, 'last-started')).toBe(PLAIN['last-started'])
+  expect(animationOf(fox, 'resting')).toBe(ANIMATIONS.idle)
 })
 
-test('the library holds animations that no shipped moveset plays, and none of them is played for any moment (the walk is played by walking)', async () => {
+test('the classic keeps the shared animations for working, searching and a failed search, and has the storm, the jump and the power-up of its own', async () => {
+  const classic = CHARACTERS.classic
+  if (classic === undefined) throw new Error('no classic')
+  const own = {
+    working: 'write',
+    searching: 'look',
+    'search-failed': 'shrug',
+    'ticket-done': 'thunder',
+    'set-done': 'jump',
+    'last-started': 'powerUp',
+  } as const
+  for (const [moment, name] of Object.entries(own)) expect(animationNameOf(classic, moment as Moment), moment).toBe(name)
+  expect(animationOf(classic, 'resting')).toBe(ANIMATIONS.idle)
+})
+
+test('the library holds animations that no shipped moveset plays (nod is the plain default of the new moment, so the foxkit plays it), and none of them is played for any moment (the walk is played by walking)', async () => {
   const played = new Set(Object.values(CHARACTERS).flatMap(character => MOMENTS.map(moment => animationNameOf(character, moment))))
   const unused = Object.keys(ANIMATIONS).filter(name => !played.has(name) && !AMBIENT.includes(name as AmbientName))
-  expect(unused).toEqual(['nod', 'dip', 'sink', 'hop', 'bounce', 'walk'])
+  expect(unused).toEqual(['dip', 'sink', 'hop', 'bounce', 'walk'])
 })

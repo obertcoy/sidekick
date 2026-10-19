@@ -40,7 +40,7 @@ import { changeMotion, MOTION, motionReport, parseMotion } from './motion'
 import { ambientFor, backdropFrames, cellsOf, DEFAULT_PANE, leftOut, listRoom, type Pane, playsFor, roomFor, viewIn } from './sprite'
 import { projectRoot, setCurrentRoot, setProjectLook, setSavedLook } from './sprite/look-in-use'
 import type { SavedLook } from './sprite/types'
-import { BURN_STEPS, BURNS, HITS, isStruck, LANDS, LEAVES, STRIKE_REST_STEPS } from './strike'
+import { type Beats, BURN_STEPS, beatsOf, isStruck, STRIKE_REST_STEPS } from './strike'
 import type { FileInfo, Place, Recipe, Ticket, TicketSet } from './tickets'
 import {
   addPlace,
@@ -50,6 +50,7 @@ import {
   globToRegExp,
   groupSets,
   hintPaths,
+  isLastStarted,
   labelOf,
   namedIn,
   normalize,
@@ -232,8 +233,8 @@ const complete = async ($: Dollar, kind: CostKind, request: ModelCompleteRequest
 // have the strike-through burn across them before they settle as done. One step per frame of the
 // animation that plays for the ticket-done moment; the beats are in ./strike.
 type Was = 'active' | 'open'
-/** The steps are those the running entry has, told by the activity when the strike starts. */
-type Strike = { rows: Map<string, Was>; step: number; steps: number }
+/** The steps are those the running entry has, told by the activity when the strike starts, and the beats are those of the animation that plays with it. */
+type Strike = { rows: Map<string, Was>; step: number; steps: number; beats: Beats }
 const BOLT = '↯'
 
 /** What one pane keeps: what its sidekick is doing, the strike on show, and the batch of rows waiting to be struck. */
@@ -305,9 +306,9 @@ const strikeRows = ($: Dollar, rows: Map<string, Was>): void => {
     // The strike has one more step than the animation has frames; the sidekick rests for the last one.
     restSteps: STRIKE_REST_STEPS,
     isKeptWhenHidden: true,
-    onStart: steps => {
+    onStart: (steps, animation) => {
       if (scene.pending === batch) scene.pending = undefined
-      scene.strike = { rows: batch, step: 0, steps }
+      scene.strike = { rows: batch, step: 0, steps, beats: beatsOf(animation) }
       $.ui.invalidate('ui.render')
     },
     onStep: step => {
@@ -571,6 +572,10 @@ const show = async ($: Dollar, next: View): Promise<void> => {
     // first load or another set never gets here). The set-done animation waits behind the ticket-done animation and its strike.
     if (now.done === now.total && was.done < was.total) sceneOf($).activity.queue({ moment: 'set-done', isKeptWhenHidden: true })
     $.ui.toast(now.next === null ? `✓ All ${now.total} tickets done` : `✓ ${now.done}/${now.total} done · next: ${shortTitle(now.next)}`)
+  }
+  // The last open ticket of the set was just started (it was open at the previous refresh of this same set and is active now). Only with motion on, after what finished with it.
+  if (was !== null && now !== null && was.source === now.source && isLastStarted(was, now)) {
+    sceneOf($).activity.queue({ moment: 'last-started', needsMotion: true, isKeptWhenHidden: true })
   }
 }
 
@@ -1297,13 +1302,15 @@ export const register: Register = on => {
     const isHidden = struck !== -1 && (struck < steady.start || struck >= steady.end)
     const { start, end } = isHidden ? windowOf(rows.length, struck, room) : steady
     const step = struck === -1 ? -1 : (strike?.step ?? -1)
+    // The strike keeps the beats of the animation that plays with it (the bolt leaves, lands, the row flashes, the strike-through burns).
+    const beats = strike?.beats ?? beatsOf({})
     // The bolt runs down the gutter from the critter to the list; only the terminal draws the critter.
     const isTrail = e.surface === 'terminal'
     const trailOn = (line: number): boolean => isTrail && step === line
     // One frame of a struck row; every frame keeps a glyph, so the state never rests on colour alone.
     const struckRow = (title: string, was: Was, at: number, width: number) => {
       const text = shortTitle(title)
-      if (at < LANDS) {
+      if (at < beats.lands) {
         return (
           <Text wrap="truncate-end">
             <Text color="text">{GLYPH[was]} </Text>
@@ -1311,7 +1318,7 @@ export const register: Register = on => {
           </Text>
         )
       }
-      if (at === LANDS) {
+      if (at === beats.lands) {
         return (
           <Text wrap="truncate-end">
             <Text bold color="warning">
@@ -1321,7 +1328,7 @@ export const register: Register = on => {
           </Text>
         )
       }
-      if (at === HITS) {
+      if (at === beats.hits) {
         return (
           <Text wrap="truncate-end" bold color="inverseText" backgroundColor="warning">
             {GLYPH.done} {text}
@@ -1330,7 +1337,7 @@ export const register: Register = on => {
       }
       const chars = [...text]
       const shown = Math.min(chars.length, Math.max(1, width - 2))
-      const cut = Math.min(shown, Math.ceil((shown * (at - BURNS + 1)) / BURN_STEPS))
+      const cut = Math.min(shown, Math.ceil((shown * (at - beats.burns + 1)) / BURN_STEPS))
 
       return (
         <Text wrap="truncate-end">
@@ -1480,13 +1487,13 @@ export const register: Register = on => {
         </Box>
         {progress !== null && (
           <Text>
-            {trailOn(LEAVES) && (
+            {trailOn(beats.leaves) && (
               <Text bold color="warning">
                 {BOLT}
               </Text>
             )}
-            <Text color={accent}>{'━'.repeat(trailOn(LEAVES) ? Math.max(0, filled - 1) : filled)}</Text>
-            <Text dimColor>{'─'.repeat(columns - Math.max(filled, trailOn(LEAVES) ? 1 : 0))}</Text>
+            <Text color={accent}>{'━'.repeat(trailOn(beats.leaves) ? Math.max(0, filled - 1) : filled)}</Text>
+            <Text dimColor>{'─'.repeat(columns - Math.max(filled, trailOn(beats.leaves) ? 1 : 0))}</Text>
           </Text>
         )}
         {dropped !== '' && (
@@ -1548,9 +1555,9 @@ export const register: Register = on => {
               </Box>
             )}
             {progress !== null && (
-              <Box flexDirection="column" marginTop={trailOn(LANDS) ? 0 : 1}>
+              <Box flexDirection="column" marginTop={trailOn(beats.lands) ? 0 : 1}>
                 {/* The bolt's second segment takes the blank line above the list, so nothing moves. */}
-                {trailOn(LANDS) && (
+                {trailOn(beats.lands) && (
                   <Text bold color="warning">
                     {BOLT}
                   </Text>

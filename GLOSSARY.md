@@ -146,7 +146,7 @@ _Avoid_: Silhouette, hitbox
 One of the six planes a frame is drawn in, back to front: sky (it can be lit by a flash), far (things behind the hills, such as a distant bolt), ground (it can carry marks), character, effects and overlay (the check mark). The background draws a picture on the first three; an animation can put dots on every layer but the character's, and they are drawn after that layer's picture, so what is on a layer further back is hidden by what is in front of it (a far bolt by the hills).
 
 **Effect**:
-A thing an animation draws that is not the body, from the library of effects: bolt (with branches), burst (sparks under gravity), smoke, shockwave along the ground, aura around the mask, crackle, confetti, check mark, and flash. Each is a pure function of the frame number and a seed, aimed only by anchors, the mask and the edges it is given (the stage's sky top and ground, the camera's left and right), so the same arguments always draw the same pixels. A pane that trims sky only crops it; a wider pane shows more of what runs sideways.
+A thing an animation draws that is not the body, from the library of effects: bolt (with branches), burst (sparks under gravity), smoke, shockwave along the ground, aura around the mask, crackle, confetti, check mark (small, or big with an outline), scorch with embers, and flash. Each is a pure function of the frame number and a seed, aimed only by anchors, the mask and the edges it is given (the stage's sky top and ground, the camera's left and right), so the same arguments always draw the same pixels. A pane that trims sky only crops it; a wider pane shows more of what runs sideways.
 _Avoid_: Animation
 
 **Flash**:
@@ -156,8 +156,20 @@ The effect that lights the sky layer for its frames, and nothing else.
 Something an animation leaves on the ground layer, such as a scorch or cracks. It is drawn only in the frames that draw it, so it is gone when the sidekick is at rest again.
 
 **Moment**:
-Something the mod can detect that the sidekick answers with an animation: a turn is working, a search runs, a search fails, a ticket is done, a set is done, the sidekick rests. The list is closed; one is added only together with a real event that produces it.
+Something the mod can detect that the sidekick answers with an animation: a turn is working, a search runs, a search fails, a ticket is done, a set is done, the last open ticket of a set is started, the sidekick rests. The list is closed; one is added only together with a real event that produces it.
 _Avoid_: State, event, trigger
+
+**Last ticket started**:
+The moment the last open ticket of a set is started: at one refresh of a set a ticket was open, and at the next it is active while every other ticket is done. It is read from the ticket files' state alone, so it comes once, at the refresh that sees it; a set of one ticket has no last. It plays only with motion on, and waits for a pane that is not shown as a finished ticket does. It is a placeholder for the power-up: the classic plays its power-up for it until the owner decides where the power-up goes.
+
+**Strike beats**:
+The steps of the ticket strike that follow the animation playing for a finished ticket: the bolt leaves the sidekick, lands on the ticket's row, the row flashes as done in the step after, and the strike-through burns from the one after that. An animation that declares where its bolt leaves and lands (`strikeAt`) sets them; one that does not has the defaults, which fit a dozen frames. The animation needs the frames its beats need before it ends.
+
+**Storm**:
+The classic's sky, and its animation for a finished ticket. The sky is a background (`storm`): dark clouds across the top, stars, distant bolts that flash behind the hills, and the hills in front. It steps while the sidekick rests with motion on, and holds still with motion off. The animation (`thunder`) is the sidekick charging, throwing a streak into the sky, a leader and a branching bolt striking the ground ahead with the sky flashing, a scorch with embers, smoke, an aftershock and a shockwave it hops over, and the check mark rising over the crater.
+
+**Power-up**:
+The classic's animation (`powerUp`) of charging, shaking while pebbles lift, being struck by a bolt, turning gold with glowing eyes and a flaming aura, and powering down. It is in the library; where it plays is not decided.
 
 **Library**:
 Every animation the mod has, by name. An animation can sit in it without being played for any moment.

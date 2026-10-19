@@ -26,3 +26,33 @@ export const BURN_STEPS = 6
  * for the flash and for at least one step of the burn still drawn struck, before the last two steps show the row plain.
  */
 export const MIN_STRIKE_FRAMES = BURNS + 2
+
+/**
+ * The beats of the strike for one animation, by step: the bolt leaves the sidekick (`leaves`), lands on the row's glyph (`lands`), the row flashes as done (`hits`), and the strike-through burns from `burns` for `BURN_STEPS` steps.
+ * An animation that declares `strikeAt` sets when the bolt leaves and lands; the rest follow from them. One that does not has the defaults above, which fit the zap.
+ */
+export type Beats = { readonly leaves: number; readonly lands: number; readonly hits: number; readonly burns: number }
+
+/** The beats of the strike while `animation` plays for a finished ticket. */
+export const beatsOf = (animation: Pick<Animation, 'strikeAt'>): Beats => {
+  const { strikeAt } = animation
+
+  return strikeAt === undefined
+    ? { leaves: LEAVES, lands: LANDS, hits: HITS, burns: BURNS }
+    : { leaves: strikeAt.leaves, lands: strikeAt.lands, hits: strikeAt.lands + 1, burns: strikeAt.lands + 2 }
+}
+
+/** The fewest frames an animation with these beats can have and still play for a finished ticket (see `MIN_STRIKE_FRAMES`, which is the same for the default beats). */
+export const framesForBeats = (beats: Beats): number => beats.burns + 2
+
+/** Why an animation's declared beats cannot be kept in step with, or undefined when they can: whole steps in order, with room for the flash and the burn before it ends. */
+export const beatsRefusal = (animation: Pick<Animation, 'strikeAt' | 'frames'>): string | undefined => {
+  const { strikeAt } = animation
+  if (strikeAt === undefined) return undefined
+  if (!Number.isInteger(strikeAt.leaves) || !Number.isInteger(strikeAt.lands) || strikeAt.leaves < 0 || strikeAt.lands <= strikeAt.leaves) {
+    return `has the strike beats leaves ${strikeAt.leaves} and lands ${strikeAt.lands}; they need whole steps, the bolt leaving before it lands`
+  }
+  const least = framesForBeats(beatsOf(animation))
+
+  return animation.frames < least ? `has ${animation.frames} frames, and the strike beats it declares need at least ${least}` : undefined
+}

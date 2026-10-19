@@ -1,4 +1,4 @@
-import { MIN_STRIKE_FRAMES } from '../strike'
+import { beatsOf, beatsRefusal, framesForBeats, MIN_STRIKE_FRAMES } from '../strike'
 import { cap } from './accessories/cap'
 import { flag } from './accessories/flag'
 import { glasses } from './accessories/glasses'
@@ -8,14 +8,18 @@ import { cheekSpark } from './animations/cheekSpark'
 import { cheer } from './animations/cheer'
 import { earFlick } from './animations/earFlick'
 import { idle } from './animations/idle'
+import { jump } from './animations/jump'
 import { look } from './animations/look'
 import { bounce, dip, hop, nod, sink } from './animations/plain'
+import { powerUp } from './animations/powerUp'
 import { shrug } from './animations/shrug'
 import { tailFlick } from './animations/tailFlick'
+import { thunder } from './animations/thunder'
 import { walk } from './animations/walk'
 import { write } from './animations/write'
 import { zap } from './animations/zap'
 import { dusk } from './backgrounds/dusk'
+import { storm } from './backgrounds/storm'
 import { twinkle } from './backgrounds/twinkle'
 import { classic } from './characters/classic'
 import { foxkit } from './characters/foxkit'
@@ -45,6 +49,9 @@ export const ANIMATIONS = {
   hop,
   bounce,
   walk,
+  thunder,
+  jump,
+  powerUp,
 } as const satisfies Record<string, Animation>
 
 /**
@@ -57,6 +64,7 @@ export const PLAIN = {
   'search-failed': 'sink',
   'ticket-done': 'hop',
   'set-done': 'bounce',
+  'last-started': 'nod',
   resting: 'idle',
 } as const satisfies Record<Moment, keyof typeof ANIMATIONS>
 
@@ -81,6 +89,7 @@ const MIN_FRAMES = {
   'search-failed': 1,
   'ticket-done': MIN_STRIKE_FRAMES,
   'set-done': 1,
+  'last-started': 1,
   resting: 1,
 } as const satisfies Record<Moment, number>
 
@@ -104,7 +113,8 @@ export const requireMoveset = (character: Character, catalog: Readonly<Record<st
         `sprite: character "${character.name}" names the animation "${name}" for "${moment}", which does not exist; known: ${Object.keys(catalog).join(', ')}`,
       )
     }
-    const least = MIN_FRAMES[known]
+    // A finished ticket is kept in step with by the strike, whose beats an animation may declare for itself.
+    const least = known === 'ticket-done' ? Math.max(MIN_FRAMES[known], framesForBeats(beatsOf(animation))) : MIN_FRAMES[known]
     if (animation.frames < least) {
       throw new Error(
         `sprite: character "${character.name}" plays "${name}" for "${moment}", which has ${animation.frames} frames; "${moment}" needs at least ${least}`,
@@ -154,6 +164,8 @@ export const requireDeclaration = (name: string, animation: Animation): void => 
   }
   if (!Number.isInteger(animation.frames) || animation.frames < 1) fail(`has ${animation.frames} frames; it needs a whole number, at least 1`)
   if (!(animation.msPerFrame > 0)) fail(`has ${animation.msPerFrame} ms per frame; it needs more than 0`)
+  const beats = beatsRefusal(animation)
+  if (beats !== undefined) fail(beats)
   for (const need of animation.needs) {
     if (!(ANCHOR_NAMES as readonly string[]).includes(need)) fail(`needs "${need}", which is not an anchor; anchors: ${ANCHOR_NAMES.join(', ')}`)
   }
@@ -288,7 +300,7 @@ for (const character of Object.values(CHARACTERS)) requireWalk(character)
 
 export const ACCESSORIES: Readonly<Record<string, Accessory>> = { cap, flag, glasses, scarf }
 
-export const BACKGROUNDS: Readonly<Record<string, Background>> = { dusk, twinkle }
+export const BACKGROUNDS: Readonly<Record<string, Background>> = { dusk, twinkle, storm }
 
 /** The look nothing was chosen for: the bare foxkit. */
 export const DEFAULT_LOOK: Look = { character: 'foxkit', outfit: {}, background: null }

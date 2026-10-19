@@ -30,6 +30,24 @@ test('a moveset entry for "ticket done" with fewer frames than the strike has st
   expect(() => requireMoveset(withMoveset('owl', { working: 'stub' }), catalog)).not.toThrow()
 })
 
+test('an animation with strike beats of its own needs the frames those beats need for "ticket done", and a beat out of order is refused in the library', async () => {
+  // Beats that land at step 8 flash at 9 and burn from 10, so the animation needs 12 frames, more than the default seven.
+  const late = { ...framesOf(MIN_STRIKE_FRAMES + 1), strikeAt: { leaves: 4, lands: 8 } }
+  const catalog = { short: late, long: { ...late, frames: 12 } }
+  expect(() => requireMoveset(withMoveset('owl', { 'ticket-done': 'short' }), catalog)).toThrow(
+    'sprite: character "owl" plays "short" for "ticket-done", which has 8 frames; "ticket-done" needs at least 12',
+  )
+  expect(() => requireMoveset(withMoveset('owl', { 'ticket-done': 'long' }), catalog)).not.toThrow()
+  // The same animation is no harder to play for another moment.
+  expect(() => requireMoveset(withMoveset('owl', { working: 'short' }), catalog)).not.toThrow()
+  // The library check refuses beats that cannot be kept in step with, whether or not anything plays the animation.
+  expect(() => requireDeclaration('late', catalog.long)).not.toThrow()
+  expect(() => requireDeclaration('late', { ...catalog.long, strikeAt: { leaves: 8, lands: 4 } })).toThrow(
+    'sprite: the animation "late" has the strike beats leaves 8 and lands 4',
+  )
+  expect(() => requireDeclaration('late', catalog.short)).toThrow('the animation "late" has 8 frames, and the strike beats it declares need at least 12')
+})
+
 test('a character that names an animation that does not exist is refused, naming the moment and the animations that exist', async () => {
   const owl = withMoveset('owl', { searching: 'hoot' })
   expect(() => requireMoveset(owl)).toThrow(
@@ -48,15 +66,12 @@ test('a character may name an animation for resting, but not for a moment that d
   expect(() => requireMoveset(withMoveset('owl', { dancing: 'cheer' } as unknown as Moveset))).toThrow('no moment named "dancing"')
 })
 
-test('the shipped characters name the animations they played before, and still pass the load checks', async () => {
+test('the shipped characters name the animations they play, and still pass the load checks; the foxkit plays what it always played', async () => {
+  const shared = { working: 'write', searching: 'look', 'search-failed': 'shrug' } as const
+  expect(CHARACTERS.foxkit?.moveset).toEqual({ ...shared, 'ticket-done': 'zap', 'set-done': 'cheer' })
+  // The classic has the storm, the jump and the power-up of its own.
+  expect(CHARACTERS.classic?.moveset).toEqual({ ...shared, 'ticket-done': 'thunder', 'set-done': 'jump', 'last-started': 'powerUp' })
   for (const character of Object.values(CHARACTERS)) {
-    expect(character.moveset, character.name).toEqual({
-      working: 'write',
-      searching: 'look',
-      'search-failed': 'shrug',
-      'ticket-done': 'zap',
-      'set-done': 'cheer',
-    })
     expect(() => requireMoveset(character), character.name).not.toThrow()
     expect(() => requirePlayed(character), character.name).not.toThrow()
   }

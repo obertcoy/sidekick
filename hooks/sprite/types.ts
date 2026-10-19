@@ -84,7 +84,7 @@ export type Region = { readonly left: number; readonly top: number; readonly rig
  * Something the mod can detect, which the sidekick answers with an animation. The list is closed: a moment is added only together with a real event that produces it.
  * Which animation plays for a moment is the character's moveset, else the moment's plain default (the registry).
  */
-export const MOMENTS = ['working', 'searching', 'search-failed', 'ticket-done', 'set-done', 'resting'] as const
+export const MOMENTS = ['working', 'searching', 'search-failed', 'ticket-done', 'set-done', 'last-started', 'resting'] as const
 export type Moment = (typeof MOMENTS)[number]
 
 export type Character = {
@@ -123,9 +123,10 @@ export type Character = {
 /**
  * Body changes an animation can ask for by name; each character draws its own. One shared, fixed list.
  * It grows only together with the animation that first uses a new name.
+ * `armsUp` raises both arms (`armUp` is the right one alone), `tailDown` drops the tail, `spiky` stands the ears up in points.
  * A character's walk cycle is three of them, the rows of its legs: `walkA` and `walkB` are the contact steps (a foot out in front, then the other), `walkPass` the passing step (the legs together).
  */
-export const POSES = ['armUp', 'blink', 'tailUp', 'earsUp', 'walkA', 'walkB', 'walkPass'] as const
+export const POSES = ['armUp', 'armsUp', 'blink', 'tailUp', 'tailDown', 'earsUp', 'spiky', 'walkA', 'walkB', 'walkPass'] as const
 export type PoseName = (typeof POSES)[number]
 
 /** The poses that make a walk cycle: a character that has any has all of them (the registry checks at load), and it walks; one that has none does not. */
@@ -202,6 +203,11 @@ export type Animation = {
   readonly once: boolean
   /** The slots whose accessory is not drawn while this animation plays, because the animation draws there itself; `[]` hides none. */
   readonly hides: readonly Slot[]
+  /**
+   * For the animation that plays for a finished ticket: the steps the ticket strike keeps in step with. The bolt leaves the sidekick at `leaves` and lands on the row at `lands`, the row flashes as done in the step after,
+   * and the strike-through burns from the one after that. Left out, the beats are the strike's own defaults (`strike.ts`), which fit an animation of about a dozen frames.
+   */
+  readonly strikeAt?: { readonly leaves: number; readonly lands: number }
   /**
    * Where the sidekick stands before this animation starts, in pixels right of home (a strike point, say); it walks there first when it is elsewhere.
    * With motion off, or while the pane is not shown, it appears there. Left out, the animation plays wherever the sidekick is.

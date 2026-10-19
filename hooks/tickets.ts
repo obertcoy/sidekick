@@ -347,6 +347,19 @@ export const progressOf = (tickets: Ticket[], source: string): Progress => {
   }
 }
 
+/**
+ * Whether the last open ticket of a set was just started: at the refresh before (`was`) a ticket was open, and now (`now`, the same set) it is active and every other ticket is done.
+ * Read from the ticket files' state alone, so it is true once, at the refresh that sees it: a set of one ticket has no "last" and never counts, and a set whose rows are cut short (more than the list keeps) is not judged.
+ */
+export const isLastStarted = (was: Progress, now: Progress): boolean => {
+  if (now.total < 2 || now.rows.length !== now.total) return false
+  const open = now.rows.filter(row => row.state !== 'done')
+  const [last] = open
+  if (open.length !== 1 || last === undefined || last.state !== 'active') return false
+
+  return was.rows.some(row => row.title === last.title && row.state === 'open')
+}
+
 /** A title without the number its file order already shows ("01: Cart" is "Cart"). */
 export const shortTitle = (title: string): string => title.replace(/^#?\d+\s*[:.)-]\s+/, '') || title
 

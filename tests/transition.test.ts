@@ -58,7 +58,39 @@ test('the phases are the seven kinds, and a model starts resting with nothing to
 test('queueing at rest starts the entry: stop, start, draw its first frame, then its timer', async () => {
   const { model, effects } = feed([queue(zap)])
   expect(model.phase).toEqual({ kind: 'playing', entry: zap, animation: playsFor('ticket-done'), step: 0, steps: 2 })
-  expect(effects).toEqual([{ do: 'stop' }, { do: 'start', entry: zap, steps: 2 }, draw('ticket-done', 0), { do: 'every', ms: 50 }])
+  expect(effects).toEqual([
+    { do: 'stop' },
+    { do: 'start', entry: zap, steps: 2, animation: playsFor('ticket-done') },
+    draw('ticket-done', 0),
+    { do: 'every', ms: 50 },
+  ])
+})
+
+test('an entry that needs motion is dropped when it arrives with motion off, and plays with motion on', async () => {
+  const power: Entry = { moment: 'ticket-done', needsMotion: true }
+  const dropped = transition({ ...INITIAL, isMotionOn: false }, queue(power), playsFor)
+  expect(dropped.model.waiting).toEqual([])
+  expect(dropped.model.phase).toEqual({ kind: 'resting' })
+  expect(dropped.effects).toEqual([])
+  const played = transition({ ...INITIAL, isMotionOn: true }, queue(power), playsFor)
+  expect(played.model.phase.kind).toBe('playing')
+  // An entry that does not need it plays either way.
+  expect(transition({ ...INITIAL, isMotionOn: false }, queue(zap), playsFor).model.phase.kind).toBe('playing')
+})
+
+test('turning motion off drops an entry that needs motion and is still waiting, keeps the others, and leaves one under way to play out', async () => {
+  const power: Entry = { moment: 'set-done', needsMotion: true }
+  const kept: Entry = { moment: 'working' }
+  const motion = (isOn: boolean): Event => ({ type: 'motion', isOn })
+  const waiting = feed([motion(true), queue(zap), queue(power), queue(kept)])
+  expect(waiting.model.waiting.map(one => one.moment)).toEqual(['set-done', 'working'])
+  const off = feed([motion(false)], waiting.model)
+  expect(off.model.waiting).toEqual([kept])
+  expect(off.model.phase.kind).toBe('playing')
+  // One that is under way is not cut short.
+  const under = feed([motion(true), queue(power)])
+  expect(under.model.phase.kind).toBe('playing')
+  expect(feed([motion(false)], under.model).model.phase.kind).toBe('playing')
 })
 
 test('queueing while an entry plays or holds waits behind it and does nothing else', async () => {
@@ -276,7 +308,12 @@ test('an animation for a moment that arrives during an ambient one starts at onc
   const mid = feed([gap(0), tick], waiting(), playsFor, both).model
   const result = transition(mid, queue(zap), playsFor, both)
   expect(result.model.phase).toEqual({ kind: 'playing', entry: zap, animation: playsFor('ticket-done'), step: 0, steps: 2 })
-  expect(result.effects).toEqual([{ do: 'stop' }, { do: 'start', entry: zap, steps: 2 }, draw('ticket-done', 0), { do: 'every', ms: 50 }])
+  expect(result.effects).toEqual([
+    { do: 'stop' },
+    { do: 'start', entry: zap, steps: 2, animation: playsFor('ticket-done') },
+    draw('ticket-done', 0),
+    { do: 'every', ms: 50 },
+  ])
   // A condition does the same: the turn writes at once.
   const turn = transition(mid, on('turn'), playsFor, both)
   expect(turn.model.phase).toEqual({ kind: 'resting' })
@@ -400,7 +437,12 @@ test('showing the pane begins what the conditions call for, or the rest; kept en
 
   const kept = feed([queue(KEPT), queue({ moment: 'set-done', isKeptWhenHidden: true })], away)
   const first = transition(kept.model, view(true), playsFor)
-  expect(first.effects).toEqual([{ do: 'stop' }, { do: 'start', entry: KEPT, steps: 2 }, draw('ticket-done', 0), { do: 'every', ms: 50 }])
+  expect(first.effects).toEqual([
+    { do: 'stop' },
+    { do: 'start', entry: KEPT, steps: 2, animation: playsFor('ticket-done') },
+    draw('ticket-done', 0),
+    { do: 'every', ms: 50 },
+  ])
   expect(first.model.waiting.map(one => one.moment)).toEqual(['set-done'])
 })
 

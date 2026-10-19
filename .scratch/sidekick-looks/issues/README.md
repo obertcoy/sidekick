@@ -26,9 +26,9 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 | 18 | 19 The stage fits the character, and a camera follows it | 18 | done (owner review of golden frames pending) |
 | 19 | 20 The body moves and can change colour | 19 | done |
 | 20 | 21 Layers and an effects library (absorbs 10) | 20 | done |
-| 21 | 22 The sidekick has a place and can walk | 21 | done (whole-mod walk test waits for the first animation that names a place; none yet, 23 did not add one) |
+| 21 | 22 The sidekick has a place and can walk | 21 | done (whole-mod walk test waits for the first animation that names a place; none yet, 23 and 24 did not add one) |
 | 22 | 23 The classic animations move onto the new engine | 22 | done, owner review of golden frames and by-eye check pending |
-| 23 | 24 The classic gets the storm, the jump and the power-up | 23 | ready |
+| 23 | 24 The classic gets the storm, the jump and the power-up | 23 | done (by-eye check pending) |
 | 24 | 12 README and vocabulary match the new system | 06, 11, 13, 24 | ready (last) |
 | — | 08e A fuller raised arm | 08c | optional, needs the owner's decision |
 | — | 17 Tests pass on a busy machine (independent; can run alongside any ticket) | — | done |
@@ -65,5 +65,5 @@ git config core.hooksPath .githooks
 
 ## Open decisions
 
-- Where the power-up plays. Placeholder: the classic plays it for "last ticket started" (24).
+- Where the power-up plays. Placeholder in place since 24: the classic plays it for "last ticket started", a moment read from the ticket files' state (the last open ticket of a set goes active). The owner decides whether it stays.
 - `tests/sprite-golden.ts` is re-recorded in 19 and 23, only with the owner's approval of the new frames.

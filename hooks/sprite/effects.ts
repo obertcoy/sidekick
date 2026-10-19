@@ -310,8 +310,68 @@ const CHECK_MARK: readonly (readonly [number, number])[] = [
   [1, 3],
 ]
 
-/** A check mark five pixels wide and four tall, its top-left corner at `at`. It takes no frame: the animation owns its timing, and puts it on the `overlay` layer to keep it in front of everything. */
-export const checkMark = ({ at }: { at: Point }): Dot[] => CHECK_MARK.map(([dx, dy]) => dot(at.x + dx, at.y + dy, 'check'))
+/** The big check mark: seven pixels wide and five tall. */
+const CHECK_MARK_BIG: readonly (readonly [number, number])[] = [
+  [6, 0],
+  [5, 1],
+  [4, 2],
+  [0, 2],
+  [1, 3],
+  [3, 3],
+  [2, 4],
+]
+
+/** The dark green around a check mark that has an outline. */
+const CHECK_OUTLINE = 0x1d4d2a
+
+/**
+ * A check mark five pixels wide and four tall (seven by five when `big`), its top-left corner at `at`, with a dark outline around it when `outline` is set (drawn first, so the mark is over it).
+ * It takes no frame: the animation owns its timing, and puts it on the `overlay` layer to keep it in front of everything.
+ */
+export const checkMark = ({ at, big = false, outline = false }: { at: Point; big?: boolean; outline?: boolean }): Dot[] => {
+  const pixels = big ? CHECK_MARK_BIG : CHECK_MARK
+  const lit = new Set(pixels.map(([dx, dy]) => `${dx},${dy}`))
+  const around = outline
+    ? [
+        ...new Set(
+          pixels
+            .flatMap(([dx, dy]) =>
+              [
+                [dx, dy + 1],
+                [dx + 1, dy],
+                [dx - 1, dy],
+                [dx, dy - 1],
+              ].map(([x, y]) => `${x},${y}`),
+            )
+            .filter(cell => !lit.has(cell)),
+        ),
+      ].map(cell => {
+        const [x = 0, y = 0] = cell.split(',').map(Number)
+
+        return dot(at.x + x, at.y + y, CHECK_OUTLINE)
+      })
+    : []
+
+  return [...around, ...pixels.map(([dx, dy]) => dot(at.x + dx, at.y + dy, 'check'))]
+}
+
+/**
+ * A scorch burned into the ground: `radius` pixels either side of `at` (its row is the ground row), with embers that glow on it and die down, a few fewer every three frames.
+ * Put it on the `ground` layer. It stays while the animation draws it; before it begins (a negative frame) it draws nothing.
+ */
+export const scorch = ({ seed, at, radius, frame, embers = 6 }: { seed: number; at: Point; radius: number; frame: number; embers?: number }): Dot[] => {
+  if (frame < 0) return []
+  const next = rng(seed + Math.floor(frame / 2))
+  const left = Math.max(0, embers - Math.floor(frame / 3))
+  const marks = Array.from({ length: radius * 2 + 1 }, (_, step) => dot(at.x - radius + step, at.y, 'scorch'))
+  const glowing = Array.from({ length: left }, () => dot(at.x - radius + Math.floor(next() * (2 * radius + 1)), at.y, next() < 0.5 ? 'ember' : 'coal'))
+
+  return [...marks, ...glowing]
+}
+
+/** The dots that fall inside what the stage shows: between its side edges, from its sky top down to its ground row. What an effect throws or sends past the camera is cut, as the camera would cut it. */
+export const inView = (dots: readonly Dot[], edges: Edges): Dot[] =>
+  dots.filter(([x, y]) => x >= edges.left && x <= edges.right && y >= edges.skyTop && y <= edges.ground)
 
 /** An anchor as the frame draws it: moved down by the frame's `bob` when it lies inside `headRegion` (what the head bob moves), else where it is. For an effect that starts on the head or an ear (start it a row above the result); with no region given, `at` stays. */
 export const ridingBob = (at: Point, bob: number, headRegion?: Region): Point =>

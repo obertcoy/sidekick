@@ -134,7 +134,7 @@ test('a developer who never chose a look sees the bare foxkit and the listing of
       '  face: glasses',
       '  neck: scarf',
       '  held: flag',
-      'Backgrounds: dusk, twinkle',
+      'Backgrounds: dusk, twinkle, storm',
       'Set parts with /sidekick-look part=name, e.g. character=classic head=cap background=dusk',
     ].join('\n'),
   )
@@ -152,7 +152,7 @@ const REFUSALS: [string, string, string][] = [
   ['an unknown part', 'hat=cap', 'Unknown part "hat"; the parts are: character, head, face, neck, held, background'],
   ['an unknown character', 'character=snake', 'No character named "snake"; known: foxkit, classic'],
   ['an unknown accessory', 'head=crown', 'No accessory named "crown" for head; known: cap'],
-  ['an unknown background', 'background=night', 'No background named "night"; known: dusk, twinkle'],
+  ['an unknown background', 'background=night', 'No background named "night"; known: dusk, twinkle, storm'],
   ['an accessory in the wrong slot', 'neck=cap', '"cap" is a head accessory and does not go in the neck slot'],
   ['a word without a name', 'head', 'No accessory named "" for head; known: cap'],
 ]
@@ -793,7 +793,11 @@ test('a slot set and emptied in one command reports nothing, and a slot set twic
 const FOUR = { head: 'cap', face: 'glasses', neck: 'scarf', held: 'flag' }
 const THREE = { head: 'cap', face: 'glasses', neck: 'scarf' }
 
-for (const character of ['foxkit', 'classic']) {
+// What each shipped character plays for a finished ticket: the foxkit its zap, the classic its storm.
+for (const [character, done] of [
+  ['foxkit', 'zap'],
+  ['classic', 'thunder'],
+] as const) {
   test(`held=flag shows on the ${character} at rest, vanishes in every frame of a turn and of a zap, and returns after each`, async ($, on) => {
     const clock = mock.clock(on)
     mock.store(on, QUIET)
@@ -837,18 +841,18 @@ for (const character of ['foxkit', 'classic']) {
     await $.turn.complete({ answer: 'Done.', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
     expect(w.painted.at(-1)).toBe(resting)
 
-    // Zapping: all twelve frames, one after the other, none with the flag.
+    // Zapping (the storm, for the classic): every frame, one after the other, none with the flag.
     const zapFrom = w.painted.length
     addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'done'), '02-pay.md': ticket('02: Pay', 'in-progress') }, 9)
     await $.tool.call({ tool: 'Read', file_path: `${ROOT}/.scratch/checkout/issues/01-cart.md` })
     await clock.settle()
-    for (let step = 0; step < ANIMATIONS.zap.frames; step++) {
-      expect(w.painted.at(-1), `${character} zap frame ${step}`).toBe(render(dressed(character, THREE), ANIMATIONS.zap, step))
-      await clock.advance(ANIMATIONS.zap.msPerFrame)
+    for (let step = 0; step < ANIMATIONS[done].frames; step++) {
+      expect(w.painted.at(-1), `${character} zap frame ${step}`).toBe(render(dressed(character, THREE), ANIMATIONS[done], step))
+      await clock.advance(ANIMATIONS[done].msPerFrame)
     }
-    const zapFrames = Array.from({ length: ANIMATIONS.zap.frames }, (_, step) => render(dressed(character, THREE), ANIMATIONS.zap, step))
+    const zapFrames = Array.from({ length: ANIMATIONS[done].frames }, (_, step) => render(dressed(character, THREE), ANIMATIONS[done], step))
     const zapping = w.painted.slice(zapFrom)
-    expect(zapping.length).toBeGreaterThanOrEqual(ANIMATIONS.zap.frames)
+    expect(zapping.length).toBeGreaterThanOrEqual(ANIMATIONS[done].frames)
     for (const painted of zapping) expect([...zapFrames, resting]).toContain(painted)
 
     // Back at rest once the zap has ended.
@@ -971,7 +975,7 @@ test('the flag stays drawn through the cheer that ends a set, in every frame, wh
   await ui.unmount()
 })
 
-test('the classic plays its moveset in the mod: writing in a turn, the zap on a done ticket and the cheer when the set is done', async ($, on) => {
+test('the classic plays its moveset in the mod: writing in a turn, the storm on a done ticket and the jump when the set is done', async ($, on) => {
   on('tool.call', () => ({ result: { ok: true } }))
   const { clock, w } = await started($, on)
   await $.command.run({ ...LOOK, args: 'character=classic' })
@@ -990,8 +994,8 @@ test('the classic plays its moveset in the mod: writing in a turn, the zap on a 
   addSet(w, ROOT, 'checkout', { '01-cart.md': ticket('01: Cart', 'done') }, 9)
   await $.tool.call({ tool: 'Read', file_path: `${ROOT}/.scratch/checkout/issues/01-cart.md` })
   await clock.settle()
-  await clock.advance(STRIKE_STEPS * ANIMATIONS.zap.msPerFrame + ANIMATIONS.cheer.frames * ANIMATIONS.cheer.msPerFrame)
-  // The one ticket finishing is the ticket and then the set: the zap, then the cheer, each from the classic's moveset.
-  expect(w.painted).toContain(render(classic, ANIMATIONS.zap, 0))
-  expect(w.painted).toContain(render(classic, ANIMATIONS.cheer, 1))
+  await clock.advance(strikeSteps(ANIMATIONS.thunder) * ANIMATIONS.thunder.msPerFrame + ANIMATIONS.jump.frames * ANIMATIONS.jump.msPerFrame)
+  // The one ticket finishing is the ticket and then the set: the storm, then the jump, each from the classic's moveset.
+  expect(w.painted).toContain(render(classic, ANIMATIONS.thunder, 0))
+  expect(w.painted).toContain(render(classic, ANIMATIONS.jump, 1))
 })
