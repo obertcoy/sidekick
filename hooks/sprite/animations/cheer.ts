@@ -1,11 +1,13 @@
 import { defineAnimation } from '../compose'
-import type { Dot, Point } from '../types'
+import { burst } from '../effects'
+import type { Dot } from '../types'
 
-const above = (point: Point, dx: number, dy: number, role: Dot[2]): Dot[] => [[point.x + dx, point.y - 1 + dy, role]]
+// What the sparks thrown from the ear tips are made of: bright, not cooling to embers.
+const SPARKS = ['spark', 'flash'] as const
 
 /**
- * A cheer: the head hops twice while a spark leaps from each ear tip, climbs and settles back, a second spark trailing the one on the right.
- * The last frame draws nothing, so the cheer ends at rest. Everything it draws is on the rows above the ears, clear of what is worn, and it uses no paw, so it hides no slot.
+ * A cheer: the head hops twice while sparks leap from each ear tip, climb in a loose fan and fade. The last frame draws nothing, so the cheer ends at rest.
+ * The sparks are thrown from the row above the ear tips in a narrow fan, so they stay clear of what is worn on the head and rise slowly, well inside the headroom of any stage; the cheer uses no paw, so it hides no slot.
  */
 export const cheer = defineAnimation({
   needs: ['ears'],
@@ -14,20 +16,23 @@ export const cheer = defineAnimation({
   msPerFrame: 130,
   once: true,
   hides: [],
-  frame: (step, { ears }) => {
-    const [first] = ears
-    const last = ears.at(-1) ?? first
-    // How far above the ear tips the leading spark is, and what it looks like; the right one has a trail one step behind.
-    const climb = [0, -1, -2, -2, -1, -2, -2, -2, -1, 0]
-    const lead = climb[step]
-    const trail = climb[step - 1]
-    const role = step % 2 === 0 ? 'spark' : 'flash'
-    const dots: Dot[] =
-      step >= climb.length - 1
-        ? []
-        : [...above(first, 0, lead ?? 0, role), ...above(last, 0, lead ?? 0, role), ...(trail === undefined ? [] : above(last, 1, trail, 'spark'))]
+  frame: (step, { ears }, edges) => {
+    const dots: Dot[] = ears.flatMap((ear, which) =>
+      burst({
+        seed: 21 + which,
+        at: { x: ear.x, y: ear.y - 1 },
+        frame: step,
+        floor: edges.ground - 1,
+        count: 5,
+        speed: 0.3,
+        spread: 0.3,
+        gravity: 0.05,
+        life: 7,
+        colors: SPARKS,
+      }),
+    )
 
     // The last frame is the resting one, so the cheer ends where it began.
-    return { bob: step < climb.length - 1 && (step % 4 === 1 || step % 4 === 2) ? 1 : 0, dots }
+    return { bob: step < 9 && (step % 4 === 1 || step % 4 === 2) ? 1 : 0, dots }
   },
 })

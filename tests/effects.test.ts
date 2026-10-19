@@ -1,5 +1,5 @@
 import { expect } from 'claude-code/testing'
-import { aura, bolt, boltPath, burst, confetti, crackle, flash, rng, shockwave, smoke } from '../hooks/sprite/effects'
+import { aura, bolt, boltPath, burst, checkMark, confetti, crackle, flash, rng, shockwave, smoke } from '../hooks/sprite/effects'
 import type { Dot, Edges, Mask, Point } from '../hooks/sprite/types'
 import { test } from './world'
 
@@ -228,4 +228,13 @@ test('a flash lights every pixel of the sky between the stage edges and nothing 
   expect(new Set(flash({ edges: EDGES, level: 2 }).map(dot => dot[2]))).toEqual(new Set(['skyFlash']))
   expect(flash({ edges: EDGES, level: 0 }), 'level 0 is dark').toEqual([])
   expect(new Set(lit.map(key)).size, 'each pixel once').toBe(lit.length)
+})
+
+test('a check mark is five pixels in the check colour, from its top-left corner, and moves whole with that corner', async () => {
+  const at: Point = { x: 10, y: 6 }
+  const mark = checkMark({ at })
+  expect(mark.map(dot => dot[2])).toEqual(['check', 'check', 'check', 'check', 'check'])
+  expect(mark.map(([x, y]) => `${x - at.x},${y - at.y}`)).toEqual(['4,0', '3,1', '0,2', '2,2', '1,3'])
+  const away = checkMark({ at: { x: at.x + 7, y: at.y - 3 } })
+  expect(away.map(([x, y]) => [x - 7, y + 3])).toEqual(mark.map(([x, y]) => [x, y]))
 })

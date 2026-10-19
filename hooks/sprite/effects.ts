@@ -300,3 +300,15 @@ export const flash = ({ edges, level }: { edges: Edges; level: 0 | 1 | 2 }): Dot
     Array.from({ length: edges.right - edges.left + 1 }, (_, column) => dot(edges.left + column, edges.skyTop + row, paint)),
   ).flat()
 }
+
+/** The pixels of the check mark, from its top-left corner. */
+const CHECK_MARK: readonly (readonly [number, number])[] = [
+  [4, 0],
+  [3, 1],
+  [0, 2],
+  [2, 2],
+  [1, 3],
+]
+
+/** A check mark five pixels wide and four tall, its top-left corner at `at`. It takes no frame: the animation owns its timing, and puts it on the `overlay` layer to keep it in front of everything. */
+export const checkMark = ({ at }: { at: Point }): Dot[] => CHECK_MARK.map(([dx, dy]) => dot(at.x + dx, at.y + dy, 'check'))

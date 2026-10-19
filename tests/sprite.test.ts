@@ -444,19 +444,25 @@ test('looking, shrugging and cheering hide no slot, and what they draw is on the
   for (const mode of ['look', 'shrug', 'cheer'] as const) expect(ANIMATIONS[mode].hides, mode).toEqual([])
   for (const [name, character] of Object.entries(CHARACTERS)) {
     const layers = { character, outfit: withAll(), background: null }
+    // The animation is given the character's own pixels as its anchors, so the edges it is told are the stage's, taken back the same way.
+    const stage = stageFor(character)
+    const { offset } = stage
+    const edges = { skyTop: -offset.y, ground: stage.ground - offset.y, left: -offset.x, right: stage.width - 1 - offset.x }
+    const whole = (animation: Animation, step: number): Pixels => composePixels(layers, animation, step)
     for (const mode of ['look', 'shrug', 'cheer'] as const) {
       const animation = ANIMATIONS[mode]
       let bobbed = 0
       let drawn = 0
       for (let step = 0; step < animation.frames; step++) {
-        const plan = animation.frame(step, character.anchors, EDGES)
+        const plan = animation.frame(step, character.anchors, edges)
         if ((plan.bob ?? 0) > 0) bobbed += 1
         // The same frame with the head where the bob puts it, wearing everything, and nothing but the animation's own dots left out.
-        const without = local(layers, { ...animation, frame: () => ({ bob: plan.bob ?? 0 }) }, step)
-        const full = local(layers, animation, step)
-        for (const [x, y] of plan.dots ?? []) {
-          const label = `${name} ${mode} ${step} dot ${x},${y}`
-          expect(x >= 0 && x < LOCAL.width && y >= 0 && y < LOCAL.height, `${label} is on the stage`).toBe(true)
+        const without = whole({ ...animation, frame: () => ({ bob: plan.bob ?? 0 }) }, step)
+        const full = whole(animation, step)
+        for (const [dotX, dotY] of plan.dots ?? []) {
+          const [x, y] = [dotX + offset.x, dotY + offset.y]
+          const label = `${name} ${mode} ${step} dot ${dotX},${dotY}`
+          expect(x >= 0 && x < stage.width && y >= 0 && y < stage.height, `${label} is on the stage`).toBe(true)
           expect(without[y]?.[x], `${label} lands on nothing worn or grown`).toBeUndefined()
           expect(full[y]?.[x], `${label} is drawn`).toBeDefined()
           drawn += 1

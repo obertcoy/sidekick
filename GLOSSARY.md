@@ -146,7 +146,7 @@ _Avoid_: Silhouette, hitbox
 One of the six planes a frame is drawn in, back to front: sky (it can be lit by a flash), far (things behind the hills, such as a distant bolt), ground (it can carry marks), character, effects and overlay (the check mark). The background draws a picture on the first three; an animation can put dots on every layer but the character's, and they are drawn after that layer's picture, so what is on a layer further back is hidden by what is in front of it (a far bolt by the hills).
 
 **Effect**:
-A thing an animation draws that is not the body, from the library of effects: bolt (with branches), burst (sparks under gravity), smoke, shockwave along the ground, aura around the mask, crackle, confetti, and flash. Each is a pure function of the frame number and a seed, aimed only by anchors, the mask and the edges it is given (the stage's sky top and ground, the camera's left and right), so the same arguments always draw the same pixels. A pane that trims sky only crops it; a wider pane shows more of what runs sideways.
+A thing an animation draws that is not the body, from the library of effects: bolt (with branches), burst (sparks under gravity), smoke, shockwave along the ground, aura around the mask, crackle, confetti, check mark, and flash. Each is a pure function of the frame number and a seed, aimed only by anchors, the mask and the edges it is given (the stage's sky top and ground, the camera's left and right), so the same arguments always draw the same pixels. A pane that trims sky only crops it; a wider pane shows more of what runs sideways.
 _Avoid_: Animation
 
 **Flash**:
@@ -167,7 +167,7 @@ What a character plays: for each moment it names, the library animation. A momen
 _Avoid_: Animation set, replacements
 
 **Plain default**:
-The animation that plays for a moment when a character's moveset leaves it out. It uses only what every character has (its head and feet), so any character can play it and a knight is never handed the bolt.
+The animation that plays for a moment when a character's moveset leaves it out. It uses only what every character has (its head and feet), so any character can play it and a knight is never handed the bolt. It may draw an effect from the head, the feet or the stage edges (dust at the feet, a puff over the head, confetti from the sky) but never one that needs another anchor or a pose.
 
 **Ambient motion**:
 Animations the sidekick plays on its own while nothing is happening, such as a blink, and the slow stepping of a multi-frame background at rest. Each character names its own animations; the user can turn all of it off.
