@@ -29,7 +29,9 @@ test("the storm declares the strike's beats, which fit its length: the streak le
 })
 
 test('beats that cannot be kept in step with are refused: out of order, not whole, or with no room before the end', async () => {
-  expect(beatsRefusal({ frames: 44, strikeAt: { leaves: 8, lands: 4 } })).toContain('the bolt leaving before it lands')
+  expect(beatsRefusal({ frames: 44, strikeAt: { leaves: 8, lands: 4 } })).toContain('and before it lands')
+  expect(beatsRefusal({ frames: 44, strikeAt: { leaves: 1, lands: 8 } })).toContain('after the charge')
+  expect(beatsRefusal({ frames: 44, strikeAt: { leaves: 2, lands: 8 } })).toBeUndefined()
   expect(beatsRefusal({ frames: 44, strikeAt: { leaves: 2, lands: 2 } })).toContain('leaves 2 and lands 2')
   expect(beatsRefusal({ frames: 44, strikeAt: { leaves: 1.5, lands: 3 } })).toContain('whole steps')
   expect(beatsRefusal({ frames: 11, strikeAt: { leaves: 4, lands: 8 } })).toBe('has 11 frames, and the strike beats it declares need at least 12')
@@ -105,6 +107,16 @@ test('the storm strikes the ground ahead of the paw the way the sidekick faces, 
   const narrow = { ...EDGES, left: 0, right: reach.x + 6 }
   expect(strikeOf('right', narrow)).toBeGreaterThan(reach.x)
   expect(strikeOf('right', narrow)).toBeLessThanOrEqual(narrow.right - 2)
+  // With the paw at the camera's edge the strike stays in view: it is held to the edges at last, however close.
+  for (const [facing, edges] of [
+    ['right', { ...EDGES, left: 0, right: reach.x }],
+    ['left', { ...EDGES, left: reach.x, right: 79 }],
+  ] as const) {
+    const scorch = (thunder.frame(20, ANCHORS, edges, facing).layers?.ground ?? []).filter(dot => dot[2] === 'scorch')
+    // The strike's own scorch is five wide, centred on the edge: three of its pixels are in view (the aftershock's are further in).
+    const near = scorch.filter(dot => (facing === 'right' ? dot[0] >= edges.right - 2 : dot[0] <= edges.left + 2))
+    expect(near.length, `${facing} strike at the edge`).toBe(3)
+  }
   const embers = (planOf(thunder, 9).layers?.ground ?? []).filter(dot => dot[2] === 'ember' || dot[2] === 'coal')
   expect(embers.length).toBeGreaterThan(0)
   // Further on the scorch is still there and the embers have died down.

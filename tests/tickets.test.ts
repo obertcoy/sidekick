@@ -208,6 +208,20 @@ test('it is not the last ticket started while another ticket is open or active, 
   expect(isLastStarted(setOf('done'), setOf('done', 'active'))).toBe(false)
 })
 
+test('rows with the same title are told apart by their place in the list, so a duplicate title does not fire it again', async () => {
+  const dup = (...states: ('done' | 'active' | 'open')[]) =>
+    progressOf(
+      states.map((state, at) => ({ title: at < 2 ? 'Dup' : `t${at}`, isDone: state === 'done', isActive: state === 'active', ticked: 0, boxes: 0 })),
+      'x',
+    )
+  // The first Dup finishes while the second was active already: nothing was started.
+  expect(isLastStarted(dup('open', 'active', 'done'), dup('done', 'active', 'done'))).toBe(false)
+  // The second Dup really is started.
+  expect(isLastStarted(dup('done', 'open', 'done'), dup('done', 'active', 'done'))).toBe(true)
+  // A list that gained or lost a row is not judged.
+  expect(isLastStarted(setOf('done', 'open'), setOf('done', 'done', 'active'))).toBe(false)
+})
+
 test('a set of one ticket has no last ticket to start, and a set the list cuts short is not judged', async () => {
   expect(isLastStarted(setOf('open'), setOf('active'))).toBe(false)
   const long = (state: 'open' | 'active') =>

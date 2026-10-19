@@ -38,7 +38,9 @@ export const thunder = defineAnimation({
     const ground = edges.ground
     const ahead = reach.x + dir * 14
     // Ahead of the paw, at least one pixel and as far as fourteen, short of the camera's edge.
-    const x = dir === 1 ? Math.max(Math.min(ahead, edges.right - 3), reach.x + 1) : Math.min(Math.max(ahead, edges.left + 3), reach.x - 1)
+    // and kept inside the camera at last, even when the paw is at its edge.
+    const wanted = dir === 1 ? Math.max(Math.min(ahead, edges.right - 3), reach.x + 1) : Math.min(Math.max(ahead, edges.left + 3), reach.x - 1)
+    const x = Math.max(Math.min(wanted, edges.right), edges.left)
     const target: Point = { x, y: ground - 1 }
     const top: Point = { x: x + dir * 3, y: edges.skyTop }
     // The aftershock lands closer, six pixels back toward the sidekick.

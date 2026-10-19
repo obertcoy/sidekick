@@ -357,7 +357,11 @@ export const isLastStarted = (was: Progress, now: Progress): boolean => {
   const [last] = open
   if (open.length !== 1 || last === undefined || last.state !== 'active') return false
 
-  return was.rows.some(row => row.title === last.title && row.state === 'open')
+  // The same row is the one at the same place in a list of the same length with the same title; a list that gained or lost a row, or rows with one title, are told apart this way and otherwise not judged.
+  const at = now.rows.indexOf(last)
+  const before = was.rows[at]
+
+  return was.rows.length === now.rows.length && before?.title === last.title && before.state === 'open'
 }
 
 /** A title without the number its file order already shows ("01: Cart" is "Cart"). */

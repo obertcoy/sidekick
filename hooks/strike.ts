@@ -49,8 +49,8 @@ export const framesForBeats = (beats: Beats): number => beats.burns + 2
 export const beatsRefusal = (animation: Pick<Animation, 'strikeAt' | 'frames'>): string | undefined => {
   const { strikeAt } = animation
   if (strikeAt === undefined) return undefined
-  if (!Number.isInteger(strikeAt.leaves) || !Number.isInteger(strikeAt.lands) || strikeAt.leaves < 0 || strikeAt.lands <= strikeAt.leaves) {
-    return `has the strike beats leaves ${strikeAt.leaves} and lands ${strikeAt.lands}; they need whole steps, the bolt leaving before it lands`
+  if (!Number.isInteger(strikeAt.leaves) || !Number.isInteger(strikeAt.lands) || strikeAt.leaves < 2 || strikeAt.lands <= strikeAt.leaves) {
+    return `has the strike beats leaves ${strikeAt.leaves} and lands ${strikeAt.lands}; they need whole steps, the bolt leaving after the charge (step 2 or later) and before it lands`
   }
   const least = framesForBeats(beatsOf(animation))
 
