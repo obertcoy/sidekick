@@ -2,6 +2,7 @@ import { expect } from 'claude-code/testing'
 import type { Ambient, Condition, Effect, Entry, Event, Lookup, Model, Phase, Shown } from '../hooks/activity'
 import { CONDITIONS, createActivity, initial, PHASES, transition } from '../hooks/activity'
 import type { Animation } from '../hooks/sprite/types'
+import { HOME } from '../hooks/sprite/types'
 import { test } from './world'
 
 // The pure transition of the activity, with a made-up lookup so no test depends on the art.
@@ -21,7 +22,7 @@ const entry = (moment: Entry['moment'], restSteps?: number): Entry => ({ moment,
 const zap = entry('ticket-done')
 
 /** A draw effect for a moment at a frame, with the animation the fake lookup gives. */
-const draw = (moment: Shown['moment'], frame: number): Effect => ({ do: 'draw', shown: { moment, animation: playsFor(moment), frame } })
+const draw = (moment: Shown['moment'], frame: number): Effect => ({ do: 'draw', shown: { moment, animation: playsFor(moment), frame, place: HOME } })
 
 /** Applies the events in order, collecting every effect. */
 const feed = (
@@ -46,12 +47,12 @@ const off = (condition: Condition): Event => ({ type: 'set', condition, isOn: fa
 const queue = (e: Entry): Event => ({ type: 'queue', entry: e })
 
 const noAmbient: Ambient = () => []
-test('the phases are the six kinds, and a model starts resting with nothing to do', async () => {
-  expect(PHASES).toEqual(['resting', 'between', 'ambient', 'playing', 'holding', 'away'])
+test('the phases are the seven kinds, and a model starts resting with nothing to do', async () => {
+  expect(PHASES).toEqual(['resting', 'between', 'ambient', 'playing', 'holding', 'walking', 'away'])
   expect(INITIAL.isMotionOn).toBe(false)
   expect(CONDITIONS).toEqual(['turn', 'search'])
   expect(INITIAL.phase).toEqual({ kind: 'resting' })
-  expect(INITIAL.shown).toEqual({ moment: 'resting', animation: playsFor('resting'), frame: 0 })
+  expect(INITIAL.shown).toEqual({ moment: 'resting', animation: playsFor('resting'), frame: 0, place: HOME })
 })
 
 test('queueing at rest starts the entry: stop, start, draw its first frame, then its timer', async () => {
@@ -106,7 +107,7 @@ test('a run keeps the animation it began with: holding never draws a frame of th
   const moving: Lookup = moment => (moment === 'ticket-done' ? fake(frames, 50) : playsFor(moment))
   const held = feed([queue(e), tick, tick], INITIAL, moving).model
   expect(held.phase.kind).toBe('holding')
-  expect(held.shown).toEqual({ moment: 'resting', animation: playsFor('resting'), frame: 0 })
+  expect(held.shown).toEqual({ moment: 'resting', animation: playsFor('resting'), frame: 0, place: HOME })
   // The lookup now answers a longer animation, as when the character changes under a running entry.
   frames = 4
   const next = transition(held, tick, moving)
@@ -121,7 +122,7 @@ test('a condition that changes the resting animation during the hold redraws the
   const result = transition(held, on('turn'), playsFor)
   expect(result.effects).toEqual([draw('working', 0)])
   expect(result.model.phase).toBe(held.phase)
-  expect(result.model.shown).toEqual({ moment: 'working', animation: playsFor('working'), frame: 0 })
+  expect(result.model.shown).toEqual({ moment: 'working', animation: playsFor('working'), frame: 0, place: HOME })
   // The hold ends at the new rest, with no draw and a timer for the new moment.
   const over = feed([tick, tick, tick], result.model)
   expect(over.effects.filter(effect => effect.do === 'draw')).toEqual([])
@@ -217,7 +218,7 @@ const motion = (isOn: boolean): Event => ({ type: 'motion', isOn })
 const gap = (roll: number): Event => ({ type: 'gap', roll })
 const look: Event = { type: 'look' }
 const WAIT: Effect = { do: 'wait' }
-const drawAmbient = (animation: Animation, frame: number): Effect => ({ do: 'draw', shown: { moment: 'resting', animation, frame } })
+const drawAmbient = (animation: Animation, frame: number): Effect => ({ do: 'draw', shown: { moment: 'resting', animation, frame, place: HOME } })
 
 /** A model that rests with motion on, a gap pending. */
 const waiting = (): Model => feed([motion(true)], INITIAL, playsFor, both).model
@@ -262,7 +263,7 @@ test('an ambient animation plays each frame once, then the rest comes back and t
   const over = transition(frames.model, tick, playsFor, both)
   expect(over.effects).toEqual([{ do: 'stop' }, draw('resting', 0), WAIT])
   expect(over.model.phase).toEqual({ kind: 'between' })
-  expect(over.model.shown).toEqual({ moment: 'resting', animation: playsFor('resting'), frame: 0 })
+  expect(over.model.shown).toEqual({ moment: 'resting', animation: playsFor('resting'), frame: 0, place: HOME })
 })
 
 test('a gap that finds nothing to play (the character changed) goes back to rest and stops waiting', async () => {

@@ -110,8 +110,8 @@ test('the foxkit and the classic name the animations they played before, so they
   }
 })
 
-test('the library holds animations that no shipped moveset plays, and none of them is played for any moment', async () => {
+test('the library holds animations that no shipped moveset plays, and none of them is played for any moment (the walk is played by walking)', async () => {
   const played = new Set(Object.values(CHARACTERS).flatMap(character => MOMENTS.map(moment => animationNameOf(character, moment))))
   const unused = Object.keys(ANIMATIONS).filter(name => !played.has(name) && !AMBIENT.includes(name as AmbientName))
-  expect(unused).toEqual(['nod', 'dip', 'sink', 'hop', 'bounce'])
+  expect(unused).toEqual(['nod', 'dip', 'sink', 'hop', 'bounce', 'walk'])
 })

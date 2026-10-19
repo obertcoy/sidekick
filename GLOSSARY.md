@@ -117,8 +117,22 @@ The sidekick's canvas, made to fit its character: sky above (headroom for jumps 
 _Avoid_: Canvas, scene, sprite
 
 **Camera**:
-What the pane looks into the stage through. It keeps the character centred horizontally and stays inside the world; a narrow pane shows the part around the character, a wide one the whole world. When the pane has less height than the stage it trims the sky first, and never cuts into the character or the ground.
+What the pane looks into the stage through. It keeps the character centred horizontally, wherever it stands (it follows a walk), and stays inside the world; a narrow pane shows the part around the character, a wide one the whole world. When the pane has less height than the stage it trims the sky first, and never cuts into the character or the ground.
 _Avoid_: Viewport, window
+
+**Place**:
+Where the sidekick stands on the stage and which way it faces: how many pixels right of **home** it is (left when negative), and left or right. The stage keeps it on the world. It is part of the activity's state and stays between animations; an animation is given its anchors where the sidekick stands, turned to the way it faces.
+_Avoid_: Position, location
+
+**Home**:
+The place the stage puts the character in, in the middle of the world, facing right. The sidekick starts there.
+
+**Walk**:
+The sidekick going from one place to another, a pixel a step, turning to face the way it goes; the camera follows. A character walks when it declares a **walk cycle**. An animation can name a place to start from (`startAt`) and one to end at (`endAt`), such as a strike point: the sidekick walks there first, or afterwards. With motion off, while the pane is not shown, or for a character with no walk cycle, it does not walk: it appears at its place.
+_Avoid_: Move, travel
+
+**Walk cycle**:
+The three leg poses a character declares to walk (`walkA` and `walkB`, the contact steps, and `walkPass`, the legs together), all or none. The library's walk animation steps through them (contact, passing, contact, passing), rises the body a pixel on each passing step, and kicks dust up from the ground layer behind the feet. A character with some of the three is refused at load.
 
 **Body motion**:
 What a frame can do to the whole character: move it (`dx`, `dy`, in pixels), turn it to face the other way (`mirror`, about the middle of its frame), squash it by a row or stretch it by a row (the feet stay on the same row), and recolour some of its body roles for that frame only. Accessories move, turn, squash and stretch with the body, and a recolour reaches what is worn too: an accessory pixel that is the colour of a recoloured body role follows it, so a cap in the body's yellow turns gold and a lens of its own colour does not. A stretch repeats the row two above the feet, as the motion prototype does. The anchors an animation is given stay where the body is at rest; an effect that must hug the moved body is aimed by the mask.

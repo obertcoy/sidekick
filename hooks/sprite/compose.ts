@@ -7,19 +7,21 @@ import type {
   BodyRole,
   Character,
   Edges,
+  Facing,
   FramePlan,
   LayerFrames,
   Layers,
   Mask,
   Needed,
   Patch,
+  Place,
   Point,
   PoseName,
   PropRole,
   Role,
   Slot,
 } from './types'
-import { BACK_LAYERS, LIST_ANCHORS, OPTIONAL_POINT_ANCHORS, POSES, REQUIRED_ANCHORS, REQUIRED_BODY_ROLES, SLOTS } from './types'
+import { BACK_LAYERS, HOME, LIST_ANCHORS, OPTIONAL_POINT_ANCHORS, POSES, REQUIRED_ANCHORS, REQUIRED_BODY_ROLES, SLOTS } from './types'
 
 /** The most pixels a character may measure either way; a bigger one is refused at load. */
 export const MAX_CHARACTER = 64
@@ -132,18 +134,31 @@ export const backgroundFrames = (background: Background | null): number =>
 /** The whole stage as a view, as when nothing crops it. */
 export const wholeStage = (stage: Stage): View => ({ left: 0, top: 0, columns: stage.columns, rows: stage.rows })
 
+/** How far left and right of home the character may stand, in pixels: its frame stays on the world. */
+export const placeRange = (stage: Stage): { readonly min: number; readonly max: number } => ({
+  min: -stage.frame.left,
+  max: stage.width - 1 - stage.frame.right,
+})
+
+/** A place held within what the stage allows, at a whole pixel. */
+const kept = (stage: Stage, place: Place): Place => {
+  const { min, max } = placeRange(stage)
+
+  return { x: Math.min(Math.max(Math.round(place.x) || 0, min), max), facing: place.facing }
+}
+
 /**
- * The camera: a view of `room` cells (columns, rows) into the stage. It keeps the character's frame centred horizontally and stays inside the world;
+ * The camera: a view of `room` cells (columns, rows) into the stage. It keeps the character's frame centred horizontally, where it stands (`x` pixels from home), and stays inside the world;
  * it never shows less than the character's frame across, nor less than the rows from the character's top to the ground, and it trims sky from the top first.
  * With no room asked for it shows the whole stage.
  */
-export const cameraFor = (stage: Stage, room?: { readonly columns: number; readonly rows: number }): View => {
+export const cameraFor = (stage: Stage, room?: { readonly columns: number; readonly rows: number }, x = 0): View => {
   if (room === undefined) return wholeStage(stage)
   const frameWidth = stage.frame.right - stage.frame.left + 1
   const columns = Math.min(stage.columns, Math.max(Math.floor(room.columns), frameWidth))
   const lowest = Math.ceil((stage.height - stage.offset.y) / 2)
   const rows = Math.min(stage.rows, Math.max(Math.floor(room.rows), lowest))
-  const centre = (stage.frame.left + stage.frame.right + 1) / 2
+  const centre = (stage.frame.left + stage.frame.right + 1) / 2 + kept(stage, { x, facing: 'right' }).x
   const left = Math.min(Math.max(Math.round(centre - columns / 2), 0), stage.columns - columns)
 
   return { left, top: (stage.rows - rows) * 2, columns, rows }
@@ -179,7 +194,7 @@ export const defineAnimation = <N extends AnchorName, P extends PoseName>(
   animation: Omit<Animation, 'needs' | 'poses' | 'frame'> & {
     readonly needs: readonly N[]
     readonly poses: readonly P[]
-    readonly frame: (step: number, at: Needed<N>, edges: Edges) => Omit<FramePlan, 'poses'> & { readonly poses?: readonly NoInfer<P>[] }
+    readonly frame: (step: number, at: Needed<N>, edges: Edges, facing?: Facing) => Omit<FramePlan, 'poses'> & { readonly poses?: readonly NoInfer<P>[] }
   },
 ): Animation => animation as unknown as Animation
 
@@ -325,12 +340,20 @@ const placed = (anchors: Anchors, by: Point): Anchors =>
       .map(([name, anchor]) => [name, 'x' in anchor ? moved(anchor, by) : anchor.map(point => moved(point, by))]),
   ) as unknown as Anchors
 
+/** Anchors turned about `centre` (the sum of the frame's two edge columns; left alone when undefined), then moved `by` pixels right. */
+const turned = (anchors: Anchors, centre: number | undefined, by: number): Anchors => {
+  const at = (point: Point): Point => ({ x: (centre === undefined ? point.x : centre - point.x) + by, y: point.y })
+
+  return Object.fromEntries(Object.entries(anchors).map(([name, anchor]) => [name, 'x' in anchor ? at(anchor) : anchor.map(at)])) as unknown as Anchors
+}
+
 /**
  * One frame as stage pixels, in layer order (`LAYERS`): the background's sky, far and ground, each followed by the dots the frame lays on it, then the body (with the frame's head bob, then its squash or stretch, mirror and move),
  * accessories (each on its slot's anchor, which bobs where the character declares the slot bobs, and squashes, mirrors and moves with the body;
  * a slot the animation hides is skipped),
  * then the animation's effects and, last, its overlay. Also the frame's mask: the pixels the body and the accessories cover, before any props and effects.
- * The background has its own frame; by default it steps with the animation. `view` is what the pane looks at (the whole stage unless given):
+ * The background has its own frame; by default it steps with the animation. `place` is where the sidekick stands and which way it faces (home, facing right, unless given): the whole character,
+ * accessories included, is moved there and turned to face that way, and the animation is given its anchors moved and turned the same way, so what it draws follows. `view` is what the pane looks at (the whole stage unless given):
  * the animation is told its edges, but the pixels returned are the whole stage. `onClip` hears of each opaque pixel drawn off the stage.
  */
 const compose = (
@@ -340,20 +363,26 @@ const compose = (
   backgroundFrame: number,
   view: View | undefined,
   onClip: ((x: number, y: number) => void) | undefined,
+  standing: Place,
 ): { readonly pixels: Pixels; readonly mask: Mask } => {
   const { character } = look
   const stage = stageOf(look)
+  const place = kept(stage, standing)
+  const isFacingLeft = place.facing === 'left'
   const at = placed(character.anchors, stage.offset)
-  // `at` is where the anchors are at rest: the plan's move, mirror and squash do not shift them. An effect that must hug the moved body is aimed by the mask (`FramePlan.aimed`), not by anchors.
-  const plan = animation.frame(step, at, edgesOf(stage, view ?? wholeStage(stage)))
+  // The animation is given the anchors where the sidekick stands and turned to the way it faces; they are not shifted by the plan's move, mirror and squash.
+  // An effect that must hug the moved body is aimed by the mask (`FramePlan.aimed`), not by anchors.
+  const given = turned(at, isFacingLeft ? stage.frame.left + stage.frame.right : undefined, place.x)
+  const plan = animation.frame(step, given, edgesOf(stage, view ?? wholeStage(stage)), place.facing)
   const bob = plan.bob ?? 0
-  const dx = whole(plan.dx)
+  const dx = whole(plan.dx) + place.x
   const dy = whole(plan.dy)
   const feet = character.anchors.feet.y
   // A body cannot lose more rows than it has above the feet, nor stretch higher than the sky above it.
   const squash = Math.max(Math.min(Math.trunc(whole(plan.squash)), feet), -stage.offset.y)
-  // Mirroring turns the character about the middle of its frame, so it stays where it stands.
-  const turn = (x: number): number => (plan.mirror === true ? stage.frame.left + stage.frame.right - x : x)
+  // Mirroring turns the character about the middle of its frame, so it stays where it stands; facing left is the same turn, and both together leave it as drawn.
+  const isTurned = (plan.mirror === true) !== isFacingLeft
+  const turn = (x: number): number => (isTurned ? stage.frame.left + stage.frame.right - x : x)
   const pixels: Pixels = Array.from({ length: stage.height }, () => new Array<number | undefined>(stage.width))
   const covered = Array.from({ length: stage.height }, () => new Array<boolean>(stage.width).fill(false))
   const put = (x: number, y: number, color: number | undefined, solid = false): void => {
@@ -432,7 +461,7 @@ const compose = (
     if (accessory === undefined || anchor === undefined || animation.hides.includes(slot)) continue
     // The accessory is carried whole: its anchor moves with the body, and the pixels around it keep their shape (turned about the anchor when mirrored).
     const lift = (character.bobs[slot] ? bob : 0) + (anchor.y - stage.offset.y < (squash < 0 ? feet - 1 : feet) ? squash : 0)
-    const sign = plan.mirror === true ? -1 : 1
+    const sign = isTurned ? -1 : 1
     accessory.pixels.forEach((row, y) => {
       for (const [x, letter] of [...row].entries()) {
         const color = accessory.palette[letter]
@@ -454,16 +483,17 @@ const compose = (
 }
 
 /** One frame as stage pixels (see `compose`): the whole stage, whatever the view; the view tells the animation where the camera's edges are. */
-export const composePixels = (look: Layers, animation: Animation, step: number, backgroundFrame: number = step, view?: View): Pixels =>
-  compose(look, animation, step, backgroundFrame, view, undefined).pixels
+export const composePixels = (look: Layers, animation: Animation, step: number, backgroundFrame: number = step, view?: View, place: Place = HOME): Pixels =>
+  compose(look, animation, step, backgroundFrame, view, undefined, place).pixels
 
 /** The pixels the character covers in one frame, body and accessories after all its moving (see `compose`); props and effects are not part of it. Off the stage it is false. */
-export const maskOf = (look: Layers, animation: Animation, step: number, view?: View): Mask => compose(look, animation, step, step, view, undefined).mask
+export const maskOf = (look: Layers, animation: Animation, step: number, view?: View, place: Place = HOME): Mask =>
+  compose(look, animation, step, step, view, undefined, place).mask
 
 /** Every pixel one frame draws off the stage, as "x,y": none, for a character and parts that fit it. */
-export const offStage = (look: Layers, animation: Animation, step: number, view?: View): string[] => {
+export const offStage = (look: Layers, animation: Animation, step: number, view?: View, place: Place = HOME): string[] => {
   const clipped: string[] = []
-  compose(look, animation, step, step, view, (x, y) => clipped.push(`${x},${y}`))
+  compose(look, animation, step, step, view, (x, y) => clipped.push(`${x},${y}`), place)
 
   return clipped
 }
@@ -505,9 +535,9 @@ export const encodeCells = (pixels: Pixels, view: View): string => {
 }
 
 /** One frame of a look playing an animation, as a Raster's cells. The step wraps around the animation; the background steps with it unless given its own frame. The view is the whole stage unless given. */
-export const render = (look: Layers, animation: Animation, step: number, backgroundFrame?: number, view?: View): string => {
+export const render = (look: Layers, animation: Animation, step: number, backgroundFrame?: number, view?: View, place: Place = HOME): string => {
   const at = ((step % animation.frames) + animation.frames) % animation.frames
   const seen = view ?? wholeStage(stageOf(look))
 
-  return encodeCells(composePixels(look, animation, at, backgroundFrame ?? at, seen), seen)
+  return encodeCells(composePixels(look, animation, at, backgroundFrame ?? at, seen, place), seen)
 }

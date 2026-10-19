@@ -12,6 +12,7 @@ import { look } from './animations/look'
 import { bounce, dip, hop, nod, sink } from './animations/plain'
 import { shrug } from './animations/shrug'
 import { tailFlick } from './animations/tailFlick'
+import { walk } from './animations/walk'
 import { write } from './animations/write'
 import { zap } from './animations/zap'
 import { dusk } from './backgrounds/dusk'
@@ -19,7 +20,7 @@ import { twinkle } from './backgrounds/twinkle'
 import { classic } from './characters/classic'
 import { foxkit } from './characters/foxkit'
 import type { Accessory, Anchors, Animation, Background, Character, FramePlan, Look, Moment, Slot } from './types'
-import { ANCHOR_NAMES, LIST_ANCHORS, MOMENTS, POSES, REQUIRED_ANCHORS } from './types'
+import { ANCHOR_NAMES, LIST_ANCHORS, MOMENTS, POSES, REQUIRED_ANCHORS, WALK_POSES } from './types'
 
 // The part catalog: every part by name, and the rules that hold between parts. Immutable; the look in
 // use (what was chosen, what is drawn) is in ./look-in-use.ts. Adding a character, animation, accessory
@@ -43,6 +44,7 @@ export const ANIMATIONS = {
   sink,
   hop,
   bounce,
+  walk,
 } as const satisfies Record<string, Animation>
 
 /**
@@ -173,7 +175,7 @@ export const requireDeclaration = (name: string, animation: Animation): void => 
   for (let step = 0; step < animation.frames; step++) {
     let plan: FramePlan
     try {
-      plan = animation.frame(step, given as Anchors, EDGES)
+      plan = animation.frame(step, given as Anchors, EDGES, 'right')
     } catch {
       throw new Error(
         `sprite: the animation "${name}" fails at step ${step} when given only the anchors it needs (${animation.needs.join(', ') || 'none'}); it reads one it does not declare`,
@@ -267,6 +269,22 @@ export const requirePlayed = (character: Character, catalog: Readonly<Record<str
   requireDeclaredPoses(character, played)
 }
 for (const character of Object.values(CHARACTERS)) requirePlayed(character)
+
+/** The walk cycle a character walks with: the library's, when it has all three leg poses; none for a character that has none. */
+export const walkOf = (character: Character): Animation | undefined =>
+  WALK_POSES.every(pose => character.poses?.[pose] !== undefined) ? ANIMATIONS.walk : undefined
+
+/** Refuses a character that has some of the leg poses of a walk cycle and not all of them: a half-drawn walk would show a foot that never lands. */
+export const requireWalk = (character: Character): void => {
+  const has = WALK_POSES.filter(pose => character.poses?.[pose] !== undefined)
+  if (has.length > 0 && has.length < WALK_POSES.length) {
+    const lacks = WALK_POSES.filter(pose => !has.includes(pose))
+    throw new Error(
+      `sprite: character "${character.name}" has the walk poses ${has.join(', ')} but not ${lacks.join(', ')}; a walk cycle is all of ${WALK_POSES.join(', ')}`,
+    )
+  }
+}
+for (const character of Object.values(CHARACTERS)) requireWalk(character)
 
 export const ACCESSORIES: Readonly<Record<string, Accessory>> = { cap, flag, glasses, scarf }
 

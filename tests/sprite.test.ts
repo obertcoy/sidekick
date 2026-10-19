@@ -669,8 +669,8 @@ const padded = (character: Character): string[] => character.body.map(row => row
 const withPoses = (name: string, poses: unknown): Character => ({ ...foxkit, name, poses }) as unknown as Character
 const armless = defineCharacter({ ...foxkit, name: 'armless', poses: {} })
 
-test('the pose names are one fixed list that holds armUp, blink and the tail and ear flicks', async () => {
-  expect(POSES).toEqual(['armUp', 'blink', 'tailUp', 'earsUp'])
+test('the pose names are one fixed list that holds armUp, blink, the tail and ear flicks and the three legs of a walk cycle', async () => {
+  expect(POSES).toEqual(['armUp', 'blink', 'tailUp', 'earsUp', 'walkA', 'walkB', 'walkPass'])
 })
 
 test('posed lays each patch over the body: a space keeps the pixel, a dot clears it, a letter sets it', async () => {

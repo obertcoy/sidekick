@@ -4,7 +4,7 @@ import { test as harnessTest } from 'claude-code/testing'
 import { viewIn } from '../hooks/sprite'
 import { foxkit } from '../hooks/sprite/characters/foxkit'
 import { render, stageFor, type View } from '../hooks/sprite/compose'
-import type { Animation, Layers } from '../hooks/sprite/types'
+import type { Animation, Layers, Place } from '../hooks/sprite/types'
 
 /**
  * How long one whole-mod test may run. The harness stops a test at 5000 ms. Each of these tests loads the
@@ -271,8 +271,8 @@ export const PANE = {
 export const PANE_SIZE = { columns: PANE.props.bodyColumns, rows: PANE.props.scroll.bodyRows } as const
 
 /** A frame as the pane paints it: `render` through the camera the pane has. The whole-mod tests compare what was painted with it. */
-export const paneRender = (layers: Layers, animation: Animation, step: number, backgroundFrame?: number): string =>
-  render(layers, animation, step, backgroundFrame, viewIn(PANE_SIZE, layers))
+export const paneRender = (layers: Layers, animation: Animation, step: number, backgroundFrame?: number, place?: Place): string =>
+  render(layers, animation, step, backgroundFrame, viewIn(PANE_SIZE, layers, place), place)
 
 /** The part of a whole-stage foxkit frame (a golden one) that a view looks at: the cells of the frame, cut to the view. */
 export const cropped = (cells: string | undefined, view: View = viewIn(PANE_SIZE)): string => {

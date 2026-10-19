@@ -37,7 +37,7 @@ import {
 import type { Target } from './look'
 import { changeLook, lookReport, parseSaved, targetOf } from './look'
 import { changeMotion, MOTION, motionReport, parseMotion } from './motion'
-import { ambientFor, backdropFrames, cellsOf, DEFAULT_PANE, leftOut, listRoom, type Pane, playsFor, viewIn } from './sprite'
+import { ambientFor, backdropFrames, cellsOf, DEFAULT_PANE, leftOut, listRoom, type Pane, playsFor, roomFor, viewIn } from './sprite'
 import { projectRoot, setCurrentRoot, setProjectLook, setSavedLook } from './sprite/look-in-use'
 import type { SavedLook } from './sprite/types'
 import { BURN_STEPS, BURNS, HITS, isStruck, LANDS, LEAVES, STRIKE_REST_STEPS } from './strike'
@@ -269,13 +269,14 @@ const sceneOf = ($: Dollar): Scene => {
     pending: undefined,
     activity: createActivity(
       { every: (ms, fn) => $.clock.every(ms, fn), after: (ms, fn) => $.clock.after(ms, fn) },
-      ({ animation, frame }, background) => {
-        void $.ui.blit({ requestId: PANE, key: BUDDY, cells: cellsOf(animation, frame, background, paneSeen) }).catch(() => undefined)
+      ({ animation, frame, place }, background) => {
+        void $.ui.blit({ requestId: PANE, key: BUDDY, cells: cellsOf(animation, frame, background, paneSeen, place) }).catch(() => undefined)
       },
       playsFor,
       ambientFor,
       () => isPaneShown($),
       backdropFrames,
+      roomFor,
     ),
   }
   scenes.set(PANE, scene)
@@ -1453,9 +1454,9 @@ export const register: Register = on => {
         ? (() => {
             const { Raster } = $.ui.resolve(e)
 
-            const { animation, frame } = activity.shown()
+            const { animation, frame, place } = activity.shown()
 
-            return <Raster key={BUDDY} columns={camera.columns} rows={camera.rows} cells={cellsOf(animation, frame, activity.background(), pane)} />
+            return <Raster key={BUDDY} columns={camera.columns} rows={camera.rows} cells={cellsOf(animation, frame, activity.background(), pane, place)} />
           })()
         : null
 

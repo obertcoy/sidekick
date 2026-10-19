@@ -65,6 +65,10 @@ export const foxkit = defineCharacter({
     tailUp: { at: { x: 0, y: 5 }, rows: ['o.o', 'hoh', 'oyo'] },
     // Each ear tip gains an outline pixel above it, at (0,2) and (14,2), so the ears look lifted. The left one is outside the headRegion, the right one inside it, so an animation that bobs would tear them apart; the ear flick has no bob.
     earsUp: { at: { x: 0, y: 2 }, rows: ['o             o'] },
+    // The walk cycle is its feet row (14), columns 2-11, drawn over the standing feet at 3-5 and 8-10: the left foot back, the right foot out front, and the legs together for the passing step.
+    walkA: { at: { x: 2, y: 14 }, rows: ['ooo...ooo.'] },
+    walkB: { at: { x: 2, y: 14 }, rows: ['.ooo...ooo'] },
+    walkPass: { at: { x: 2, y: 14 }, rows: ['..oooooo..'] },
   },
   // What it plays for each moment: the shared animations drawn for it. A moment left out would play its plain default.
   moveset: { working: 'write', searching: 'look', 'search-failed': 'shrug', 'ticket-done': 'zap', 'set-done': 'cheer' },

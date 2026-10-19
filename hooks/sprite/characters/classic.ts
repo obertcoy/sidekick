@@ -63,6 +63,10 @@ export const classic = defineCharacter({
     tailUp: { at: { x: 0, y: 8 }, rows: ['y', '.y'] },
     // Each ear tip gains an outline pixel above it, at (2,2) and (9,2), so the ears look lifted. Both are above the headRegion (top row 3); the ear flick has no bob.
     earsUp: { at: { x: 2, y: 2 }, rows: ['k      k'] },
+    // The walk cycle is its feet row (14), drawn over the standing feet at columns 3-4 and 7-8 as the motion prototype's legs are: a stride one way, the legs together for the passing step, a stride the other way.
+    walkA: { at: { x: 0, y: 14 }, rows: ['..yy...yy'] },
+    walkB: { at: { x: 0, y: 14 }, rows: ['...yy...yy'] },
+    walkPass: { at: { x: 0, y: 14 }, rows: ['....yyy..'] },
   },
   // What it plays for each moment: the shared animations drawn for it. A moment left out would play its plain default.
   moveset: { working: 'write', searching: 'look', 'search-failed': 'shrug', 'ticket-done': 'zap', 'set-done': 'cheer' },

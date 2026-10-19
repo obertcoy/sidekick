@@ -123,9 +123,26 @@ export type Character = {
 /**
  * Body changes an animation can ask for by name; each character draws its own. One shared, fixed list.
  * It grows only together with the animation that first uses a new name.
+ * A character's walk cycle is three of them, the rows of its legs: `walkA` and `walkB` are the contact steps (a foot out in front, then the other), `walkPass` the passing step (the legs together).
  */
-export const POSES = ['armUp', 'blink', 'tailUp', 'earsUp'] as const
+export const POSES = ['armUp', 'blink', 'tailUp', 'earsUp', 'walkA', 'walkB', 'walkPass'] as const
 export type PoseName = (typeof POSES)[number]
+
+/** The poses that make a walk cycle: a character that has any has all of them (the registry checks at load), and it walks; one that has none does not. */
+export const WALK_POSES = ['walkA', 'walkB', 'walkPass'] as const satisfies readonly PoseName[]
+
+/** Which way the sidekick faces on the stage; right is the way a character's body is drawn. */
+export const FACINGS = ['right', 'left'] as const
+export type Facing = (typeof FACINGS)[number]
+
+/**
+ * Where the sidekick stands and which way it faces. `x` is how many pixels right of home it is (left when negative); home is where the stage puts the character, and the stage keeps it on the world.
+ * It is part of the activity's state and stays between animations.
+ */
+export type Place = { readonly x: number; readonly facing: Facing }
+
+/** Home, facing right: where the sidekick starts and rests until something sends it elsewhere. */
+export const HOME: Place = { x: 0, facing: 'right' }
 
 /** Letters laid over the body from `at`, row by row: ' ' keeps the body's pixel, '.' clears it, any other letter is from the legend. */
 export type Patch = { readonly at: Point; readonly rows: readonly string[] }
@@ -185,8 +202,18 @@ export type Animation = {
   readonly once: boolean
   /** The slots whose accessory is not drawn while this animation plays, because the animation draws there itself; `[]` hides none. */
   readonly hides: readonly Slot[]
-  /** One frame, worked out from the character's anchors (already on the stage) and the stage's named edges only, never from its pixels or a fixed coordinate. */
-  readonly frame: (step: number, at: Anchors, edges: Edges) => FramePlan
+  /**
+   * Where the sidekick stands before this animation starts, in pixels right of home (a strike point, say); it walks there first when it is elsewhere.
+   * With motion off, or while the pane is not shown, it appears there. Left out, the animation plays wherever the sidekick is.
+   */
+  readonly startAt?: number
+  /** Where the sidekick stands once this animation is over, as `startAt`; it walks there afterwards. Left out, it stays where it is. */
+  readonly endAt?: number
+  /**
+   * One frame, worked out from the character's anchors (already on the stage, moved to where the sidekick stands and turned to the way it faces) and the stage's named edges only, never from its pixels or a fixed coordinate.
+   * `facing` is the way it faces (right when left out), for an effect that trails behind it.
+   */
+  readonly frame: (step: number, at: Anchors, edges: Edges, facing?: Facing) => FramePlan
 }
 
 /** The places an accessory can go. Every character has the head slot; the others are optional per character. Each is also the name of its anchor. */

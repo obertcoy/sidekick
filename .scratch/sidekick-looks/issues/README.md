@@ -26,7 +26,7 @@ Work the tickets top to bottom. Each ticket file holds its own `Blocked by`, `St
 | 18 | 19 The stage fits the character, and a camera follows it | 18 | done (owner review of golden frames pending) |
 | 19 | 20 The body moves and can change colour | 19 | done |
 | 20 | 21 Layers and an effects library (absorbs 10) | 20 | done |
-| 21 | 22 The sidekick has a place and can walk | 21 | ready |
+| 21 | 22 The sidekick has a place and can walk | 21 | done (whole-mod walk test waits for the first animation that names a place, 23/24) |
 | 22 | 23 The classic animations move onto the new engine | 22 | ready (golden re-record needs the owner) |
 | 23 | 24 The classic gets the storm, the jump and the power-up | 23 | ready |
 | 24 | 12 README and vocabulary match the new system | 06, 11, 13, 24 | ready (last) |

@@ -1,5 +1,5 @@
 // What the sidekick is doing: the conditions that hold now (a turn runs, a search runs), a queue of
-// once-only animations, and, while it rests with nothing going on, its ambient motion. One small unit,
+// once-only animations, and, while it rests with nothing going on, its ambient motion; and where it stands on the stage and which way it faces, and its walks from place to place. One small unit,
 // one timer, and no knowledge of the pane beyond whether it is the one shown. register.tsx tells it what happens; it tells register.tsx what to draw.
 //
 // A pure `transition(model, event, playsFor, ambientOf, backdrop)` is the only place anything changes: it returns the next model
@@ -8,7 +8,8 @@
 import type { Timer } from 'claude-code'
 
 import type { Moment } from './sprite/registry'
-import type { Animation } from './sprite/types'
+import type { Animation, Place } from './sprite/types'
+import { HOME } from './sprite/types'
 
 export type { Moment }
 
@@ -27,6 +28,13 @@ const noAmbient: Ambient = () => []
 export type Backdrop = () => number
 const noBackdrop: Backdrop = () => 1
 
+/**
+ * Answers where the character in use may stand and how it walks: `min` and `max` are how far left and right of home it may stand, in pixels, and `walk` is the animation it walks with,
+ * undefined for a character with no walk cycle (it then appears at its place, as with motion off). Given, like `Lookup`, and asked again whenever the answer matters.
+ */
+export type Room = () => { readonly min: number; readonly max: number; readonly walk: Animation | undefined }
+const noRoom: Room = () => ({ min: Number.NEGATIVE_INFINITY, max: Number.POSITIVE_INFINITY, walk: undefined })
+
 /** How long a background with several frames shows each of them while the sidekick rests, in milliseconds. */
 export const BACKGROUND_STEP_MS = 2_000
 
@@ -34,8 +42,8 @@ export const BACKGROUND_STEP_MS = 2_000
 export const AMBIENT_GAP_MS = { min: 5_000, max: 15_000 } as const
 const gapMs = (): number => AMBIENT_GAP_MS.min + Math.floor(Math.random() * (AMBIENT_GAP_MS.max - AMBIENT_GAP_MS.min + 1))
 
-/** A picture to show: the animation resolved when it began, and the frame of it. `moment` says what the sidekick is doing. */
-export type Shown = { readonly moment: Moment; readonly animation: Animation; readonly frame: number }
+/** A picture to show: the animation resolved when it began, the frame of it, and where the sidekick stands. `moment` says what the sidekick is doing; while it walks, it is the moment it rests in. */
+export type Shown = { readonly moment: Moment; readonly animation: Animation; readonly frame: number; readonly place: Place }
 
 /** A once-only animation waiting its turn. */
 export type Entry = {
@@ -79,10 +87,11 @@ export type Activity = {
 // The machine. `resting` loops what still goes on; `between` is a rest with nothing going on and a gap pending, until the next ambient
 // animation; `ambient` plays that animation; `playing` runs an entry through its frames; `holding` is an entry whose animation is over
 // but whose rest steps are not, the sidekick resting meanwhile. An entry or a condition that arrives in `between` or `ambient` takes over at once.
+// `walking` is the sidekick on its way to a place, a pixel a step, before an entry that starts there or after one that ends there.
 // `away` is every phase while the pane is not the one shown: nothing is drawn and no timer runs. The conditions still follow what happens, entries
 // that are kept wait, and when the pane is shown the machine begins afresh from them.
 
-export const PHASES = ['resting', 'between', 'ambient', 'playing', 'holding', 'away'] as const
+export const PHASES = ['resting', 'between', 'ambient', 'playing', 'holding', 'walking', 'away'] as const
 export type PhaseKind = (typeof PHASES)[number]
 
 /** An animation under way: the one resolved when it began (never asked for again), the step it is at, and how many steps it has in all. */
@@ -91,6 +100,12 @@ type Play = { readonly animation: Animation; readonly step: number; readonly ste
 /** An entry under way: its animation, and how many steps it has in all (rest steps included). */
 type Run = Play & { readonly entry: Entry }
 
+/** A walk under way: the walk cycle resolved when it began, the step it is at, the x it is walking to (within the room, in pixels right of home), and the entry that starts when it gets there, with the animation resolved for it, when there is one. */
+type Walk = { readonly animation: Animation; readonly step: number; readonly to: number; readonly run?: Next }
+
+/** An entry about to start and the animation resolved for it (never asked for again). */
+type Next = { readonly entry: Entry; readonly animation: Animation }
+
 /** What each kind carries; a kind missing here does not compile. */
 type Fields = {
   resting: Record<never, never>
@@ -98,6 +113,7 @@ type Fields = {
   ambient: Play
   playing: Run
   holding: Run
+  walking: Walk
   away: Record<never, never>
 }
 export type Phase = { [K in PhaseKind]: { readonly kind: K } & Fields[K] }[PhaseKind]
@@ -154,7 +170,7 @@ export const initial = (playsFor: Lookup): Model => ({
   isMotionOn: false,
   waiting: [],
   phase: { kind: 'resting' },
-  shown: { moment: 'resting', animation: playsFor('resting'), frame: 0 },
+  shown: { moment: 'resting', animation: playsFor('resting'), frame: 0, place: HOME },
   cycle: 0,
   isCycling: false,
 })
@@ -170,7 +186,7 @@ const show = (model: Model, shown: Shown): Result => ({ model: { ...model, shown
 const showRest = (model: Model, playsFor: Lookup): Result => {
   const moment = restingOf(model.conditions)
 
-  return show(model, { moment, animation: playsFor(moment), frame: 0 })
+  return show(model, { moment, animation: playsFor(moment), frame: 0, place: model.shown.place })
 }
 
 /** Whether a phase already shows the resting frame, so that leaving it for rest needs no draw (the invariant of `Model.shown`). */
@@ -182,6 +198,7 @@ const showsRest = (phase: Phase): boolean => {
     case 'resting':
     case 'ambient':
     case 'playing':
+    case 'walking':
     case 'away':
       return false
     default:
@@ -189,17 +206,38 @@ const showsRest = (phase: Phase): boolean => {
   }
 }
 
+/** The sidekick at `x`, facing the way it goes there (the way it faced, when it is there already). */
+const standAt = (shown: Shown, x: number): Shown => ({
+  ...shown,
+  place: { x, facing: x === shown.place.x ? shown.place.facing : x < shown.place.x ? 'left' : 'right' },
+})
+
+/** `x` held within what the stage allows the character in use. */
+const within = (room: Room, x: number): number => Math.min(Math.max(x, room().min), room().max)
+
 /**
  * The pane goes behind another: whatever runs stops, an entry under way is over (it began while the pane was shown, so it does not play again),
  * and of those waiting only the ones that are kept stay. Nothing is drawn; the next picture is the one drawn when the pane is shown.
+ * Nobody sees a walk then, so the sidekick is already where it was going: at the end place of the entry that ends, or where the walk was heading (an entry not yet started stays waiting, if kept).
  */
-const goAway = (m: Model): Result => {
-  const waiting = m.waiting.filter(entry => entry.isKeptWhenHidden === true)
+const goAway = (m: Model, room: Room): Result => {
+  const isKept = (entry: Entry): boolean => entry.isKeptWhenHidden === true
+  const waiting = m.waiting.filter(isKept)
   const away: Model = { ...m, waiting, phase: { kind: 'away' } }
   switch (m.phase.kind) {
     case 'playing':
-    case 'holding':
-      return { model: away, effects: [{ do: 'stop' }, { do: 'end', entry: m.phase.entry }] }
+    case 'holding': {
+      const end = m.phase.animation.endAt
+      const shown = end === undefined ? m.shown : standAt(m.shown, within(room, end))
+
+      return { model: { ...away, shown }, effects: [{ do: 'stop' }, { do: 'end', entry: m.phase.entry }] }
+    }
+    case 'walking': {
+      const entry = m.phase.run?.entry
+      const kept = entry !== undefined && isKept(entry) ? [entry] : []
+
+      return { model: { ...away, waiting: [...kept, ...waiting], shown: standAt(m.shown, m.phase.to) }, effects: [{ do: 'stop' }] }
+    }
     case 'resting':
     case 'between':
     case 'ambient':
@@ -217,13 +255,48 @@ const goAway = (m: Model): Result => {
 const waitsAt = (m: Model, animation: Animation, ambientOf: Ambient): boolean =>
   m.isMotionOn && restingOf(m.conditions) === 'resting' && animation.frames <= 1 && ambientOf().length > 0
 
-/** Starts what comes next: the head of the queue, or the loop for what still goes on (and the gap, when ambient motion is due). `isShown` says the resting frame is on the screen already. */
-const begin = (m: Model, playsFor: Lookup, ambientOf: Ambient, isShown: boolean): Result => {
+/**
+ * Sends the sidekick to `to` (pixels right of home; within the room) before the entry starts, or before what comes next when there is none; undefined when there is nowhere to go (no place asked for, or it stands there).
+ * It walks, a pixel a step, when motion is on and the character has a walk cycle; otherwise it appears there, and what comes next starts at once.
+ */
+const travel = (m: Model, to: number | undefined, run: Next | undefined, playsFor: Lookup, ambientOf: Ambient, room: Room): Result | undefined => {
+  if (to === undefined) return undefined
+  const x = within(room, to)
+  if (x === m.shown.place.x) return undefined
+  const { walk } = room()
+  if (!m.isMotionOn || walk === undefined) return arrive({ ...m, shown: standAt(m.shown, x) }, run, playsFor, ambientOf, room)
+  // It turns on the spot to face the way it goes, then walks.
+  const { facing } = standAt(m.shown, x).place
+  const shown: Shown = { moment: restingOf(m.conditions), animation: walk, frame: 0, place: { x: m.shown.place.x, facing } }
+
+  return {
+    model: { ...m, phase: { kind: 'walking', animation: walk, step: 0, to: x, ...(run === undefined ? {} : { run }) }, shown },
+    effects: [{ do: 'stop' }, { do: 'draw', shown }, { do: 'every', ms: walk.msPerFrame }],
+  }
+}
+
+/** The sidekick is where it was going: the entry that waited for it starts, or what comes next does. */
+const arrive = (m: Model, run: Next | undefined, playsFor: Lookup, ambientOf: Ambient, room: Room): Result =>
+  run === undefined ? begin(m, playsFor, ambientOf, false, room) : startEntry(m, run.entry, run.animation)
+
+/** Starts an entry, now that the sidekick stands where it starts. */
+const startEntry = (m: Model, entry: Entry, animation: Animation): Result => {
+  const steps = animation.frames + (entry.restSteps ?? 0)
+  const shown: Shown = { moment: entry.moment, animation, frame: 0, place: m.shown.place }
+
+  return {
+    model: { ...m, phase: { kind: 'playing', entry, animation, step: 0, steps }, shown },
+    effects: [{ do: 'stop' }, { do: 'start', entry, steps }, { do: 'draw', shown }, { do: 'every', ms: animation.msPerFrame }],
+  }
+}
+
+/** Starts what comes next: the head of the queue (after a walk to where it starts, if it names a place), or the loop for what still goes on (and the gap, when ambient motion is due). `isShown` says the resting frame is on the screen already. */
+const begin = (m: Model, playsFor: Lookup, ambientOf: Ambient, isShown: boolean, room: Room): Result => {
   const [entry, ...waiting] = m.waiting
   if (entry === undefined) {
     const moment = restingOf(m.conditions)
     const animation = isShown ? m.shown.animation : playsFor(moment)
-    const shown: Shown = { moment, animation, frame: 0 }
+    const shown: Shown = { moment, animation, frame: 0, place: m.shown.place }
     // A single frame does not move, so it needs no timer.
     const loop: Effect[] = animation.frames > 1 ? [{ do: 'every', ms: animation.msPerFrame }] : []
     const isWaiting = waitsAt(m, animation, ambientOf)
@@ -233,21 +306,17 @@ const begin = (m: Model, playsFor: Lookup, ambientOf: Ambient, isShown: boolean)
       effects: [{ do: 'stop' }, ...(isShown ? [] : [{ do: 'draw', shown } as const]), ...loop, ...(isWaiting ? [{ do: 'wait' } as const] : [])],
     }
   }
+  const next = { ...m, waiting }
   const animation = playsFor(entry.moment)
-  const steps = animation.frames + (entry.restSteps ?? 0)
-  const shown: Shown = { moment: entry.moment, animation, frame: 0 }
 
-  return {
-    model: { ...m, waiting, phase: { kind: 'playing', entry, animation, step: 0, steps }, shown },
-    effects: [{ do: 'stop' }, { do: 'start', entry, steps }, { do: 'draw', shown }, { do: 'every', ms: animation.msPerFrame }],
-  }
+  return travel(next, animation.startAt, { entry, animation }, playsFor, ambientOf, room) ?? startEntry(next, entry, animation)
 }
 
-/** One tick of an entry: the next frame, the start of the rest steps, or the end. Only the animation kept at its start is used. */
-const advance = (m: Model, p: Extract<Phase, { kind: 'playing' | 'holding' }>, playsFor: Lookup, ambientOf: Ambient): Result => {
+/** One tick of an entry: the next frame, the start of the rest steps, or the end (and a walk to the place its animation ends at, if it names one). Only the animation kept at its start is used. */
+const advance = (m: Model, p: Extract<Phase, { kind: 'playing' | 'holding' }>, playsFor: Lookup, ambientOf: Ambient, room: Room): Result => {
   const step = p.step + 1
   if (step >= p.steps) {
-    const after = begin(m, playsFor, ambientOf, showsRest(p))
+    const after = travel(m, p.animation.endAt, undefined, playsFor, ambientOf, room) ?? begin(m, playsFor, ambientOf, showsRest(p), room)
 
     return { model: after.model, effects: [{ do: 'stop' }, { do: 'end', entry: p.entry }, ...after.effects] }
   }
@@ -257,7 +326,7 @@ const advance = (m: Model, p: Extract<Phase, { kind: 'playing' | 'holding' }>, p
       // The sidekick rests once the animation is over while the rest of the entry runs out; until then it shows the entry's frames.
       const drawn =
         step < p.animation.frames
-          ? show({ ...m, phase: { ...p, step } }, { moment: p.entry.moment, animation: p.animation, frame: step })
+          ? show({ ...m, phase: { ...p, step } }, { moment: p.entry.moment, animation: p.animation, frame: step, place: m.shown.place })
           : showRest({ ...m, phase: { ...p, kind: 'holding', step } }, playsFor)
 
       return { model: drawn.model, effects: [hook, ...drawn.effects] }
@@ -274,7 +343,7 @@ const startAmbient = (m: Model, roll: number, ambientOf: Ambient): Result => {
   const choices = ambientOf()
   const animation = choices[Math.min(choices.length - 1, Math.floor(roll * choices.length))]
   if (animation === undefined) return { model: { ...m, phase: { kind: 'resting' } }, effects: [{ do: 'stop' }] }
-  const shown: Shown = { moment: 'resting', animation, frame: 0 }
+  const shown: Shown = { moment: 'resting', animation, frame: 0, place: m.shown.place }
 
   return {
     model: { ...m, phase: { kind: 'ambient', animation, step: 0, steps: animation.frames }, shown },
@@ -283,27 +352,38 @@ const startAmbient = (m: Model, roll: number, ambientOf: Ambient): Result => {
 }
 
 /** One tick of an ambient animation: the next frame, or the end, when the rest comes back and the next gap starts. */
-const advanceAmbient = (m: Model, p: Extract<Phase, { kind: 'ambient' }>, playsFor: Lookup, ambientOf: Ambient): Result => {
+const advanceAmbient = (m: Model, p: Extract<Phase, { kind: 'ambient' }>, playsFor: Lookup, ambientOf: Ambient, room: Room): Result => {
   const step = p.step + 1
-  if (step >= p.steps) return begin(m, playsFor, ambientOf, false)
+  if (step >= p.steps) return begin(m, playsFor, ambientOf, false, room)
 
-  return show({ ...m, phase: { ...p, step } }, { moment: 'resting', animation: p.animation, frame: step })
+  return show({ ...m, phase: { ...p, step } }, { moment: 'resting', animation: p.animation, frame: step, place: m.shown.place })
+}
+
+/** One tick of a walk: a pixel nearer its place, and the next step of the walk cycle; the tick that gets there starts what waited for it (the walk is not drawn that last time). */
+const advanceWalk = (m: Model, p: Extract<Phase, { kind: 'walking' }>, playsFor: Lookup, ambientOf: Ambient, room: Room): Result => {
+  const x = m.shown.place.x + Math.sign(p.to - m.shown.place.x)
+  if (x === p.to) return arrive({ ...m, shown: standAt(m.shown, x) }, p.run, playsFor, ambientOf, room)
+  const step = p.step + 1
+  const shown: Shown = { ...m.shown, frame: step % p.animation.frames, place: { ...m.shown.place, x } }
+
+  return show({ ...m, phase: { ...p, step } }, shown)
 }
 
 /**
  * The rest with nothing to wait for becomes a rest with a gap pending, or the other way round, when motion or the character's list changed.
- * An ambient animation under way is cut short (the rest is drawn) when `cutsAmbient` says it can no longer play on; an entry is never touched.
+ * An ambient animation under way is cut short (the rest is drawn) when `cutsAmbient` says it can no longer play on; an entry is never touched, nor a walk.
  */
-const reconsider = (m: Model, playsFor: Lookup, ambientOf: Ambient, cutsAmbient: boolean): Result => {
+const reconsider = (m: Model, playsFor: Lookup, ambientOf: Ambient, cutsAmbient: boolean, room: Room): Result => {
   switch (m.phase.kind) {
     case 'resting':
       return waitsAt(m, m.shown.animation, ambientOf) ? { model: { ...m, phase: { kind: 'between' } }, effects: [{ do: 'wait' }] } : same(m)
     case 'between':
       return waitsAt(m, m.shown.animation, ambientOf) ? same(m) : { model: { ...m, phase: { kind: 'resting' } }, effects: [{ do: 'stop' }] }
     case 'ambient':
-      return cutsAmbient ? begin(m, playsFor, ambientOf, false) : same(m)
+      return cutsAmbient ? begin(m, playsFor, ambientOf, false, room) : same(m)
     case 'playing':
     case 'holding':
+    case 'walking':
     case 'away':
       return same(m)
     default:
@@ -316,9 +396,10 @@ const isStill = (phase: Phase): boolean => phase.kind === 'resting' || phase.kin
 
 /**
  * Whether the background moves by itself: motion is on, it has several frames, and the sidekick rests with a picture that does not move.
- * While an animation plays, or the pane is hidden, it does not: it steps with the animation, as it always did.
+ * While an animation plays, or the pane is hidden, it does not: it steps with the animation, as it always did. A walk is not an animation of that kind: the background keeps its own pace under it.
  */
-const cyclesAt = (m: Model, backdrop: Backdrop): boolean => m.isMotionOn && backdrop() > 1 && isStill(m.phase) && m.shown.animation.frames <= 1
+const cyclesAt = (m: Model, backdrop: Backdrop): boolean =>
+  m.isMotionOn && backdrop() > 1 && ((isStill(m.phase) && m.shown.animation.frames <= 1) || m.phase.kind === 'walking')
 
 /** The frame of its own that the background shows now, or undefined when it steps with the animation. */
 export const backgroundOf = (m: Model, backdrop: Backdrop): number | undefined => (cyclesAt(m, backdrop) ? m.cycle % backdrop() : undefined)
@@ -346,10 +427,16 @@ const withBackdrop = (result: Result, backdrop: Backdrop): Result => {
 }
 
 /** The one place the model changes. Pure: it calls no clock, no draw, no hook and no random number. */
-export const transition = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient = noAmbient, backdrop: Backdrop = noBackdrop): Result =>
-  withBackdrop(reduce(m, e, playsFor, ambientOf, backdrop), backdrop)
+export const transition = (
+  m: Model,
+  e: Event,
+  playsFor: Lookup,
+  ambientOf: Ambient = noAmbient,
+  backdrop: Backdrop = noBackdrop,
+  room: Room = noRoom,
+): Result => withBackdrop(reduce(m, e, playsFor, ambientOf, backdrop, room), backdrop)
 
-const reduce = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient, backdrop: Backdrop): Result => {
+const reduce = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient, backdrop: Backdrop, room: Room): Result => {
   switch (e.type) {
     case 'set': {
       if (m.conditions[e.condition] === e.isOn) return same(m)
@@ -361,8 +448,9 @@ const reduce = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient, backdr
         case 'resting':
         case 'between':
         case 'ambient':
-          return begin(next, playsFor, ambientOf, false)
+          return begin(next, playsFor, ambientOf, false, room)
         case 'playing':
+        case 'walking':
           return same(next)
         case 'holding':
           return showRest(next, playsFor)
@@ -380,9 +468,10 @@ const reduce = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient, backdr
         case 'resting':
         case 'between':
         case 'ambient':
-          return begin(next, playsFor, ambientOf, false)
+          return begin(next, playsFor, ambientOf, false, room)
         case 'playing':
         case 'holding':
+        case 'walking':
           return same(next)
         default:
           return unreachable(m.phase)
@@ -398,10 +487,12 @@ const reduce = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient, backdr
           // The gap is the only timer, and it is not a tick. Away there is no timer; a tick on its way when the pane went behind another is ignored.
           return same(m)
         case 'ambient':
-          return advanceAmbient(m, p, playsFor, ambientOf)
+          return advanceAmbient(m, p, playsFor, ambientOf, room)
         case 'playing':
         case 'holding':
-          return advance(m, p, playsFor, ambientOf)
+          return advance(m, p, playsFor, ambientOf, room)
+        case 'walking':
+          return advanceWalk(m, p, playsFor, ambientOf, room)
         default:
           return unreachable(p)
       }
@@ -409,8 +500,12 @@ const reduce = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient, backdr
     case 'motion': {
       if (m.isMotionOn === e.isOn) return same(m)
 
+      const next = { ...m, isMotionOn: e.isOn }
+      // A walk does not go on without motion: the sidekick appears where it was going, and what waited for it starts.
+      if (m.phase.kind === 'walking' && !e.isOn) return arrive({ ...next, shown: standAt(m.shown, m.phase.to) }, m.phase.run, playsFor, ambientOf, room)
+
       // An ambient animation under way is cut short by turning motion off; it is not by turning it on.
-      return reconsider({ ...m, isMotionOn: e.isOn }, playsFor, ambientOf, !e.isOn)
+      return reconsider(next, playsFor, ambientOf, !e.isOn, room)
     }
     case 'gap': {
       switch (m.phase.kind) {
@@ -420,6 +515,7 @@ const reduce = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient, backdr
         case 'ambient':
         case 'playing':
         case 'holding':
+        case 'walking':
         case 'away':
           return same(m)
         default:
@@ -431,11 +527,11 @@ const reduce = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient, backdr
       return m.isCycling ? show({ ...m, cycle: (m.cycle + 1) % backdrop() }, m.shown) : same(m)
     case 'look':
       // The old character's ambient animation may need anchors the new one lacks, so it does not play on.
-      return reconsider(m, playsFor, ambientOf, true)
+      return reconsider(m, playsFor, ambientOf, true, room)
     case 'view': {
       if (e.isShown === (m.phase.kind !== 'away')) return same(m)
       // Shown again, it does what the conditions call for now (or rests), after the animations that were kept; its ambient wait starts afresh.
-      return e.isShown ? begin({ ...m, phase: { kind: 'resting' } }, playsFor, ambientOf, false) : goAway(m)
+      return e.isShown ? begin({ ...m, phase: { kind: 'resting' } }, playsFor, ambientOf, false, room) : goAway(m, room)
     }
     default:
       return unreachable(e)
@@ -447,6 +543,7 @@ const reduce = (m: Model, e: Event, playsFor: Lookup, ambientOf: Ambient, backdr
  * when what is shown changes, when the background steps, and on `repaint`, never while the pane is not shown.
  * `isShownNow`, when given, is asked each time the timer fires, before the sidekick acts on it, so a pane that went behind another is found out at once
  * and shows nothing more; without it the pane is taken to be shown until `setShown` says otherwise.
+ * The timer is the walk's while the sidekick walks (one pixel a tick), and the sidekick's place is part of every picture (`Shown.place`).
  */
 export const createActivity = (
   clock: Clock,
@@ -455,6 +552,7 @@ export const createActivity = (
   ambientOf: Ambient = noAmbient,
   isShownNow?: () => Promise<boolean>,
   backdrop: Backdrop = noBackdrop,
+  room: Room = noRoom,
 ): Activity => {
   let model = initial(playsFor)
   let timer: Timer | undefined
@@ -530,7 +628,7 @@ export const createActivity = (
     isBusy = true
     try {
       for (let next = inbox.shift(); next !== undefined; next = inbox.shift()) {
-        const result = transition(model, next, playsFor, ambientOf, backdrop)
+        const result = transition(model, next, playsFor, ambientOf, backdrop, room)
         model = result.model
         result.effects.forEach(run)
       }

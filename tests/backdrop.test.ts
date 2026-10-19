@@ -2,6 +2,7 @@ import { expect } from 'claude-code/testing'
 import type { Ambient, Effect, Entry, Event, Lookup, Model } from '../hooks/activity'
 import { BACKGROUND_STEP_MS, backgroundOf, createActivity, initial, transition } from '../hooks/activity'
 import type { Animation } from '../hooks/sprite/types'
+import { HOME } from '../hooks/sprite/types'
 import { test } from './world'
 
 // A background with several frames steps at a slow fixed interval while the sidekick rests, as part of ambient motion. The transition tells the shell when to start and stop
@@ -80,7 +81,7 @@ test('each interval steps the background to its next frame, redraws the rest wit
   }
   expect(seen).toEqual([1, 2, 0, 1, 2, 0, 1])
   // The rest it draws is the resting picture at frame 0, the same each time.
-  expect(model.shown).toEqual({ moment: 'resting', animation: playsFor('resting'), frame: 0 })
+  expect(model.shown).toEqual({ moment: 'resting', animation: playsFor('resting'), frame: 0, place: HOME })
 })
 
 test('the background steps without disturbing the ambient animations: the gap stays pending, and nothing is drawn but the background', async () => {
@@ -94,7 +95,7 @@ test('the background steps without disturbing the ambient animations: the gap st
   const playing = transition(stepped.model, { type: 'gap', roll: 0 }, playsFor, ambient, frames(3))
   expect(playing.effects).toEqual([
     { do: 'stop' },
-    { do: 'draw', shown: { moment: 'resting', animation: BLINK, frame: 0 } },
+    { do: 'draw', shown: { moment: 'resting', animation: BLINK, frame: 0, place: HOME } },
     { do: 'every', ms: BLINK.msPerFrame },
     { do: 'uncycle' },
   ])
@@ -110,7 +111,7 @@ test('the background steps without disturbing the ambient animations: the gap st
   expect(back).toContainEqual({ do: 'wait' })
   expect(back.filter(effect => effect.do === 'draw').at(-1)).toEqual({
     do: 'draw',
-    shown: { moment: 'resting', animation: playsFor('resting'), frame: 0 },
+    shown: { moment: 'resting', animation: playsFor('resting'), frame: 0, place: HOME },
     background: 1,
   })
 })
